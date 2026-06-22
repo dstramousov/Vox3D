@@ -54,6 +54,7 @@ struct UiMetrics {
     float workspace_tool_gap = 6.0F;
     float workspace_tool_font_size = 18.0F;
     float workspace_status_font_size = 16.0F;
+    float workspace_panel_padding = 10.0F;
 };
 
 /**
@@ -109,12 +110,23 @@ struct PlaceholderLayout {
 };
 
 /**
- * @brief Hit box and text position for a workspace tool.
+ * @brief Hit box and text position for a workspace accordion section header.
  */
 struct WorkspaceToolBounds {
     WorkspaceTool tool = WorkspaceTool::kMap;
     Rectangle bounds{};
     Vector2 text_position{};
+};
+
+/**
+ * @brief Hit box and text position for a workspace accordion subitem.
+ */
+struct WorkspacePanelItemBounds {
+    WorkspacePanelItem item = WorkspacePanelItem::kMapOverview;
+    Rectangle bounds{};
+    Vector2 text_position{};
+    bool enabled = false;
+    bool checked = false;
 };
 
 /**
@@ -124,10 +136,13 @@ struct WorkspaceLayout {
     Rectangle viewport{};
     Rectangle tool_panel{};
     Rectangle status_bar{};
+    Rectangle tool_header{};
+    Rectangle tool_menu{};
+    Rectangle tool_info{};
     Rectangle map_summary{};
     Rectangle map_overview{};
-    Rectangle tool_info{};
     std::vector<WorkspaceToolBounds> tools;
+    std::vector<WorkspacePanelItemBounds> panel_items;
 };
 
 /**
@@ -180,6 +195,7 @@ struct UiLayoutCache {
  * @param window Window configuration.
  * @param config Application configuration.
  * @param labels Localized labels used for measured dialog text.
+ * @param workspace Workspace state used for accordion layout.
  * @return Cached UI layout.
  */
 [[nodiscard]] UiLayoutCache RebuildUiLayout(
@@ -187,6 +203,7 @@ struct UiLayoutCache {
     const UiFontSet& fonts,
     const WindowConfig& window,
     const AppConfig& config,
-    const UiLabels& labels);
+    const UiLabels& labels,
+    const WorkspaceState& workspace);
 
 }  // namespace vox3d

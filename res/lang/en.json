@@ -57,5 +57,19 @@
   "workspace.no": "no",
   "workspace.map.tile_unknown": "tile unknown",
   "workspace.overview.unavailable": "overview unavailable",
-  "memory.label": "MEM"
+  "memory.label": "MEM",
+  "workspace.subitem.overview": "Overview",
+  "workspace.subitem.package": "Package",
+  "workspace.subitem.validate": "Validate",
+  "workspace.subitem.2d_map": "2D Map",
+  "workspace.subitem.3d_preview": "3D Preview",
+  "workspace.subitem.fit_view": "Fit View",
+  "workspace.subitem.reset_view": "Reset View",
+  "workspace.subitem.grid": "Grid",
+  "workspace.subitem.wire": "Wire",
+  "workspace.subitem.solid": "Solid",
+  "workspace.subitem.height": "Height",
+  "workspace.subitem.memory": "Memory",
+  "workspace.subitem.logs": "Logs",
+  "workspace.subitem.language": "Language"
 }

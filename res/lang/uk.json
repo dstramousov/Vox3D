@@ -57,5 +57,19 @@
   "workspace.no": "ні",
   "workspace.map.tile_unknown": "тайл невідомий",
   "workspace.overview.unavailable": "огляд недоступний",
-  "memory.label": "Пам'ять"
+  "memory.label": "Пам'ять",
+  "workspace.subitem.overview": "Огляд",
+  "workspace.subitem.package": "Пакет",
+  "workspace.subitem.validate": "Перевірка",
+  "workspace.subitem.2d_map": "2D мапа",
+  "workspace.subitem.3d_preview": "3D перегляд",
+  "workspace.subitem.fit_view": "Вмістити",
+  "workspace.subitem.reset_view": "Скинути вид",
+  "workspace.subitem.grid": "Сітка",
+  "workspace.subitem.wire": "Каркас",
+  "workspace.subitem.solid": "Суцільний",
+  "workspace.subitem.height": "Висота",
+  "workspace.subitem.memory": "Пам'ять",
+  "workspace.subitem.logs": "Логи",
+  "workspace.subitem.language": "Мова"
 }

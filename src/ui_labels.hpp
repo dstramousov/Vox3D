@@ -58,6 +58,20 @@ struct UiLabels {
     std::string workspace_map_levels_unknown = "levels unknown";
     std::string workspace_map_tile_unknown = "tile unknown";
     std::string workspace_overview_unavailable = "overview unavailable";
+    std::string workspace_subitem_overview = "Overview";
+    std::string workspace_subitem_package = "Package";
+    std::string workspace_subitem_validate = "Validate";
+    std::string workspace_subitem_2d_map = "2D Map";
+    std::string workspace_subitem_3d_preview = "3D Preview";
+    std::string workspace_subitem_fit_view = "Fit View";
+    std::string workspace_subitem_reset_view = "Reset View";
+    std::string workspace_subitem_grid = "Grid";
+    std::string workspace_subitem_wire = "Wire";
+    std::string workspace_subitem_solid = "Solid";
+    std::string workspace_subitem_height = "Height";
+    std::string workspace_subitem_memory = "Memory";
+    std::string workspace_subitem_logs = "Logs";
+    std::string workspace_subitem_language = "Language";
 
     std::string dialog_exit_title = "Exit program?";
     std::string dialog_exit_message = "Unsaved progress may be lost.";

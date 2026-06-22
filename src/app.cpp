@@ -314,6 +314,9 @@ void App::HandleWorkspaceInput()
     if (IsKeyPressedAny({KEY_DOWN, KEY_S, KEY_RIGHT, KEY_D, KEY_TAB})) {
         SelectNextWorkspaceTool();
     }
+    if (IsKeyPressed(KEY_ENTER)) {
+        ToggleWorkspaceTool(workspace_.selected_tool);
+    }
 
     if (layout_dirty_) {
         RebuildLayout();
@@ -326,11 +329,22 @@ void App::HandleWorkspaceInput()
         }
 
         hovered_item_ = "workspace_" + std::string(ToString(tool_bounds.tool));
-        if (workspace_.selected_tool != tool_bounds.tool) {
-            workspace_.selected_tool = tool_bounds.tool;
-            logger_.Debug("workspace", "selected tool=" + std::string(ToString(workspace_.selected_tool)));
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            ToggleWorkspaceTool(tool_bounds.tool);
         }
-        break;
+        return;
+    }
+
+    for (const auto& item_bounds : layout_cache_.workspace.panel_items) {
+        if (!PointInRect(mouse, item_bounds.bounds)) {
+            continue;
+        }
+
+        hovered_item_ = "workspace_" + std::string(ToString(item_bounds.item));
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            ActivateWorkspacePanelItem(item_bounds.item);
+        }
+        return;
     }
 }
 
@@ -487,7 +501,7 @@ void App::Draw()
 
 void App::RebuildLayout()
 {
-    layout_cache_ = RebuildUiLayout(main_menu_.State(), UiFonts(), window_config_, config_, labels_);
+    layout_cache_ = RebuildUiLayout(main_menu_.State(), UiFonts(), window_config_, config_, labels_, workspace_);
     layout_dirty_ = false;
 }
 
@@ -562,6 +576,8 @@ void App::SelectPreviousWorkspaceTool()
             workspace_.selected_tool = WorkspaceTool::kDebug;
             break;
     }
+    workspace_.selected_tool_expanded = true;
+    layout_dirty_ = true;
     logger_.Debug("workspace", "selected tool=" + std::string(ToString(workspace_.selected_tool)));
 }
 
@@ -590,7 +606,73 @@ void App::SelectNextWorkspaceTool()
             workspace_.selected_tool = WorkspaceTool::kMap;
             break;
     }
+    workspace_.selected_tool_expanded = true;
+    layout_dirty_ = true;
     logger_.Debug("workspace", "selected tool=" + std::string(ToString(workspace_.selected_tool)));
+}
+
+void App::ToggleWorkspaceTool(WorkspaceTool tool)
+{
+    if (workspace_.selected_tool == tool) {
+        workspace_.selected_tool_expanded = !workspace_.selected_tool_expanded;
+    } else {
+        workspace_.selected_tool = tool;
+        workspace_.selected_tool_expanded = true;
+    }
+    layout_dirty_ = true;
+    logger_.Debug(
+        "workspace",
+        "tool clicked tool=" + std::string(ToString(workspace_.selected_tool))
+            + " expanded=" + std::string(workspace_.selected_tool_expanded ? "true" : "false"));
+}
+
+void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
+{
+    bool enabled = false;
+    for (const WorkspacePanelItemState& state : BuildWorkspacePanelItems(workspace_)) {
+        if (state.item == item) {
+            enabled = state.enabled;
+            break;
+        }
+    }
+
+    if (!enabled) {
+        logger_.Debug("workspace", "disabled panel item ignored id=" + std::string(ToString(item)));
+        return;
+    }
+
+    switch (item) {
+        case WorkspacePanelItem::kLayerTerrain:
+            workspace_.show_terrain_layer = !workspace_.show_terrain_layer;
+            break;
+        case WorkspacePanelItem::kLayerElevation:
+            workspace_.show_elevation_layer = !workspace_.show_elevation_layer;
+            break;
+        case WorkspacePanelItem::kLayerCollision:
+            workspace_.show_collision_layer = !workspace_.show_collision_layer;
+            break;
+        case WorkspacePanelItem::kLayerGrid:
+            workspace_.show_grid_layer = !workspace_.show_grid_layer;
+            break;
+        case WorkspacePanelItem::kMapOverview:
+        case WorkspacePanelItem::kMapPackage:
+        case WorkspacePanelItem::kMapValidate:
+        case WorkspacePanelItem::kView2DMap:
+        case WorkspacePanelItem::kView3DPreview:
+        case WorkspacePanelItem::kViewFitMap:
+        case WorkspacePanelItem::kViewResetView:
+        case WorkspacePanelItem::kRenderOverview:
+        case WorkspacePanelItem::kRenderWire:
+        case WorkspacePanelItem::kRenderHeight:
+        case WorkspacePanelItem::kDebugMemory:
+        case WorkspacePanelItem::kDebugFps:
+        case WorkspacePanelItem::kDebugLogs:
+        case WorkspacePanelItem::kSettingsLanguage:
+            break;
+    }
+
+    layout_dirty_ = true;
+    logger_.Debug("workspace", "panel item activated id=" + std::string(ToString(item)));
 }
 
 void App::SetCurrentScreen(AppScreen screen, std::string_view reason)

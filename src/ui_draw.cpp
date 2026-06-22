@@ -190,6 +190,61 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return value ? labels.workspace_yes : labels.workspace_no;
 }
 
+
+[[nodiscard]] const std::string& WorkspacePanelItemLabel(WorkspacePanelItem item, const UiLabels& labels)
+{
+    switch (item) {
+        case WorkspacePanelItem::kMapOverview:
+            return labels.workspace_subitem_overview;
+        case WorkspacePanelItem::kMapPackage:
+            return labels.workspace_subitem_package;
+        case WorkspacePanelItem::kMapValidate:
+            return labels.workspace_subitem_validate;
+        case WorkspacePanelItem::kView2DMap:
+            return labels.workspace_subitem_2d_map;
+        case WorkspacePanelItem::kView3DPreview:
+            return labels.workspace_subitem_3d_preview;
+        case WorkspacePanelItem::kViewFitMap:
+            return labels.workspace_subitem_fit_view;
+        case WorkspacePanelItem::kViewResetView:
+            return labels.workspace_subitem_reset_view;
+        case WorkspacePanelItem::kLayerTerrain:
+            return labels.workspace_terrain_label;
+        case WorkspacePanelItem::kLayerElevation:
+            return labels.workspace_elevation_label;
+        case WorkspacePanelItem::kLayerCollision:
+            return labels.workspace_collision_label;
+        case WorkspacePanelItem::kLayerGrid:
+            return labels.workspace_subitem_grid;
+        case WorkspacePanelItem::kRenderOverview:
+            return labels.workspace_subitem_overview;
+        case WorkspacePanelItem::kRenderWire:
+            return labels.workspace_subitem_wire;
+        case WorkspacePanelItem::kRenderHeight:
+            return labels.workspace_subitem_height;
+        case WorkspacePanelItem::kDebugMemory:
+            return labels.workspace_subitem_memory;
+        case WorkspacePanelItem::kDebugFps:
+            return labels.fps_label;
+        case WorkspacePanelItem::kDebugLogs:
+            return labels.workspace_subitem_logs;
+        case WorkspacePanelItem::kSettingsLanguage:
+            return labels.workspace_subitem_language;
+    }
+    return labels.debug_none;
+}
+
+[[nodiscard]] std::string WorkspacePanelItemText(WorkspacePanelItemState item, const UiLabels& labels)
+{
+    std::string prefix;
+    if (item.enabled) {
+        prefix = item.checked ? "[x] " : "[ ] ";
+    } else {
+        prefix = "[-] ";
+    }
+    return prefix + WorkspacePanelItemLabel(item.item, labels);
+}
+
 [[nodiscard]] std::string FormatMemory(std::uint64_t bytes, const UiLabels& labels)
 {
     if (bytes == 0) {
@@ -237,13 +292,17 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return Color{106, 108, 104, 255};
 }
 
-void DrawWorkspaceOverview(const MapOverview& overview, const WorkspaceLayout& workspace, const UiMetrics& metrics)
+void DrawWorkspaceOverview(
+    const WorkspaceState& workspace_state,
+    const WorkspaceLayout& workspace,
+    const UiMetrics& metrics)
 {
+    const MapOverview& overview = workspace_state.map.overview;
     const Rectangle area = workspace.map_overview;
     DrawRectangleRec(area, Color{118, 120, 118, 255});
     DrawRectangleLinesEx(area, metrics.workspace_border_width, kEditorBorder);
 
-    if (!overview.IsValid()) {
+    if (!overview.IsValid() || !workspace_state.show_terrain_layer) {
         return;
     }
 
@@ -290,6 +349,20 @@ void DrawWorkspaceOverview(const MapOverview& overview, const WorkspaceLayout& w
                     std::max(1.0F, cell_height + 0.6F),
                 },
                 CellColor(overview.cells[index]));
+        }
+    }
+
+    if (workspace_state.show_grid_layer) {
+        const int grid_step_x = std::max(1, draw_cols / 16);
+        const int grid_step_y = std::max(1, draw_rows / 16);
+        constexpr Color grid{20, 24, 24, 90};
+        for (int x = grid_step_x; x < draw_cols; x += grid_step_x) {
+            const float px = map_rect.x + static_cast<float>(x) * cell_width;
+            DrawLineEx(Vector2{px, map_rect.y}, Vector2{px, map_rect.y + map_rect.height}, 1.0F, grid);
+        }
+        for (int y = grid_step_y; y < draw_rows; y += grid_step_y) {
+            const float py = map_rect.y + static_cast<float>(y) * cell_height;
+            DrawLineEx(Vector2{map_rect.x, py}, Vector2{map_rect.x + map_rect.width, py}, 1.0F, grid);
         }
     }
 
@@ -404,14 +477,16 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 }
 
 
-[[nodiscard]] WorkspaceLayout BuildWorkspaceLayout(const UiMetrics& metrics)
+[[nodiscard]] WorkspaceLayout BuildWorkspaceLayout(const UiMetrics& metrics, const WorkspaceState& workspace_state)
 {
     WorkspaceLayout layout;
     layout.tools.reserve(7);
 
-    const float border = metrics.workspace_border_width;
     const float status_height = metrics.workspace_status_height;
     const float panel_width = metrics.workspace_panel_width;
+    const float border = metrics.workspace_border_width;
+    const float padding = metrics.workspace_panel_padding;
+    const float gap = metrics.workspace_tool_gap;
 
     layout.status_bar = Rectangle{
         0.0F,
@@ -441,6 +516,13 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         std::max(1.0F, layout.viewport.height - viewport_padding * 2.0F),
     };
 
+    layout.tool_header = Rectangle{
+        layout.tool_panel.x + border,
+        layout.tool_panel.y + border,
+        std::max(1.0F, layout.tool_panel.width - border * 2.0F),
+        std::max(metrics.workspace_tool_font_size + padding * 1.6F, 34.0F * metrics.scale),
+    };
+
     constexpr std::array<WorkspaceTool, 7> tools{
         WorkspaceTool::kMap,
         WorkspaceTool::kView,
@@ -451,34 +533,62 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         WorkspaceTool::kSettings,
     };
 
-    const float tool_padding_x = metrics.screen_padding * 0.6F;
-    const float tool_height = metrics.workspace_tool_font_size + metrics.workspace_tool_gap;
-    const float tools_total_height = static_cast<float>(tools.size()) * tool_height;
-    const float tools_start_y = std::max(
-        metrics.screen_padding + metrics.workspace_tool_font_size * 2.0F,
-        layout.tool_panel.y + layout.tool_panel.height - metrics.screen_padding - tools_total_height);
-    float y = tools_start_y;
+    const float tool_height = metrics.workspace_tool_font_size + gap * 1.35F;
+    const float item_height = metrics.workspace_tool_font_size + gap * 1.05F;
+    const float tool_x = layout.tool_panel.x + padding;
+    float row_y = layout.tool_header.y + layout.tool_header.height + gap;
+    const float tool_width = std::max(1.0F, layout.tool_panel.width - padding * 2.0F);
+    const float row_bottom = layout.tool_panel.y + layout.tool_panel.height - padding;
+    const float subitem_indent = gap * 2.4F;
+
+    const auto selected_items = BuildWorkspacePanelItems(workspace_state);
     for (WorkspaceTool tool : tools) {
-        const Rectangle bounds{
-            layout.tool_panel.x + tool_padding_x,
-            y,
-            std::max(1.0F, layout.tool_panel.width - tool_padding_x * 2.0F),
-            tool_height,
-        };
+        if (row_y + tool_height > row_bottom) {
+            break;
+        }
+
+        const Rectangle bounds{tool_x, row_y, tool_width, tool_height};
         layout.tools.push_back(WorkspaceToolBounds{
             tool,
             bounds,
-            Vector2{bounds.x, bounds.y},
+            Vector2{bounds.x + gap, bounds.y + (bounds.height - metrics.workspace_tool_font_size) * 0.5F},
         });
-        y += tool_height;
+        row_y += tool_height;
+
+        if (tool != workspace_state.selected_tool || !workspace_state.selected_tool_expanded) {
+            continue;
+        }
+
+        layout.panel_items.reserve(selected_items.size());
+        for (const WorkspacePanelItemState& item : selected_items) {
+            if (row_y + item_height > row_bottom) {
+                break;
+            }
+            const Rectangle item_bounds{tool_x + subitem_indent, row_y, std::max(1.0F, tool_width - subitem_indent), item_height};
+            layout.panel_items.push_back(WorkspacePanelItemBounds{
+                item.item,
+                item_bounds,
+                Vector2{item_bounds.x + gap, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
+                item.enabled,
+                item.checked,
+            });
+            row_y += item_height;
+        }
     }
 
-    const float info_y = metrics.screen_padding * 2.4F + metrics.workspace_tool_font_size;
+    layout.tool_menu = Rectangle{
+        tool_x,
+        layout.tool_header.y + layout.tool_header.height + gap,
+        tool_width,
+        std::max(1.0F, row_y - (layout.tool_header.y + layout.tool_header.height + gap)),
+    };
+
+    const float info_y = row_y + gap * 2.0F;
     layout.tool_info = Rectangle{
-        layout.tool_panel.x + tool_padding_x,
+        layout.tool_panel.x + padding,
         info_y,
-        std::max(1.0F, layout.tool_panel.width - tool_padding_x * 2.0F),
-        std::max(1.0F, tools_start_y - info_y - metrics.screen_padding),
+        tool_width,
+        std::max(1.0F, row_bottom - info_y),
     };
 
     return layout;
@@ -573,10 +683,11 @@ UiMetrics CalculateUiMetrics(const WindowConfig& window, const AppConfig& config
     metrics.dialog_button_height = std::max(Scaled(48.0F, scale, 38.0F, 68.0F), metrics.dialog_button_font_size + Scaled(22.0F, scale, 16.0F, 30.0F));
     metrics.dialog_button_gap = Scaled(28.0F, scale, 16.0F, 42.0F);
     metrics.modal_border_width = Scaled(2.0F, scale, 1.0F, 4.0F);
-    metrics.workspace_panel_width = Scaled(220.0F, scale, 170.0F, 280.0F);
+    metrics.workspace_panel_width = Scaled(230.0F, scale, 185.0F, 300.0F);
     metrics.workspace_status_height = Scaled(42.0F, scale, 30.0F, 58.0F);
     metrics.workspace_border_width = Scaled(2.0F, scale, 1.0F, 4.0F);
     metrics.workspace_tool_gap = Scaled(7.0F, scale, 4.0F, 12.0F);
+    metrics.workspace_panel_padding = Scaled(10.0F, scale, 7.0F, 18.0F);
     return metrics;
 }
 
@@ -585,13 +696,14 @@ UiLayoutCache RebuildUiLayout(
     const UiFontSet& fonts,
     const WindowConfig& window,
     const AppConfig& config,
-    const UiLabels& labels)
+    const UiLabels& labels,
+    const WorkspaceState& workspace)
 {
     UiLayoutCache layout;
     layout.metrics = CalculateUiMetrics(window, config);
     layout.main_menu = BuildMainMenuLayout(menu, fonts, layout.metrics);
     layout.placeholder = BuildPlaceholderLayout(fonts, layout.metrics, labels);
-    layout.workspace = BuildWorkspaceLayout(layout.metrics);
+    layout.workspace = BuildWorkspaceLayout(layout.metrics, workspace);
     layout.exit_dialog = BuildExitDialogLayout(fonts, layout.metrics, labels);
     return layout;
 }
@@ -687,6 +799,7 @@ void DrawPlaceholderScreen(
 }
 
 
+
 void DrawWorkspace(const WorkspaceState& workspace_state, const UiFontSet& fonts, const UiLabels& labels, const UiLayoutCache& layout)
 {
     const UiMetrics& metrics = layout.metrics;
@@ -701,63 +814,68 @@ void DrawWorkspace(const WorkspaceState& workspace_state, const UiFontSet& fonts
     DrawRectangleRec(workspace.status_bar, kEditorStatus);
     DrawRectangleLinesEx(workspace.status_bar, metrics.workspace_border_width, kEditorBorder);
 
-    const float spacing = FontSpacing(metrics.workspace_tool_font_size);
+    DrawRectangleRec(workspace.tool_header, kEditorBackground);
     DrawTextEx(
         fonts.title,
         labels.workspace_tool_panel_title.c_str(),
-        Vector2{workspace.tool_panel.x + metrics.screen_padding * 0.6F, metrics.screen_padding * 0.25F},
+        Vector2{workspace.tool_header.x + metrics.workspace_panel_padding, workspace.tool_header.y + metrics.workspace_panel_padding * 0.35F},
         metrics.workspace_tool_font_size,
-        spacing,
+        FontSpacing(metrics.workspace_tool_font_size),
         kEditorViewportText);
 
+    const float spacing = FontSpacing(metrics.workspace_tool_font_size);
     for (const auto& tool_bounds : workspace.tools) {
         const bool selected = workspace_state.selected_tool == tool_bounds.tool;
         const std::string& label = WorkspaceToolLabel(tool_bounds.tool, labels);
+        const std::string marker = selected && workspace_state.selected_tool_expanded ? "- " : "+ ";
         if (selected) {
-            DrawRectangleRec(tool_bounds.bounds, Color{0, 91, 116, 255});
+            DrawRectangleRec(tool_bounds.bounds, Color{4, 92, 120, 255});
         }
         DrawTextEx(
             fonts.text,
-            label.c_str(),
+            (marker + label).c_str(),
             tool_bounds.text_position,
             metrics.workspace_tool_font_size,
             spacing,
             selected ? kAccent : kEditorPanelText);
     }
 
-    DrawRectangleRec(workspace.tool_info, kEditorStatus);
-    DrawRectangleLinesEx(workspace.tool_info, metrics.workspace_border_width, kEditorBorder);
+    for (const auto& item_bounds : workspace.panel_items) {
+        const WorkspacePanelItemState item{item_bounds.item, item_bounds.enabled, item_bounds.checked};
+        const std::string text = WorkspacePanelItemText(item, labels);
+        const Color color = !item_bounds.enabled ? Color{74, 138, 154, 255} : (item_bounds.checked ? kAccent : kEditorPanelText);
+        DrawTextEx(
+            fonts.text,
+            text.c_str(),
+            item_bounds.text_position,
+            metrics.workspace_tool_font_size,
+            spacing,
+            color);
+    }
 
-    const std::array<std::string, 9> tool_info_lines{
+    const float compact_size = std::max(10.0F, metrics.workspace_status_font_size - 1.0F);
+    const float compact_spacing = FontSpacing(compact_size);
+    const float info_bottom = workspace.tool_info.y + workspace.tool_info.height;
+    const std::array<std::string, 7> tool_info_lines{
         labels.workspace_status_ready + ": " + MapStatusLabel(workspace_state.map, labels),
         labels.workspace_map_label + ": " + (workspace_state.map.configured ? workspace_state.map.path.filename().string() : labels.debug_none),
         labels.workspace_size_label + ": " + MapSizeText(workspace_state.map, labels),
-        labels.workspace_tile_label + ": " + MapTileText(workspace_state.map, labels),
         labels.workspace_levels_label + ": " + MapLevelsText(workspace_state.map, labels),
-        labels.workspace_overview_label + ": " + BoolText(workspace_state.map.overview.IsValid(), labels),
-        labels.workspace_terrain_label + ": " + BoolText(workspace_state.map.terrain_available, labels),
-        labels.workspace_elevation_label + ": " + BoolText(workspace_state.map.elevation_available, labels),
-        labels.workspace_collision_label + ": " + BoolText(workspace_state.map.collision_available, labels),
+        labels.workspace_terrain_label + ": " + BoolText(workspace_state.show_terrain_layer, labels),
+        labels.workspace_elevation_label + ": " + BoolText(workspace_state.show_elevation_layer, labels),
+        labels.workspace_collision_label + ": " + BoolText(workspace_state.show_collision_layer, labels),
     };
-    float info_y = workspace.tool_info.y + metrics.workspace_tool_gap;
-    const float info_x = workspace.tool_info.x + metrics.workspace_tool_gap;
-    const float info_bottom = workspace.tool_info.y + workspace.tool_info.height - metrics.workspace_tool_gap;
+    float info_y = workspace.tool_info.y;
     for (const auto& line : tool_info_lines) {
-        if (info_y + metrics.workspace_status_font_size > info_bottom) {
+        if (info_y + compact_size > info_bottom) {
             break;
         }
-        DrawTextEx(
-            fonts.text,
-            line.c_str(),
-            Vector2{info_x, info_y},
-            metrics.workspace_status_font_size,
-            FontSpacing(metrics.workspace_status_font_size),
-            kEditorStatusText);
-        info_y += metrics.workspace_status_font_size + metrics.workspace_tool_gap;
+        DrawTextEx(fonts.text, line.c_str(), Vector2{workspace.tool_info.x, info_y}, compact_size, compact_spacing, kEditorPanelText);
+        info_y += compact_size + metrics.workspace_tool_gap * 0.4F;
     }
 
-    DrawWorkspaceOverview(workspace_state.map.overview, workspace, metrics);
-    if (!workspace_state.map.overview.IsValid()) {
+    DrawWorkspaceOverview(workspace_state, workspace, metrics);
+    if (!workspace_state.map.overview.IsValid() || !workspace_state.show_terrain_layer) {
         DrawWorkspaceWirePlaceholder(workspace, metrics);
         DrawTextCentered(
             fonts.text,

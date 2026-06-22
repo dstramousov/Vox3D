@@ -78,3 +78,14 @@
 
 - Fixed exit confirmation input so the same Esc/window-close event that opens the dialog cannot immediately cancel it in the same frame.
 - Preserved MainRender as the startup screen while keeping Esc/close-button exit confirmation modal and cancel/accept behavior stable.
+
+## v0.2.3 -> v0.2.4
+
+- Restyled the right workspace panel after the retro 3D-editor reference without adding new renderer behavior.
+- Added a header, compact command list, contextual subitems, and a bottom pseudo-button block to the tool panel.
+- Added localized labels for the new panel subitems and footer button captions.
+## v0.2.4 -> v0.2.5
+
+- Removed the decorative bottom pseudo-button block from the right workspace panel.
+- Changed the right panel into a click-driven accordion menu: clicking a section opens or closes its subitems, while mouse hover only reports hover state.
+- Added initial 2D layer toggles for terrain, elevation, collision, and grid through the accordion subitems.
