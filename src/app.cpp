@@ -202,10 +202,7 @@ bool App::Initialize()
     }
     const bool preview_uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes);
     logger_.Info("render3d", ToLogString(chunk_mesh_preview_.Stats()));
-    if (preview_uploaded) {
-        preview_camera_.FitToMap(workspace_.chunk_meshes);
-        logger_.Info("camera3d", ToLogString(preview_camera_.Status()));
-    } else {
+    if (!preview_uploaded) {
         logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");
     }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
@@ -213,6 +210,9 @@ bool App::Initialize()
     LoadUiFonts();
     RefreshProcessMemoryInfo();
     RebuildLayout();
+    if (preview_uploaded) {
+        FitPreviewCameraToViewport("initial");
+    }
 
     {
         std::ostringstream out;
@@ -362,7 +362,9 @@ void App::HandleWorkspaceInput(float dt)
 
     if (IsKeyPressed(KEY_F3) && chunk_mesh_preview_.IsUploaded()) {
         workspace_.show_3d_preview = !workspace_.show_3d_preview;
-        if (!workspace_.show_3d_preview) {
+        if (workspace_.show_3d_preview) {
+            FitPreviewCameraToViewport("hotkey");
+        } else {
             preview_camera_.ReleaseMouse();
         }
         layout_dirty_ = true;
@@ -380,8 +382,7 @@ void App::HandleWorkspaceInput(float dt)
             logger_.Info("camera3d", "reset view " + ToLogString(preview_camera_.Status()));
         }
         if (IsKeyPressed(KEY_F)) {
-            preview_camera_.FitToMap(workspace_.chunk_meshes);
-            logger_.Info("camera3d", "fit map " + ToLogString(preview_camera_.Status()));
+            FitPreviewCameraToViewport("hotkey");
         }
         if (IsKeyPressed(KEY_F4)) {
             ToggleOverlayFlag(workspace_.show_3d_chunk_bounds, "chunk_bounds", logger_, layout_dirty_);
@@ -582,7 +583,14 @@ void App::Draw()
             DrawMainMenu(main_menu_.State(), UiFonts(), labels_, layout_cache_);
             break;
         case AppScreen::kWorkspace:
-            DrawWorkspace(workspace_, &chunk_mesh_preview_, &preview_camera_.Camera(), UiFonts(), labels_, layout_cache_);
+            DrawWorkspace(
+                workspace_,
+                &chunk_mesh_preview_,
+                &preview_camera_.Camera(),
+                preview_camera_.Status(),
+                UiFonts(),
+                labels_,
+                layout_cache_);
             break;
         case AppScreen::kSettingsPlaceholder:
             DrawPlaceholderScreen(labels_.placeholder_settings_title, placeholder_selected_action_, UiFonts(), labels_, layout_cache_);
@@ -762,11 +770,13 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::kView3DPreview:
             workspace_.show_3d_preview = chunk_mesh_preview_.IsUploaded();
+            if (workspace_.show_3d_preview) {
+                FitPreviewCameraToViewport("panel");
+            }
             logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "2d_unavailable"));
             break;
         case WorkspacePanelItem::kViewFitMap:
-            preview_camera_.FitToMap(workspace_.chunk_meshes);
-            logger_.Info("camera3d", "fit map " + ToLogString(preview_camera_.Status()));
+            FitPreviewCameraToViewport("hotkey");
             break;
         case WorkspacePanelItem::kViewResetView:
             preview_camera_.ResetView();
@@ -797,6 +807,20 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
 
     layout_dirty_ = true;
     logger_.Debug("workspace", "panel item activated id=" + std::string(ToString(item)));
+}
+
+
+void App::FitPreviewCameraToViewport(std::string_view reason)
+{
+    if (!chunk_mesh_preview_.IsUploaded() || !workspace_.chunk_meshes.IsValid()) {
+        logger_.Debug("camera3d", "fit ignored reason=" + std::string(reason));
+        return;
+    }
+    if (layout_dirty_) {
+        RebuildLayout();
+    }
+    preview_camera_.FitToMap(workspace_.chunk_meshes, layout_cache_.workspace.map_overview);
+    logger_.Info("camera3d", "fit map reason=" + std::string(reason) + " " + ToLogString(preview_camera_.Status()));
 }
 
 void App::SetCurrentScreen(AppScreen screen, std::string_view reason)

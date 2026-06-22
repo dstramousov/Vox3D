@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -125,6 +126,19 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return lines;
 }
 
+
+
+[[nodiscard]] std::string CompactFloat(float value)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << value;
+    return out.str();
+}
+
+[[nodiscard]] std::string CompactVector(Vector3 value)
+{
+    return CompactFloat(value.x) + "," + CompactFloat(value.y) + "," + CompactFloat(value.z);
+}
 
 [[nodiscard]] const std::string& WorkspaceToolLabel(WorkspaceTool tool, const UiLabels& labels)
 {
@@ -809,6 +823,7 @@ void DrawWorkspace(
     const WorkspaceState& workspace_state,
     const RaylibChunkMeshPreview* mesh_preview,
     const Camera3D* preview_camera,
+    FreeFlyCameraStatus camera_status,
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout)
@@ -884,6 +899,11 @@ void DrawWorkspace(
     if (workspace_state.chunk_meshes.IsValid()) {
         tool_info_lines.push_back("Faces: " + std::to_string(workspace_state.chunk_meshes.info.visible_faces));
     }
+    if (workspace_state.show_3d_preview && camera_status.initialized) {
+        tool_info_lines.push_back(std::string("Cam: ") + (camera_status.cursor_captured ? "captured" : "free"));
+        tool_info_lines.push_back("Yaw/Pitch: " + CompactFloat(camera_status.yaw_degrees) + "/" + CompactFloat(camera_status.pitch_degrees));
+        tool_info_lines.push_back("Pos: " + CompactVector(camera_status.position));
+    }
     float info_y = workspace.tool_info.y;
     for (const auto& line : tool_info_lines) {
         if (info_y + compact_size > info_bottom) {
@@ -926,7 +946,7 @@ void DrawWorkspace(
 
     const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
     const std::string controls = workspace_state.show_3d_preview
-        ? " | RMB look | WASD | Q/E | F4 chunks | F5 grid | F6 collision | F7 height | F3 | "
+        ? " | click: capture | Esc: release | WASD | Q/E | wheel | F fit | F4-F7 | F3 | "
         : " | F3 2D/3D | ";
     const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | view="
         + preview_mode + controls + labels.workspace_status_escape_hint;

@@ -145,3 +145,10 @@
 - Added 3D debug overlay toggles for chunk bounds, world grid, collision cells, and sampled height markers in the raylib preview path.
 - Wired the Render workspace panel and hotkeys F4/F5/F6/F7 to the new overlay flags without changing `vox3d_core` mesh generation.
 - Extended the workspace info panel and footer hints with chunk/face diagnostics and 3D overlay controls.
+
+## v0.3.4 -> v0.3.5
+
+- Reworked the 3D preview camera into click-to-capture mouse-look: clicking the 3D viewport captures the cursor, while Esc releases it before any exit dialog is opened.
+- Fixed free-fly strafe direction so A moves left and D moves right relative to the current view direction.
+- Changed 3D fit-view to use the actual viewport aspect ratio when entering 3D mode or pressing F, so the whole map starts framed inside the canvas.
+- Added compact camera diagnostics for capture state, yaw/pitch, and position in the workspace info panel and camera log output.

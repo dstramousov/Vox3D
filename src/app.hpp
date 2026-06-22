@@ -79,6 +79,7 @@ private:
     void SelectNextWorkspaceTool();
     void ToggleWorkspaceTool(WorkspaceTool tool);
     void ActivateWorkspacePanelItem(WorkspacePanelItem item);
+    void FitPreviewCameraToViewport(std::string_view reason);
     void SetCurrentScreen(AppScreen screen, std::string_view reason);
     void RequestExitConfirmation(bool from_window_close = false);
     void CancelExitConfirmation();

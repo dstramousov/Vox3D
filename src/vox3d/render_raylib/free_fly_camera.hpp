@@ -18,6 +18,9 @@ struct FreeFlyCameraConfig {
     float acceleration = 14.0F;
     float damping = 18.0F;
     float mouse_sensitivity = 0.0030F;
+    float wheel_dolly_speed = 140.0F;
+    float fit_padding = 1.10F;
+    float fovy_degrees = 45.0F;
     float min_pitch_radians = -1.553343F;
     float max_pitch_radians = 1.553343F;
 };
@@ -30,14 +33,18 @@ struct FreeFlyCameraStatus {
     bool cursor_captured = false;
     bool mouse_look_active = false;
     float speed = 0.0F;
+    float yaw_degrees = 0.0F;
+    float pitch_degrees = 0.0F;
+    Vector3 position{};
+    Vector3 target{};
 };
 
 /**
  * @brief Raylib-backed free-fly camera controller for the editor 3D preview.
  *
- * The controller owns camera position, orientation, and velocity smoothing. It
- * reads raylib keyboard/mouse state directly and never mutates core map, voxel,
- * chunk, or mesh data.
+ * The controller owns camera position, orientation, mouse capture, and velocity
+ * smoothing. It reads raylib keyboard/mouse state directly and never mutates
+ * core map, voxel, chunk, or mesh data.
  */
 class FreeFlyCameraController {
 public:
@@ -49,12 +56,23 @@ public:
     /**
      * @brief Creates a camera controller with explicit movement tuning.
      *
-     * @param config Movement and mouse-look configuration.
+     * @param config Movement, fit-view, and mouse-look configuration.
      */
     explicit FreeFlyCameraController(FreeFlyCameraConfig config);
 
     /**
      * @brief Frames the generated mesh map and stores that frame as the reset pose.
+     *
+     * The camera distance is computed from the map bounds and the actual viewport
+     * aspect ratio so the whole map starts inside the 3D canvas.
+     *
+     * @param build_result Mesh build result used for map dimensions and level range.
+     * @param viewport Screen-space viewport used to resolve aspect ratio.
+     */
+    void FitToMap(const ChunkMeshBuildResult& build_result, Rectangle viewport);
+
+    /**
+     * @brief Frames the generated mesh map using a square fallback viewport.
      *
      * @param build_result Mesh build result used for map dimensions and level range.
      */
@@ -68,11 +86,12 @@ public:
     /**
      * @brief Updates camera velocity, position, and mouse look from raylib input.
      *
-     * Mouse look is active while the right mouse button is held over the 3D viewport.
-     * Movement uses WASD for planar/forward movement and Q/E for vertical movement.
+     * Clicking inside the 3D viewport captures the mouse. While captured, mouse
+     * movement controls view direction until Escape releases the cursor. Movement
+     * uses WASD for forward/strafe movement and Q/E for vertical movement.
      *
      * @param dt Frame delta time in seconds.
-     * @param viewport Screen-space rectangle used for mouse-look activation.
+     * @param viewport Screen-space rectangle used for mouse capture activation.
      * @param enabled True when the 3D preview is currently active.
      */
     void Update(float dt, Rectangle viewport, bool enabled);
@@ -112,6 +131,7 @@ public:
 
 private:
     void ApplyOrientation();
+    void CaptureMouse();
     void SetPose(Vector3 position, Vector3 target);
 
     FreeFlyCameraConfig config_{};
@@ -124,9 +144,11 @@ private:
     float reset_yaw_ = 0.0F;
     float reset_pitch_ = 0.0F;
     float current_speed_ = 0.0F;
+    float wheel_velocity_ = 0.0F;
     bool initialized_ = false;
     bool cursor_captured_ = false;
     bool mouse_look_active_ = false;
+    bool discard_next_mouse_delta_ = false;
 };
 
 /**

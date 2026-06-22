@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <sstream>
 
 namespace vox3d {
@@ -11,6 +12,10 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846F;
 constexpr float kHalfPi = kPi * 0.5F;
+constexpr float kDegreesPerRadian = 180.0F / kPi;
+constexpr float kDefaultFitYaw = -kPi * 0.25F;
+constexpr float kDefaultFitPitch = -kPi / 3.0F;
+constexpr float kMinimumFitDistance = 24.0F;
 
 [[nodiscard]] float Length(Vector3 value)
 {
@@ -70,23 +75,68 @@ constexpr float kHalfPi = kPi * 0.5F;
 
 [[nodiscard]] Vector3 RightFromYaw(float yaw)
 {
-    return Normalize(Vector3{std::cos(yaw), 0.0F, -std::sin(yaw)});
+    return Normalize(Vector3{-std::cos(yaw), 0.0F, std::sin(yaw)});
 }
 
-[[nodiscard]] Vector3 BuildInitialPosition(const ChunkMeshBuildResult& build_result)
+[[nodiscard]] float ToRadians(float degrees)
+{
+    return degrees * kPi / 180.0F;
+}
+
+[[nodiscard]] float SafeAspect(Rectangle viewport)
+{
+    if (viewport.width <= 1.0F || viewport.height <= 1.0F) {
+        return 1.0F;
+    }
+    return std::clamp(viewport.width / viewport.height, 0.20F, 5.0F);
+}
+
+[[nodiscard]] Vector3 BuildMapCenter(const ChunkMeshBuildResult& build_result)
+{
+    const float min_level = build_result.info.levels.has_value()
+        ? static_cast<float>(build_result.info.levels->min)
+        : 0.0F;
+    const float max_level = build_result.info.levels.has_value()
+        ? static_cast<float>(build_result.info.levels->max + 1)
+        : 12.0F;
+    return Vector3{0.0F, (min_level + max_level) * 0.5F, 0.0F};
+}
+
+[[nodiscard]] float BuildFitDistance(
+    const ChunkMeshBuildResult& build_result,
+    Rectangle viewport,
+    const FreeFlyCameraConfig& config)
 {
     const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
     const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
-    const float span = std::max(map_width, map_height);
-    const float max_level = build_result.info.levels.has_value() ? static_cast<float>(build_result.info.levels->max) : 12.0F;
-    return Vector3{span * 0.56F, span * 0.72F + std::max(18.0F, max_level), span * 0.70F};
+    const float min_level = build_result.info.levels.has_value()
+        ? static_cast<float>(build_result.info.levels->min)
+        : 0.0F;
+    const float max_level = build_result.info.levels.has_value()
+        ? static_cast<float>(build_result.info.levels->max + 1)
+        : 12.0F;
+    const float half_width = map_width * 0.5F;
+    const float half_depth = map_height * 0.5F;
+    const float half_height = std::max(4.0F, (max_level - min_level) * 0.5F);
+    const float radius = std::sqrt(
+        half_width * half_width + half_depth * half_depth + half_height * half_height);
+
+    const float vertical_fov = ToRadians(std::clamp(config.fovy_degrees, 15.0F, 120.0F));
+    const float aspect = SafeAspect(viewport);
+    const float horizontal_fov = 2.0F * std::atan(std::tan(vertical_fov * 0.5F) * aspect);
+    const float limiting_fov = std::clamp(std::min(vertical_fov, horizontal_fov), 0.10F, kPi - 0.10F);
+    const float fit_distance = radius / std::max(0.10F, std::sin(limiting_fov * 0.5F));
+    return std::max(kMinimumFitDistance, fit_distance * std::max(1.0F, config.fit_padding));
 }
 
-[[nodiscard]] Vector3 BuildInitialTarget(const ChunkMeshBuildResult& build_result)
+[[nodiscard]] Vector3 BuildFitPosition(
+    const ChunkMeshBuildResult& build_result,
+    Rectangle viewport,
+    const FreeFlyCameraConfig& config)
 {
-    const float min_level = build_result.info.levels.has_value() ? static_cast<float>(build_result.info.levels->min) : 0.0F;
-    const float max_level = build_result.info.levels.has_value() ? static_cast<float>(build_result.info.levels->max) : 12.0F;
-    return Vector3{0.0F, (min_level + max_level) * 0.40F, 0.0F};
+    const Vector3 target = BuildMapCenter(build_result);
+    const Vector3 forward = ForwardFromAngles(kDefaultFitYaw, kDefaultFitPitch);
+    return Subtract(target, Scale(forward, BuildFitDistance(build_result, viewport, config)));
 }
 
 [[nodiscard]] float CurrentMoveSpeed(const FreeFlyCameraConfig& config)
@@ -100,6 +150,21 @@ constexpr float kHalfPi = kPi * 0.5F;
     return config.normal_speed;
 }
 
+[[nodiscard]] bool IsAnyViewportCaptureButtonPressed()
+{
+    return IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
+        || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)
+        || IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE);
+}
+
+[[nodiscard]] std::string FormatVector(Vector3 value)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1);
+    out << value.x << ',' << value.y << ',' << value.z;
+    return out.str();
+}
+
 }  // namespace
 
 FreeFlyCameraController::FreeFlyCameraController(FreeFlyCameraConfig config)
@@ -107,14 +172,20 @@ FreeFlyCameraController::FreeFlyCameraController(FreeFlyCameraConfig config)
 {
 }
 
-void FreeFlyCameraController::FitToMap(const ChunkMeshBuildResult& build_result)
+void FreeFlyCameraController::FitToMap(const ChunkMeshBuildResult& build_result, Rectangle viewport)
 {
-    SetPose(BuildInitialPosition(build_result), BuildInitialTarget(build_result));
+    SetPose(BuildFitPosition(build_result, viewport, config_), BuildMapCenter(build_result));
     reset_position_ = camera_.position;
     reset_target_ = camera_.target;
     reset_yaw_ = yaw_;
     reset_pitch_ = pitch_;
     velocity_ = Vector3{};
+    wheel_velocity_ = 0.0F;
+}
+
+void FreeFlyCameraController::FitToMap(const ChunkMeshBuildResult& build_result)
+{
+    FitToMap(build_result, Rectangle{0.0F, 0.0F, 1.0F, 1.0F});
 }
 
 void FreeFlyCameraController::ResetView()
@@ -125,11 +196,12 @@ void FreeFlyCameraController::ResetView()
     camera_.position = reset_position_;
     camera_.target = reset_target_;
     camera_.up = Vector3{0.0F, 1.0F, 0.0F};
-    camera_.fovy = 45.0F;
+    camera_.fovy = config_.fovy_degrees;
     camera_.projection = CAMERA_PERSPECTIVE;
     yaw_ = reset_yaw_;
     pitch_ = reset_pitch_;
     velocity_ = Vector3{};
+    wheel_velocity_ = 0.0F;
     current_speed_ = 0.0F;
     ApplyOrientation();
 }
@@ -139,26 +211,30 @@ void FreeFlyCameraController::Update(float dt, Rectangle viewport, bool enabled)
     if (!initialized_ || dt <= 0.0F || !enabled || !IsWindowFocused()) {
         ReleaseMouse();
         velocity_ = Lerp(velocity_, Vector3{}, LerpFactor(config_.damping, dt));
+        wheel_velocity_ += (0.0F - wheel_velocity_) * LerpFactor(config_.damping, dt);
         mouse_look_active_ = false;
         return;
     }
 
     const Vector2 mouse = GetMousePosition();
     const bool mouse_inside_viewport = CheckCollisionPointRec(mouse, viewport);
-    const bool wants_capture = IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && (cursor_captured_ || mouse_inside_viewport);
-    if (wants_capture && !cursor_captured_) {
-        DisableCursor();
-        cursor_captured_ = true;
-    } else if (!wants_capture && cursor_captured_) {
-        ReleaseMouse();
+    if (!cursor_captured_ && mouse_inside_viewport && IsAnyViewportCaptureButtonPressed()) {
+        CaptureMouse();
     }
 
     mouse_look_active_ = cursor_captured_;
     if (mouse_look_active_) {
         const Vector2 delta = GetMouseDelta();
-        yaw_ -= delta.x * config_.mouse_sensitivity;
-        pitch_ -= delta.y * config_.mouse_sensitivity;
-        pitch_ = std::clamp(pitch_, std::max(config_.min_pitch_radians, -kHalfPi + 0.001F), std::min(config_.max_pitch_radians, kHalfPi - 0.001F));
+        if (discard_next_mouse_delta_) {
+            discard_next_mouse_delta_ = false;
+        } else {
+            yaw_ -= delta.x * config_.mouse_sensitivity;
+            pitch_ -= delta.y * config_.mouse_sensitivity;
+            pitch_ = std::clamp(
+                pitch_,
+                std::max(config_.min_pitch_radians, -kHalfPi + 0.001F),
+                std::min(config_.max_pitch_radians, kHalfPi - 0.001F));
+        }
     }
 
     const Vector3 forward = ForwardFromAngles(yaw_, pitch_);
@@ -185,12 +261,24 @@ void FreeFlyCameraController::Update(float dt, Rectangle viewport, bool enabled)
         direction = Subtract(direction, kWorldUp);
     }
 
+    const float wheel = GetMouseWheelMove();
+    if ((cursor_captured_ || mouse_inside_viewport) && std::abs(wheel) > 0.0001F) {
+        const float wheel_limit = std::max(config_.fast_speed * 2.0F, config_.wheel_dolly_speed);
+        wheel_velocity_ = std::clamp(
+            wheel_velocity_ + wheel * config_.wheel_dolly_speed,
+            -wheel_limit,
+            wheel_limit);
+    }
+
     const bool moving = Length(direction) > 0.000001F;
     current_speed_ = moving ? CurrentMoveSpeed(config_) : 0.0F;
     const Vector3 target_velocity = moving ? Scale(Normalize(direction), current_speed_) : Vector3{};
     const float response = moving ? config_.acceleration : config_.damping;
     velocity_ = Lerp(velocity_, target_velocity, LerpFactor(response, dt));
+    wheel_velocity_ += (0.0F - wheel_velocity_) * LerpFactor(config_.damping, dt);
+
     camera_.position = Add(camera_.position, Scale(velocity_, dt));
+    camera_.position = Add(camera_.position, Scale(forward, wheel_velocity_ * dt));
     ApplyOrientation();
 }
 
@@ -201,6 +289,7 @@ void FreeFlyCameraController::ReleaseMouse()
         cursor_captured_ = false;
     }
     mouse_look_active_ = false;
+    discard_next_mouse_delta_ = false;
 }
 
 bool FreeFlyCameraController::IsInitialized() const
@@ -225,6 +314,10 @@ FreeFlyCameraStatus FreeFlyCameraController::Status() const
         cursor_captured_,
         mouse_look_active_,
         current_speed_,
+        yaw_ * kDegreesPerRadian,
+        pitch_ * kDegreesPerRadian,
+        camera_.position,
+        camera_.target,
     };
 }
 
@@ -232,8 +325,19 @@ void FreeFlyCameraController::ApplyOrientation()
 {
     camera_.target = Add(camera_.position, ForwardFromAngles(yaw_, pitch_));
     camera_.up = Vector3{0.0F, 1.0F, 0.0F};
-    camera_.fovy = 45.0F;
+    camera_.fovy = config_.fovy_degrees;
     camera_.projection = CAMERA_PERSPECTIVE;
+}
+
+void FreeFlyCameraController::CaptureMouse()
+{
+    if (cursor_captured_) {
+        return;
+    }
+    DisableCursor();
+    cursor_captured_ = true;
+    mouse_look_active_ = true;
+    discard_next_mouse_delta_ = true;
 }
 
 void FreeFlyCameraController::SetPose(Vector3 position, Vector3 target)
@@ -244,7 +348,7 @@ void FreeFlyCameraController::SetPose(Vector3 position, Vector3 target)
     camera_.position = position;
     camera_.target = target;
     camera_.up = Vector3{0.0F, 1.0F, 0.0F};
-    camera_.fovy = 45.0F;
+    camera_.fovy = config_.fovy_degrees;
     camera_.projection = CAMERA_PERSPECTIVE;
     initialized_ = true;
     current_speed_ = 0.0F;
@@ -254,10 +358,15 @@ void FreeFlyCameraController::SetPose(Vector3 position, Vector3 target)
 std::string ToLogString(const FreeFlyCameraStatus& status)
 {
     std::ostringstream out;
+    out << std::fixed << std::setprecision(1);
     out << "status=" << (status.initialized ? "ready" : "unavailable");
     out << " captured=" << (status.cursor_captured ? "yes" : "no");
     out << " look=" << (status.mouse_look_active ? "yes" : "no");
     out << " speed=" << status.speed;
+    out << " yaw=" << status.yaw_degrees;
+    out << " pitch=" << status.pitch_degrees;
+    out << " pos=" << FormatVector(status.position);
+    out << " target=" << FormatVector(status.target);
     return out.str();
 }
 

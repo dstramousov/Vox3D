@@ -5,6 +5,7 @@
 #include "menu.hpp"
 #include "process_metrics.hpp"
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
+#include "vox3d/render_raylib/free_fly_camera.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
 #include "ui_layout.hpp"
@@ -49,6 +50,7 @@ void DrawPlaceholderScreen(
  * @param workspace Workspace state to draw.
  * @param mesh_preview Optional uploaded 3D mesh preview renderer.
  * @param preview_camera Optional camera used by the 3D preview renderer.
+ * @param camera_status Latest camera diagnostics shown in the workspace panel.
  * @param fonts Fonts used for workspace text.
  * @param labels Localized labels used for workspace controls.
  * @param layout Cached UI layout.
@@ -57,6 +59,7 @@ void DrawWorkspace(
     const WorkspaceState& workspace,
     const RaylibChunkMeshPreview* mesh_preview,
     const Camera3D* preview_camera,
+    FreeFlyCameraStatus camera_status,
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout);
