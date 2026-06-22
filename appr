@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+VERSIONS_FILE="versions.md"
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "ERROR: not inside a git repository"
+    exit 1
+fi
+
+if [[ ! -f "$VERSIONS_FILE" ]]; then
+    echo "ERROR: $VERSIONS_FILE not found"
+    exit 1
+fi
+
+if git diff --quiet && git diff --cached --quiet; then
+    echo "No changes to approve."
+    exit 0
+fi
+
+latest_heading="$(grep -E '^## v[0-9]+\.[0-9]+\.[0-9]+ -> v[0-9]+\.[0-9]+\.[0-9]+' "$VERSIONS_FILE" | tail -n 1)"
+
+if [[ -z "$latest_heading" ]]; then
+    echo "ERROR: could not find latest version heading in $VERSIONS_FILE"
+    exit 1
+fi
+
+version_jump="${latest_heading#### }"
+
+section_body="$(
+    awk -v heading="$latest_heading" '
+        $0 == heading { found=1; next }
+        found && /^## / { exit }
+        found { print }
+    ' "$VERSIONS_FILE" | sed '/^[[:space:]]*$/d'
+)"
+
+if [[ -z "$section_body" ]]; then
+    echo "ERROR: latest $VERSIONS_FILE section is empty: $version_jump"
+    exit 1
+fi
+
+commit_message="$version_jump"$'\n\n'"$section_body"
+
+echo
+echo "Version jump:"
+echo "  $version_jump"
+echo
+echo "Changed files:"
+git status --short
+echo
+echo "Commit message:"
+echo "----------------------------------------"
+echo "$commit_message"
+echo "----------------------------------------"
+echo
+
+read -r -p "Approve, commit and push these changes? [y/N] " answer
+
+case "$answer" in
+    y|Y|yes|YES)
+        ;;
+    *)
+        echo "Cancelled."
+        exit 0
+        ;;
+esac
+
+git add -A
+
+git commit -m "$commit_message"
+
+git push
+
+echo
+echo "Done."

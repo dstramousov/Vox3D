@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#set -euo pipefail
+
+PROJECT_NAME="VoX3D"
+
+if [[ ! -f "versions.md" ]]; then
+  echo "ERROR: versions.md not found. Run this script from project root." >&2
+  exit 1
+fi
+
+version="$(
+  grep -E '^## v[0-9]+\.[0-9]+\.[0-9]+ -> v[0-9]+\.[0-9]+\.[0-9]+' versions.md \
+    | tail -n 1 \
+    | sed -E 's/^## v[0-9]+\.[0-9]+\.[0-9]+ -> v([0-9]+\.[0-9]+\.[0-9]+).*$/\1/'
+)"
+
+if [[ -z "${version}" ]]; then
+  echo "ERROR: could not detect latest version from versions.md" >&2
+  exit 1
+fi
+
+archive="./${PROJECT_NAME}_v${version}_current.zip"
+
+echo "Detected version: v${version}"
+echo "Creating archive: ${archive}"
+
+zip -r "${archive}" . \
+  -x ".git/*" \
+     "__pycache__/*" \
+     ".deps/*" \
+     "external/*" \
+     "*.pyc" \
+     ".venv/*" \
+     "venv/*" \
+     ".mypy_cache/*" \
+     ".pytest_cache/*" \
+     ".ruff_cache/*" \
+     "dist/*" \
+     "build/*" \
+     "*.egg-info/*"
+
+echo
+echo "Done:"
+echo "${archive}"

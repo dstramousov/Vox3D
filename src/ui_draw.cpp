@@ -1,0 +1,924 @@
+#include "ui_draw.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <sstream>
+#include <string>
+#include <utility>
+
+namespace vox3d {
+namespace {
+
+constexpr Color kBackground{18, 20, 28, 255};
+constexpr Color kPanel{28, 32, 44, 235};
+constexpr Color kPanelBorder{180, 184, 196, 255};
+constexpr Color kText{214, 218, 228, 255};
+constexpr Color kSelectedText{255, 242, 172, 255};
+constexpr Color kDisabledText{96, 100, 112, 255};
+constexpr Color kMutedText{144, 150, 164, 255};
+constexpr Color kModalDim{0, 0, 0, 150};
+constexpr Color kAccent{255, 205, 96, 255};
+
+constexpr Color kEditorBackground{7, 118, 151, 255};
+constexpr Color kEditorViewport{152, 152, 149, 255};
+constexpr Color kEditorViewportText{244, 244, 238, 255};
+constexpr Color kEditorPanelText{155, 203, 218, 255};
+constexpr Color kEditorStatus{130, 198, 211, 255};
+constexpr Color kEditorStatusText{6, 24, 32, 255};
+constexpr Color kEditorBorder{8, 12, 16, 255};
+
+constexpr float kBaseTitleFontSize = 30.0F;
+constexpr float kBaseSubtitleFontSize = 16.0F;
+constexpr float kBaseMenuFontSize = 22.0F;
+constexpr float kBasePlaceholderTitleFontSize = 28.0F;
+constexpr float kBasePlaceholderHintFontSize = 18.0F;
+constexpr float kBaseFpsFontSize = 16.0F;
+constexpr float kBaseDebugFontSize = 13.0F;
+constexpr float kBaseDialogTitleFontSize = 24.0F;
+constexpr float kBaseDialogTextFontSize = 18.0F;
+constexpr float kBaseDialogButtonFontSize = 18.0F;
+constexpr float kBaseWorkspaceToolFontSize = 18.0F;
+constexpr float kBaseWorkspaceStatusFontSize = 16.0F;
+
+[[nodiscard]] float Scaled(float base, float scale, float minimum, float maximum)
+{
+    return std::clamp(std::round(base * scale), minimum, maximum);
+}
+
+[[nodiscard]] float FontSpacing(float font_size)
+{
+    return std::max(1.0F, std::round(font_size * 0.12F));
+}
+
+[[nodiscard]] Vector2 Measure(Font font, const std::string& text, float font_size, float spacing)
+{
+    return MeasureTextEx(font, text.c_str(), font_size, spacing);
+}
+
+void DrawTextCentered(Font font, const std::string& text, float y, float font_size, float spacing, Color color, int window_width)
+{
+    const Vector2 size = Measure(font, text, font_size, spacing);
+    const float x = (static_cast<float>(window_width) - size.x) * 0.5F;
+    DrawTextEx(font, text.c_str(), Vector2{x, y}, font_size, spacing, color);
+}
+
+
+[[nodiscard]] float FitTextToWidth(Font font, const std::string& text, float preferred_size, float min_size, float max_width)
+{
+    float font_size = preferred_size;
+    while (font_size > min_size) {
+        const float spacing = FontSpacing(font_size);
+        if (Measure(font, text, font_size, spacing).x <= max_width) {
+            return font_size;
+        }
+        font_size -= 1.0F;
+    }
+    return min_size;
+}
+
+void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
+{
+    if (!current.empty()) {
+        lines.push_back(current);
+        current.clear();
+    }
+}
+
+[[nodiscard]] std::vector<std::string> WrapText(Font font, const std::string& text, float font_size, float spacing, float max_width)
+{
+    std::vector<std::string> lines;
+    std::istringstream input(text);
+    std::string word;
+    std::string current;
+
+    while (input >> word) {
+        const std::string candidate = current.empty() ? word : current + ' ' + word;
+        if (Measure(font, candidate, font_size, spacing).x <= max_width) {
+            current = candidate;
+            continue;
+        }
+
+        PushWordWrappedLine(lines, current);
+        if (Measure(font, word, font_size, spacing).x <= max_width) {
+            current = word;
+            continue;
+        }
+
+        std::string chunk;
+        for (const char ch : word) {
+            const std::string candidate_chunk = chunk + ch;
+            if (!chunk.empty() && Measure(font, candidate_chunk, font_size, spacing).x > max_width) {
+                lines.push_back(chunk);
+                chunk.clear();
+            }
+            chunk.push_back(ch);
+        }
+        current = chunk;
+    }
+
+    PushWordWrappedLine(lines, current);
+    if (lines.empty()) {
+        lines.push_back("");
+    }
+    return lines;
+}
+
+
+[[nodiscard]] const std::string& WorkspaceToolLabel(WorkspaceTool tool, const UiLabels& labels)
+{
+    switch (tool) {
+        case WorkspaceTool::kMap:
+            return labels.workspace_tool_map;
+        case WorkspaceTool::kView:
+            return labels.workspace_tool_view;
+        case WorkspaceTool::kLayers:
+            return labels.workspace_tool_layers;
+        case WorkspaceTool::kObjects:
+            return labels.workspace_tool_objects;
+        case WorkspaceTool::kRender:
+            return labels.workspace_tool_render;
+        case WorkspaceTool::kDebug:
+            return labels.workspace_tool_debug;
+        case WorkspaceTool::kSettings:
+            return labels.workspace_tool_settings;
+    }
+    return labels.debug_none;
+}
+
+[[nodiscard]] std::string MapStatusLabel(const MapPackageInfo& map, const UiLabels& labels)
+{
+    if (!map.configured) {
+        return labels.workspace_status_map_not_configured;
+    }
+    if (!map.exists || !map.is_directory) {
+        return labels.workspace_status_map_missing;
+    }
+    if (!map.metadata_available) {
+        return labels.workspace_status_metadata_unavailable;
+    }
+    return labels.workspace_status_map_loaded;
+}
+
+[[nodiscard]] std::string MapSizeText(const MapPackageInfo& map, const UiLabels& labels)
+{
+    if (map.width.has_value() && map.height.has_value()) {
+        return std::to_string(*map.width) + "x" + std::to_string(*map.height);
+    }
+    return labels.workspace_map_size_unknown;
+}
+
+[[nodiscard]] std::string MapLevelsText(const MapPackageInfo& map, const UiLabels& labels)
+{
+    if (map.min_level.has_value() && map.max_level.has_value()) {
+        return std::to_string(*map.min_level) + ".." + std::to_string(*map.max_level);
+    }
+    return labels.workspace_map_levels_unknown;
+}
+
+
+[[nodiscard]] std::string MapTileText(const MapPackageInfo& map, const UiLabels& labels)
+{
+    if (map.tile_size.has_value()) {
+        return std::to_string(*map.tile_size);
+    }
+    return labels.workspace_map_tile_unknown;
+}
+
+[[nodiscard]] const std::string& BoolText(bool value, const UiLabels& labels)
+{
+    return value ? labels.workspace_yes : labels.workspace_no;
+}
+
+[[nodiscard]] std::string FormatMemory(std::uint64_t bytes, const UiLabels& labels)
+{
+    if (bytes == 0) {
+        return labels.debug_none;
+    }
+
+    const double mib = static_cast<double>(bytes) / (1024.0 * 1024.0);
+    std::ostringstream out;
+    if (mib >= 100.0) {
+        out << static_cast<int>(std::round(mib)) << " MiB";
+    } else {
+        out.setf(std::ios::fixed);
+        out.precision(1);
+        out << mib << " MiB";
+    }
+    return out.str();
+}
+
+[[nodiscard]] Color CellColor(MapCellKind kind)
+{
+    switch (kind) {
+        case MapCellKind::kOpen:
+            return Color{176, 178, 158, 255};
+        case MapCellKind::kForest:
+            return Color{42, 108, 62, 255};
+        case MapCellKind::kWater:
+            return Color{42, 86, 142, 255};
+        case MapCellKind::kRoad:
+            return Color{176, 151, 92, 255};
+        case MapCellKind::kSwamp:
+            return Color{68, 98, 78, 255};
+        case MapCellKind::kRuins:
+            return Color{122, 117, 112, 255};
+        case MapCellKind::kBuilding:
+            return Color{86, 78, 76, 255};
+        case MapCellKind::kBlocked:
+            return Color{32, 35, 38, 255};
+        case MapCellKind::kStart:
+            return Color{248, 232, 88, 255};
+        case MapCellKind::kGoal:
+            return Color{226, 90, 72, 255};
+        case MapCellKind::kUnknown:
+            return Color{106, 108, 104, 255};
+    }
+    return Color{106, 108, 104, 255};
+}
+
+void DrawWorkspaceOverview(const MapOverview& overview, const WorkspaceLayout& workspace, const UiMetrics& metrics)
+{
+    const Rectangle area = workspace.map_overview;
+    DrawRectangleRec(area, Color{118, 120, 118, 255});
+    DrawRectangleLinesEx(area, metrics.workspace_border_width, kEditorBorder);
+
+    if (!overview.IsValid()) {
+        return;
+    }
+
+    const float padding = std::max(4.0F, metrics.workspace_border_width * 2.0F);
+    const Rectangle inner{
+        area.x + padding,
+        area.y + padding,
+        std::max(1.0F, area.width - padding * 2.0F),
+        std::max(1.0F, area.height - padding * 2.0F),
+    };
+
+    const float map_aspect = static_cast<float>(overview.width) / static_cast<float>(overview.height);
+    float draw_width = inner.width;
+    float draw_height = draw_width / map_aspect;
+    if (draw_height > inner.height) {
+        draw_height = inner.height;
+        draw_width = draw_height * map_aspect;
+    }
+
+    const Rectangle map_rect{
+        inner.x + (inner.width - draw_width) * 0.5F,
+        inner.y + (inner.height - draw_height) * 0.5F,
+        draw_width,
+        draw_height,
+    };
+
+    constexpr int kMaxDrawAxis = 320;
+    const int draw_cols = std::max(1, std::min(overview.width, kMaxDrawAxis));
+    const int draw_rows = std::max(1, std::min(overview.height, kMaxDrawAxis));
+    const float cell_width = map_rect.width / static_cast<float>(draw_cols);
+    const float cell_height = map_rect.height / static_cast<float>(draw_rows);
+
+    for (int y = 0; y < draw_rows; ++y) {
+        const int source_y = std::min(overview.height - 1, static_cast<int>((static_cast<long long>(y) * overview.height) / draw_rows));
+        for (int x = 0; x < draw_cols; ++x) {
+            const int source_x = std::min(overview.width - 1, static_cast<int>((static_cast<long long>(x) * overview.width) / draw_cols));
+            const std::size_t index = static_cast<std::size_t>(source_y) * static_cast<std::size_t>(overview.width)
+                + static_cast<std::size_t>(source_x);
+            DrawRectangleRec(
+                Rectangle{
+                    map_rect.x + static_cast<float>(x) * cell_width,
+                    map_rect.y + static_cast<float>(y) * cell_height,
+                    std::max(1.0F, cell_width + 0.6F),
+                    std::max(1.0F, cell_height + 0.6F),
+                },
+                CellColor(overview.cells[index]));
+        }
+    }
+
+    DrawRectangleLinesEx(map_rect, metrics.workspace_border_width, Color{235, 235, 220, 255});
+}
+
+
+void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetrics& metrics)
+{
+    const Rectangle area = workspace.viewport;
+    const float center_x = area.x + area.width * 0.5F;
+    const float center_y = area.y + area.height * 0.54F;
+    const float w = std::min(area.width, area.height) * 0.22F;
+    const float h = w * 0.72F;
+
+    const Vector2 a{center_x - w * 0.55F, center_y + h * 0.35F};
+    const Vector2 b{center_x + w * 0.45F, center_y + h * 0.48F};
+    const Vector2 c{center_x + w * 0.60F, center_y - h * 0.35F};
+    const Vector2 d{center_x - w * 0.38F, center_y - h * 0.48F};
+    const Vector2 e{center_x - w * 0.10F, center_y - h * 0.82F};
+    const Vector2 f{center_x + w * 0.75F, center_y - h * 0.55F};
+    const Vector2 g{center_x + w * 0.60F, center_y + h * 0.15F};
+    const Vector2 hpt{center_x - w * 0.25F, center_y - h * 0.05F};
+
+    constexpr Color wire{245, 245, 240, 255};
+    DrawLineEx(a, b, metrics.workspace_border_width, wire);
+    DrawLineEx(b, c, metrics.workspace_border_width, wire);
+    DrawLineEx(c, d, metrics.workspace_border_width, wire);
+    DrawLineEx(d, a, metrics.workspace_border_width, wire);
+    DrawLineEx(d, e, metrics.workspace_border_width, wire);
+    DrawLineEx(e, f, metrics.workspace_border_width, wire);
+    DrawLineEx(f, c, metrics.workspace_border_width, wire);
+    DrawLineEx(f, g, metrics.workspace_border_width, wire);
+    DrawLineEx(g, b, metrics.workspace_border_width, wire);
+    DrawLineEx(a, hpt, metrics.workspace_border_width, wire);
+    DrawLineEx(hpt, e, metrics.workspace_border_width, wire);
+    DrawLineEx(hpt, g, metrics.workspace_border_width, wire);
+    DrawLineEx(hpt, c, metrics.workspace_border_width, wire);
+}
+
+[[nodiscard]] MainMenuLayout BuildMainMenuLayout(const MenuState& menu, const UiFontSet& fonts, const UiMetrics& metrics)
+{
+    MainMenuLayout layout;
+    layout.items.reserve(menu.items.size());
+    layout.title_y = static_cast<float>(metrics.window_height) * 0.22F;
+    layout.subtitle_y = layout.title_y + metrics.title_font_size + 18.0F * metrics.scale;
+
+    float max_label_width = 0.0F;
+    for (const auto& item : menu.items) {
+        max_label_width = std::max(max_label_width, Measure(fonts.text, "> " + item.title, metrics.menu_font_size, metrics.text_spacing).x);
+    }
+
+    const float item_height = metrics.menu_font_size + metrics.menu_item_padding_y * 2.0F;
+    const float total_height = static_cast<float>(menu.items.size()) * item_height
+        + static_cast<float>(menu.items.size() > 0 ? menu.items.size() - 1 : 0) * metrics.menu_item_gap;
+    const float start_y = static_cast<float>(metrics.window_height) * 0.52F - total_height * 0.5F;
+    const float item_width = std::min(
+        std::max(max_label_width + metrics.menu_item_padding_x * 2.0F, 190.0F * metrics.scale),
+        static_cast<float>(metrics.window_width) - metrics.screen_padding * 2.0F);
+    const float x = (static_cast<float>(metrics.window_width) - item_width) * 0.5F;
+
+    for (std::size_t i = 0; i < menu.items.size(); ++i) {
+        const float y = start_y + static_cast<float>(i) * (item_height + metrics.menu_item_gap);
+        const Rectangle bounds{x, y, item_width, item_height};
+        layout.items.push_back(MenuItemBounds{
+            static_cast<int>(i),
+            bounds,
+            Vector2{bounds.x + metrics.menu_item_padding_x, bounds.y + metrics.menu_item_padding_y},
+        });
+    }
+
+    return layout;
+}
+
+
+[[nodiscard]] PlaceholderLayout BuildPlaceholderLayout(const UiFontSet& fonts, const UiMetrics& metrics, const UiLabels& labels)
+{
+    PlaceholderLayout layout;
+    layout.actions.reserve(2);
+    layout.title_y = static_cast<float>(metrics.window_height) * 0.42F;
+    layout.hint_y = layout.title_y + 48.0F * metrics.scale;
+
+    const float font_size = metrics.dialog_button_font_size;
+    const float spacing = FontSpacing(font_size);
+    const float main_menu_width = Measure(fonts.text, labels.placeholder_main_menu, font_size, spacing).x;
+    const float exit_width = Measure(fonts.text, labels.placeholder_exit, font_size, spacing).x;
+    const float button_width = std::clamp(
+        std::max({main_menu_width, exit_width, 130.0F * metrics.scale}) + metrics.menu_item_padding_x * 2.0F,
+        130.0F * metrics.scale,
+        260.0F * metrics.scale);
+    const float button_height = std::max(
+        metrics.dialog_button_font_size + metrics.menu_item_padding_y * 2.0F,
+        42.0F * metrics.scale);
+    const float button_gap = 18.0F * metrics.scale;
+    const float total_width = button_width * 2.0F + button_gap;
+    const float start_x = (static_cast<float>(metrics.window_width) - total_width) * 0.5F;
+    const float y = layout.hint_y + metrics.placeholder_hint_font_size + 36.0F * metrics.scale;
+
+    const Rectangle main_menu{start_x, y, button_width, button_height};
+    const Rectangle exit{start_x + button_width + button_gap, y, button_width, button_height};
+    layout.actions.push_back(PlaceholderActionBounds{
+        PlaceholderAction::kMainMenu,
+        main_menu,
+        Vector2{main_menu.x, main_menu.y + (main_menu.height - font_size) * 0.5F},
+    });
+    layout.actions.push_back(PlaceholderActionBounds{
+        PlaceholderAction::kExit,
+        exit,
+        Vector2{exit.x, exit.y + (exit.height - font_size) * 0.5F},
+    });
+    return layout;
+}
+
+
+[[nodiscard]] WorkspaceLayout BuildWorkspaceLayout(const UiMetrics& metrics)
+{
+    WorkspaceLayout layout;
+    layout.tools.reserve(7);
+
+    const float border = metrics.workspace_border_width;
+    const float status_height = metrics.workspace_status_height;
+    const float panel_width = metrics.workspace_panel_width;
+
+    layout.status_bar = Rectangle{
+        0.0F,
+        static_cast<float>(metrics.window_height) - status_height,
+        static_cast<float>(metrics.window_width),
+        status_height,
+    };
+    layout.tool_panel = Rectangle{
+        static_cast<float>(metrics.window_width) - panel_width,
+        0.0F,
+        panel_width,
+        static_cast<float>(metrics.window_height) - status_height,
+    };
+    layout.viewport = Rectangle{
+        0.0F,
+        0.0F,
+        static_cast<float>(metrics.window_width) - panel_width,
+        static_cast<float>(metrics.window_height) - status_height,
+    };
+
+    const float viewport_padding = std::max(border * 4.0F, metrics.screen_padding * 0.45F);
+    layout.map_summary = Rectangle{};
+    layout.map_overview = Rectangle{
+        layout.viewport.x + viewport_padding,
+        layout.viewport.y + viewport_padding,
+        std::max(1.0F, layout.viewport.width - viewport_padding * 2.0F),
+        std::max(1.0F, layout.viewport.height - viewport_padding * 2.0F),
+    };
+
+    constexpr std::array<WorkspaceTool, 7> tools{
+        WorkspaceTool::kMap,
+        WorkspaceTool::kView,
+        WorkspaceTool::kLayers,
+        WorkspaceTool::kObjects,
+        WorkspaceTool::kRender,
+        WorkspaceTool::kDebug,
+        WorkspaceTool::kSettings,
+    };
+
+    const float tool_padding_x = metrics.screen_padding * 0.6F;
+    const float tool_height = metrics.workspace_tool_font_size + metrics.workspace_tool_gap;
+    const float tools_total_height = static_cast<float>(tools.size()) * tool_height;
+    const float tools_start_y = std::max(
+        metrics.screen_padding + metrics.workspace_tool_font_size * 2.0F,
+        layout.tool_panel.y + layout.tool_panel.height - metrics.screen_padding - tools_total_height);
+    float y = tools_start_y;
+    for (WorkspaceTool tool : tools) {
+        const Rectangle bounds{
+            layout.tool_panel.x + tool_padding_x,
+            y,
+            std::max(1.0F, layout.tool_panel.width - tool_padding_x * 2.0F),
+            tool_height,
+        };
+        layout.tools.push_back(WorkspaceToolBounds{
+            tool,
+            bounds,
+            Vector2{bounds.x, bounds.y},
+        });
+        y += tool_height;
+    }
+
+    const float info_y = metrics.screen_padding * 2.4F + metrics.workspace_tool_font_size;
+    layout.tool_info = Rectangle{
+        layout.tool_panel.x + tool_padding_x,
+        info_y,
+        std::max(1.0F, layout.tool_panel.width - tool_padding_x * 2.0F),
+        std::max(1.0F, tools_start_y - info_y - metrics.screen_padding),
+    };
+
+    return layout;
+}
+
+[[nodiscard]] ConfirmDialogLayout BuildExitDialogLayout(const UiFontSet& fonts, const UiMetrics& metrics, const UiLabels& labels)
+{
+    ConfirmDialogLayout layout;
+
+    const float max_panel_width = static_cast<float>(metrics.window_width) * 0.76F;
+    const float min_panel_width = std::min(440.0F * metrics.scale, max_panel_width);
+    const float panel_width = std::clamp(610.0F * metrics.scale, min_panel_width, max_panel_width);
+    const float content_width = std::max(1.0F, panel_width - metrics.dialog_padding * 2.0F);
+
+    const std::string& title = labels.dialog_exit_title;
+    const std::string& message = labels.dialog_exit_message;
+    const float title_size = FitTextToWidth(fonts.text, title, metrics.dialog_title_font_size, 14.0F, content_width);
+    const float text_size = FitTextToWidth(fonts.text, message, metrics.dialog_text_font_size, 12.0F, content_width);
+    layout.message_lines = WrapText(fonts.text, message, text_size, FontSpacing(text_size), content_width);
+
+    const float message_height = static_cast<float>(layout.message_lines.size()) * (text_size + 8.0F * metrics.scale);
+    const float buttons_top_gap = 30.0F * metrics.scale;
+    const float title_to_message_gap = 28.0F * metrics.scale;
+    const float panel_height = metrics.dialog_padding + title_size + title_to_message_gap + message_height + buttons_top_gap
+        + metrics.dialog_button_height + metrics.dialog_padding;
+
+    layout.panel = Rectangle{
+        (static_cast<float>(metrics.window_width) - panel_width) * 0.5F,
+        (static_cast<float>(metrics.window_height) - panel_height) * 0.5F,
+        panel_width,
+        panel_height,
+    };
+    layout.title_y = layout.panel.y + metrics.dialog_padding;
+    layout.message_y = layout.title_y + title_size + title_to_message_gap;
+
+    const float button_total_width = metrics.dialog_button_width * 2.0F + metrics.dialog_button_gap;
+    const float button_y = layout.panel.y + layout.panel.height - metrics.dialog_padding - metrics.dialog_button_height;
+    const float button_x = layout.panel.x + (layout.panel.width - button_total_width) * 0.5F;
+    layout.buttons = DialogButtonBounds{
+        Rectangle{button_x, button_y, metrics.dialog_button_width, metrics.dialog_button_height},
+        Rectangle{button_x + metrics.dialog_button_width + metrics.dialog_button_gap, button_y, metrics.dialog_button_width, metrics.dialog_button_height},
+    };
+
+    return layout;
+}
+
+}  // namespace
+
+std::string_view ToString(PlaceholderAction action)
+{
+    switch (action) {
+        case PlaceholderAction::kMainMenu:
+            return "main_menu";
+        case PlaceholderAction::kExit:
+            return "exit";
+    }
+    return "unknown";
+}
+
+UiMetrics CalculateUiMetrics(const WindowConfig& window, const AppConfig& config)
+{
+    const float scale = CalculateUiScale(window.window_width, window.window_height, config);
+    const float resolved_font_scale = std::clamp(config.ui_font_scale, 0.50F, 2.00F);
+    const float text_scale = scale * resolved_font_scale;
+    UiMetrics metrics;
+    metrics.window_width = window.window_width;
+    metrics.window_height = window.window_height;
+    metrics.scale = scale;
+    metrics.font_scale = resolved_font_scale;
+
+    metrics.title_font_size = Scaled(kBaseTitleFontSize, text_scale, 20.0F, 46.0F);
+    metrics.subtitle_font_size = Scaled(kBaseSubtitleFontSize, text_scale, 12.0F, 24.0F);
+    metrics.menu_font_size = Scaled(kBaseMenuFontSize, text_scale, 16.0F, 32.0F);
+    metrics.placeholder_title_font_size = Scaled(kBasePlaceholderTitleFontSize, text_scale, 18.0F, 38.0F);
+    metrics.placeholder_hint_font_size = Scaled(kBasePlaceholderHintFontSize, text_scale, 13.0F, 26.0F);
+    metrics.fps_font_size = Scaled(kBaseFpsFontSize, text_scale, 12.0F, 22.0F);
+    metrics.debug_font_size = Scaled(kBaseDebugFontSize, text_scale, 10.0F, 18.0F);
+    metrics.dialog_title_font_size = Scaled(kBaseDialogTitleFontSize, text_scale, 18.0F, 34.0F);
+    metrics.dialog_text_font_size = Scaled(kBaseDialogTextFontSize, text_scale, 14.0F, 26.0F);
+    metrics.dialog_button_font_size = Scaled(kBaseDialogButtonFontSize, text_scale, 14.0F, 26.0F);
+    metrics.workspace_tool_font_size = Scaled(kBaseWorkspaceToolFontSize, text_scale, 13.0F, 26.0F);
+    metrics.workspace_status_font_size = Scaled(kBaseWorkspaceStatusFontSize, text_scale, 12.0F, 22.0F);
+
+    metrics.text_spacing = FontSpacing(metrics.menu_font_size);
+    metrics.screen_padding = Scaled(16.0F, scale, 10.0F, 32.0F);
+    metrics.menu_item_gap = Scaled(12.0F, scale, 8.0F, 24.0F);
+    metrics.menu_item_padding_x = Scaled(18.0F, scale, 12.0F, 32.0F);
+    metrics.menu_item_padding_y = Scaled(8.0F, scale, 6.0F, 14.0F);
+    metrics.debug_line_gap = Scaled(15.0F, scale, 12.0F, 20.0F);
+    metrics.dialog_padding = Scaled(40.0F, scale, 24.0F, 64.0F);
+    metrics.dialog_button_width = Scaled(150.0F, scale, 120.0F, 210.0F);
+    metrics.dialog_button_height = std::max(Scaled(48.0F, scale, 38.0F, 68.0F), metrics.dialog_button_font_size + Scaled(22.0F, scale, 16.0F, 30.0F));
+    metrics.dialog_button_gap = Scaled(28.0F, scale, 16.0F, 42.0F);
+    metrics.modal_border_width = Scaled(2.0F, scale, 1.0F, 4.0F);
+    metrics.workspace_panel_width = Scaled(220.0F, scale, 170.0F, 280.0F);
+    metrics.workspace_status_height = Scaled(42.0F, scale, 30.0F, 58.0F);
+    metrics.workspace_border_width = Scaled(2.0F, scale, 1.0F, 4.0F);
+    metrics.workspace_tool_gap = Scaled(7.0F, scale, 4.0F, 12.0F);
+    return metrics;
+}
+
+UiLayoutCache RebuildUiLayout(
+    const MenuState& menu,
+    const UiFontSet& fonts,
+    const WindowConfig& window,
+    const AppConfig& config,
+    const UiLabels& labels)
+{
+    UiLayoutCache layout;
+    layout.metrics = CalculateUiMetrics(window, config);
+    layout.main_menu = BuildMainMenuLayout(menu, fonts, layout.metrics);
+    layout.placeholder = BuildPlaceholderLayout(fonts, layout.metrics, labels);
+    layout.workspace = BuildWorkspaceLayout(layout.metrics);
+    layout.exit_dialog = BuildExitDialogLayout(fonts, layout.metrics, labels);
+    return layout;
+}
+
+void DrawMainMenu(const MenuState& menu, const UiFontSet& fonts, const UiLabels& labels, const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    DrawTextCentered(fonts.title, labels.app_title, layout.main_menu.title_y, metrics.title_font_size, FontSpacing(metrics.title_font_size), kSelectedText, metrics.window_width);
+    DrawTextCentered(
+        fonts.text,
+        labels.app_subtitle,
+        layout.main_menu.subtitle_y,
+        metrics.subtitle_font_size,
+        FontSpacing(metrics.subtitle_font_size),
+        kMutedText,
+        metrics.window_width);
+
+    for (const auto& item_bounds : layout.main_menu.items) {
+        const auto& item = menu.items[static_cast<std::size_t>(item_bounds.index)];
+        const bool selected = item_bounds.index == menu.selected_index;
+        const Color color = !item.enabled ? kDisabledText : (selected ? kSelectedText : kText);
+
+        if (selected && item.enabled) {
+            DrawRectangleRounded(item_bounds.bounds, 0.18F, 8, Color{48, 52, 68, 230});
+            DrawRectangleRoundedLinesEx(item_bounds.bounds, 0.18F, 8, metrics.modal_border_width, kAccent);
+        }
+
+        const std::string marker = selected ? "> " : "  ";
+        DrawTextEx(
+            fonts.text,
+            (marker + item.title).c_str(),
+            item_bounds.text_position,
+            metrics.menu_font_size,
+            FontSpacing(metrics.menu_font_size),
+            color);
+    }
+}
+
+void DrawPlaceholderScreen(
+    const std::string& title,
+    PlaceholderAction selected_action,
+    const UiFontSet& fonts,
+    const UiLabels& labels,
+    const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const PlaceholderLayout& placeholder = layout.placeholder;
+    DrawTextCentered(
+        fonts.text,
+        title,
+        placeholder.title_y,
+        metrics.placeholder_title_font_size,
+        FontSpacing(metrics.placeholder_title_font_size),
+        kText,
+        metrics.window_width);
+    DrawTextCentered(
+        fonts.text,
+        labels.placeholder_back_hint,
+        placeholder.hint_y,
+        metrics.placeholder_hint_font_size,
+        FontSpacing(metrics.placeholder_hint_font_size),
+        kMutedText,
+        metrics.window_width);
+
+    const std::array<std::pair<PlaceholderAction, std::string>, 2> actions{{
+        {PlaceholderAction::kMainMenu, labels.placeholder_main_menu},
+        {PlaceholderAction::kExit, labels.placeholder_exit},
+    }};
+
+    for (const auto& bounds : placeholder.actions) {
+        const auto label_it = std::find_if(actions.begin(), actions.end(), [action = bounds.action](const auto& item) {
+            return item.first == action;
+        });
+        const std::string& label = label_it != actions.end() ? label_it->second : labels.debug_none;
+        const bool selected = bounds.action == selected_action;
+        DrawRectangleRounded(bounds.bounds, 0.16F, 8, selected ? Color{66, 60, 42, 245} : Color{38, 42, 54, 220});
+        DrawRectangleRoundedLinesEx(bounds.bounds, 0.16F, 8, metrics.modal_border_width, selected ? kAccent : kPanelBorder);
+
+        const float font_size = metrics.dialog_button_font_size;
+        const float spacing = FontSpacing(font_size);
+        const Vector2 measured = Measure(fonts.text, label, font_size, spacing);
+        DrawTextEx(
+            fonts.text,
+            label.c_str(),
+            Vector2{
+                bounds.bounds.x + (bounds.bounds.width - measured.x) * 0.5F,
+                bounds.bounds.y + (bounds.bounds.height - measured.y) * 0.5F,
+            },
+            font_size,
+            spacing,
+            selected ? kSelectedText : kText);
+    }
+}
+
+
+void DrawWorkspace(const WorkspaceState& workspace_state, const UiFontSet& fonts, const UiLabels& labels, const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const WorkspaceLayout& workspace = layout.workspace;
+
+    DrawRectangle(0, 0, metrics.window_width, metrics.window_height, kEditorBackground);
+
+    DrawRectangleRec(workspace.viewport, kEditorViewport);
+    DrawRectangleLinesEx(workspace.viewport, metrics.workspace_border_width, kEditorBorder);
+    DrawRectangleRec(workspace.tool_panel, kEditorBackground);
+    DrawRectangleLinesEx(workspace.tool_panel, metrics.workspace_border_width, kEditorBorder);
+    DrawRectangleRec(workspace.status_bar, kEditorStatus);
+    DrawRectangleLinesEx(workspace.status_bar, metrics.workspace_border_width, kEditorBorder);
+
+    const float spacing = FontSpacing(metrics.workspace_tool_font_size);
+    DrawTextEx(
+        fonts.title,
+        labels.workspace_tool_panel_title.c_str(),
+        Vector2{workspace.tool_panel.x + metrics.screen_padding * 0.6F, metrics.screen_padding * 0.25F},
+        metrics.workspace_tool_font_size,
+        spacing,
+        kEditorViewportText);
+
+    for (const auto& tool_bounds : workspace.tools) {
+        const bool selected = workspace_state.selected_tool == tool_bounds.tool;
+        const std::string& label = WorkspaceToolLabel(tool_bounds.tool, labels);
+        if (selected) {
+            DrawRectangleRec(tool_bounds.bounds, Color{0, 91, 116, 255});
+        }
+        DrawTextEx(
+            fonts.text,
+            label.c_str(),
+            tool_bounds.text_position,
+            metrics.workspace_tool_font_size,
+            spacing,
+            selected ? kAccent : kEditorPanelText);
+    }
+
+    DrawRectangleRec(workspace.tool_info, kEditorStatus);
+    DrawRectangleLinesEx(workspace.tool_info, metrics.workspace_border_width, kEditorBorder);
+
+    const std::array<std::string, 9> tool_info_lines{
+        labels.workspace_status_ready + ": " + MapStatusLabel(workspace_state.map, labels),
+        labels.workspace_map_label + ": " + (workspace_state.map.configured ? workspace_state.map.path.filename().string() : labels.debug_none),
+        labels.workspace_size_label + ": " + MapSizeText(workspace_state.map, labels),
+        labels.workspace_tile_label + ": " + MapTileText(workspace_state.map, labels),
+        labels.workspace_levels_label + ": " + MapLevelsText(workspace_state.map, labels),
+        labels.workspace_overview_label + ": " + BoolText(workspace_state.map.overview.IsValid(), labels),
+        labels.workspace_terrain_label + ": " + BoolText(workspace_state.map.terrain_available, labels),
+        labels.workspace_elevation_label + ": " + BoolText(workspace_state.map.elevation_available, labels),
+        labels.workspace_collision_label + ": " + BoolText(workspace_state.map.collision_available, labels),
+    };
+    float info_y = workspace.tool_info.y + metrics.workspace_tool_gap;
+    const float info_x = workspace.tool_info.x + metrics.workspace_tool_gap;
+    const float info_bottom = workspace.tool_info.y + workspace.tool_info.height - metrics.workspace_tool_gap;
+    for (const auto& line : tool_info_lines) {
+        if (info_y + metrics.workspace_status_font_size > info_bottom) {
+            break;
+        }
+        DrawTextEx(
+            fonts.text,
+            line.c_str(),
+            Vector2{info_x, info_y},
+            metrics.workspace_status_font_size,
+            FontSpacing(metrics.workspace_status_font_size),
+            kEditorStatusText);
+        info_y += metrics.workspace_status_font_size + metrics.workspace_tool_gap;
+    }
+
+    DrawWorkspaceOverview(workspace_state.map.overview, workspace, metrics);
+    if (!workspace_state.map.overview.IsValid()) {
+        DrawWorkspaceWirePlaceholder(workspace, metrics);
+        DrawTextCentered(
+            fonts.text,
+            labels.workspace_overview_unavailable,
+            workspace.map_overview.y + workspace.map_overview.height * 0.5F + metrics.workspace_status_font_size * 2.2F,
+            metrics.workspace_status_font_size,
+            FontSpacing(metrics.workspace_status_font_size),
+            kEditorViewportText,
+            static_cast<int>(workspace.viewport.width));
+    }
+
+    const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | "
+        + labels.workspace_status_escape_hint;
+    DrawTextEx(
+        fonts.text,
+        status.c_str(),
+        Vector2{metrics.screen_padding * 0.35F, workspace.status_bar.y + (workspace.status_bar.height - metrics.workspace_status_font_size) * 0.5F},
+        metrics.workspace_status_font_size,
+        FontSpacing(metrics.workspace_status_font_size),
+        kEditorStatusText);
+}
+
+void DrawFpsCounter(
+    const UiFontSet& fonts,
+    const UiLabels& labels,
+    const UiLayoutCache& layout,
+    const ProcessMemoryInfo& memory)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const Font font = fonts.text;
+    const std::string text = labels.fps_label + ": " + std::to_string(GetFPS()) + " | " + labels.memory_label + ": "
+        + (memory.available ? FormatMemory(memory.resident_bytes, labels) : labels.debug_none);
+    const float spacing = FontSpacing(metrics.fps_font_size);
+    const Vector2 size = Measure(font, text, metrics.fps_font_size, spacing);
+    const Rectangle status = layout.workspace.status_bar;
+    const float y = status.height > 1.0F
+        ? status.y + (status.height - size.y) * 0.5F
+        : metrics.screen_padding;
+    DrawTextEx(
+        font,
+        text.c_str(),
+        Vector2{static_cast<float>(metrics.window_width) - size.x - metrics.screen_padding * 0.35F, y},
+        metrics.fps_font_size,
+        spacing,
+        status.height > 1.0F ? kEditorStatusText : kText);
+}
+
+void DrawDebugOverlay(
+    const UiFontSet& fonts,
+    const AppConfig& config,
+    const WindowConfig& window,
+    AppScreen screen,
+    ModalDialog dialog,
+    const MenuState& menu,
+    const WorkspaceState& workspace,
+    std::string_view hovered_item,
+    const UiLabels& labels,
+    const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const Font font = fonts.text;
+    const float spacing = FontSpacing(metrics.debug_font_size);
+
+    Rectangle panel = layout.workspace.tool_info;
+    Color text_color = kEditorStatusText;
+    if (panel.width <= 1.0F || panel.height <= 1.0F) {
+        const float panel_width = std::min(static_cast<float>(metrics.window_width) * 0.44F, 360.0F * metrics.scale);
+        const float panel_height = std::min(static_cast<float>(metrics.window_height) * 0.42F, 230.0F * metrics.scale);
+        panel = Rectangle{
+            static_cast<float>(metrics.window_width) - panel_width - metrics.screen_padding,
+            static_cast<float>(metrics.window_height) - panel_height - metrics.workspace_status_height - metrics.screen_padding,
+            panel_width,
+            panel_height,
+        };
+        text_color = kMutedText;
+    }
+
+    DrawRectangleRec(panel, kEditorStatus);
+    DrawRectangleLinesEx(panel, metrics.workspace_border_width, kEditorBorder);
+
+    const float x = panel.x + metrics.workspace_tool_gap;
+    float y = panel.y + metrics.workspace_tool_gap;
+    const float bottom = panel.y + panel.height - metrics.workspace_tool_gap;
+
+    std::array<std::string, 10> lines{};
+    lines[0] = labels.debug_version + ": " + config.version;
+    lines[1] = labels.debug_screen + ": " + std::string(ToString(screen));
+    lines[2] = labels.debug_window + ": " + std::to_string(window.window_width) + "x" + std::to_string(window.window_height);
+    lines[3] = labels.debug_ui_scale + ": " + std::to_string(window.ui_scale).substr(0, 4);
+    lines[4] = labels.debug_modal + ": " + std::string(ToString(dialog));
+    lines[5] = labels.debug_selected + ": " + labels.debug_none;
+    lines[6] = labels.debug_hovered + ": " + (hovered_item.empty() ? labels.debug_none : std::string(hovered_item));
+    lines[7] = labels.debug_workspace_tool + ": " + std::string(ToString(workspace.selected_tool));
+    lines[8] = labels.debug_map_path + ": " + (workspace.map.configured ? workspace.map.path.filename().string() : labels.debug_none);
+    lines[9] = labels.debug_map_loaded + ": " + (workspace.map.loaded ? labels.dialog_yes : labels.dialog_no);
+    if (menu.selected_index >= 0 && menu.selected_index < static_cast<int>(menu.items.size())) {
+        lines[5] = labels.debug_selected + ": " + std::string(ToString(menu.items[static_cast<std::size_t>(menu.selected_index)].id));
+    }
+
+    for (const auto& line : lines) {
+        if (y + metrics.debug_font_size > bottom) {
+            break;
+        }
+        DrawTextEx(font, line.c_str(), Vector2{x, y}, metrics.debug_font_size, spacing, text_color);
+        y += metrics.debug_line_gap;
+    }
+}
+
+void DrawExitDialog(const ConfirmDialogState& state, const UiFontSet& fonts, const UiLabels& labels, const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const ConfirmDialogLayout& dialog = layout.exit_dialog;
+
+    DrawRectangle(0, 0, metrics.window_width, metrics.window_height, kModalDim);
+    DrawRectangleRounded(dialog.panel, 0.08F, 12, kPanel);
+    DrawRectangleRoundedLinesEx(dialog.panel, 0.08F, 12, metrics.modal_border_width, kPanelBorder);
+
+    DrawTextCentered(
+        fonts.text,
+        labels.dialog_exit_title,
+        dialog.title_y,
+        metrics.dialog_title_font_size,
+        FontSpacing(metrics.dialog_title_font_size),
+        kText,
+        metrics.window_width);
+
+    float message_y = dialog.message_y;
+    for (const auto& line : dialog.message_lines) {
+        DrawTextCentered(
+            fonts.text,
+            line,
+            message_y,
+            metrics.dialog_text_font_size,
+            FontSpacing(metrics.dialog_text_font_size),
+            kMutedText,
+            metrics.window_width);
+        message_y += metrics.dialog_text_font_size + 8.0F * metrics.scale;
+    }
+
+    const std::array<std::pair<Rectangle, DialogChoice>, 2> button_data{{
+        {dialog.buttons.yes, DialogChoice::kYes},
+        {dialog.buttons.no, DialogChoice::kNo},
+    }};
+
+    for (const auto& [rect, choice] : button_data) {
+        const bool selected = state.selected_choice == choice;
+        DrawRectangleRounded(rect, 0.16F, 8, selected ? Color{66, 60, 42, 245} : Color{38, 42, 54, 245});
+        DrawRectangleRoundedLinesEx(rect, 0.16F, 8, metrics.modal_border_width, selected ? kAccent : kPanelBorder);
+
+        const std::string& label = choice == DialogChoice::kYes ? labels.dialog_yes : labels.dialog_no;
+        const float label_size = metrics.dialog_button_font_size;
+        const float spacing = FontSpacing(label_size);
+        const Vector2 measured = Measure(fonts.text, label, label_size, spacing);
+        DrawTextEx(
+            fonts.text,
+            label.c_str(),
+            Vector2{rect.x + (rect.width - measured.x) * 0.5F, rect.y + (rect.height - measured.y) * 0.5F},
+            label_size,
+            spacing,
+            selected ? kSelectedText : kText);
+    }
+}
+
+}  // namespace vox3d

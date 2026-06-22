@@ -1,0 +1,37 @@
+{
+  "app": {
+    "name": "VoX3D"
+  },
+  "language": {
+    "current": "en",
+    "directory": "res/lang"
+  },
+  "map": {
+    "path": "../TopDownMapGen/output/map_package"
+  },
+  "window": {
+    "base_width": 1280,
+    "base_height": 720,
+    "fallback_width": 1024,
+    "fallback_height": 576,
+    "max_monitor_fraction": 0.9,
+    "resizable": true,
+    "vsync": true,
+    "target_fps": 60
+  },
+  "ui": {
+    "scale_min": 0.75,
+    "scale_max": 2.0,
+    "font_scale": 1.0,
+    "title_font_path": "res/fonts/Noto_Sans/static/NotoSans-Bold.ttf",
+    "text_font_path": "res/fonts/Noto_Sans/static/NotoSans-Regular.ttf"
+  },
+  "debug": {
+    "ui": false
+  },
+  "log": {
+    "level": "info",
+    "color": true,
+    "raylib_level": "warning"
+  }
+}
