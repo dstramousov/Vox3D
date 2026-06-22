@@ -95,3 +95,10 @@
 - Added the first `vox3d_core` static library target and moved map package loading out of the editor executable.
 - Reworked map package inspection around the real TopDownMapGen v0.0.68 package layout, starting from `map.json` and known layer/catalog/render/object files.
 - Added a lightweight `RuntimeMap` shell for future voxel/chunk/mesh builders while keeping the editor UI behavior unchanged.
+
+
+## v0.2.6 -> v0.2.7
+
+- Expanded `RuntimeMap` into a real editor-independent data layer with dense terrain, collision, and height grids.
+- Added runtime map validation, start/goal extraction, blocked-cell counts, and height-range calculation from loaded grid data.
+- Wired the editor startup to build and log the new runtime map while keeping UI and renderer behavior unchanged.

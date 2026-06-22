@@ -73,7 +73,7 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             return {
                 {WorkspacePanelItem::kMapOverview, workspace.map.overview.IsValid(), workspace.map.overview.IsValid()},
                 {WorkspacePanelItem::kMapPackage, workspace.map.loaded, workspace.map.loaded},
-                {WorkspacePanelItem::kMapValidate, false, false},
+                {WorkspacePanelItem::kMapValidate, workspace.runtime_map.HasCoreGrids(), workspace.runtime_map.HasCoreGrids()},
             };
         case WorkspaceTool::kView:
             return {
@@ -84,9 +84,9 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             };
         case WorkspaceTool::kLayers:
             return {
-                {WorkspacePanelItem::kLayerTerrain, workspace.map.terrain_available, workspace.show_terrain_layer},
-                {WorkspacePanelItem::kLayerElevation, workspace.map.elevation_available, workspace.show_elevation_layer},
-                {WorkspacePanelItem::kLayerCollision, workspace.map.collision_available, workspace.show_collision_layer},
+                {WorkspacePanelItem::kLayerTerrain, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer},
+                {WorkspacePanelItem::kLayerElevation, workspace.runtime_map.info.elevation_loaded, workspace.show_elevation_layer},
+                {WorkspacePanelItem::kLayerCollision, workspace.runtime_map.info.collision_loaded, workspace.show_collision_layer},
                 {WorkspacePanelItem::kLayerGrid, true, workspace.show_grid_layer},
             };
         case WorkspaceTool::kObjects:

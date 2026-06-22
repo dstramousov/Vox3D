@@ -1,15 +1,636 @@
 #include "vox3d/map/runtime_map.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <initializer_list>
+#include <optional>
+#include <regex>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <vector>
+
 namespace vox3d {
+namespace {
+
+constexpr std::uintmax_t kMaxRuntimeGridReadBytes = 64U * 1024U * 1024U;
+
+[[nodiscard]] bool Exists(const std::filesystem::path& path)
+{
+    std::error_code error;
+    return std::filesystem::exists(path, error) && !error;
+}
+
+[[nodiscard]] std::string ReadTextFileLimited(
+    const std::filesystem::path& path,
+    std::uintmax_t max_bytes,
+    Diagnostics& diagnostics)
+{
+    std::error_code size_error;
+    const std::uintmax_t file_size = std::filesystem::file_size(path, size_error);
+    if (size_error) {
+        diagnostics.AddWarning("failed to stat runtime map file path=\"" + path.string() + "\" reason=\"" + size_error.message() + "\"");
+        return {};
+    }
+    if (file_size > max_bytes) {
+        diagnostics.AddWarning(
+            "runtime map file too large path=\"" + path.string() + "\" size=" + std::to_string(file_size)
+            + " limit=" + std::to_string(max_bytes));
+        return {};
+    }
+
+    std::ifstream file(path);
+    if (!file) {
+        diagnostics.AddWarning("failed to read runtime map file path=\"" + path.string() + "\"");
+        return {};
+    }
+
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+
+[[nodiscard]] std::optional<int> ExtractIntByKeys(const std::string& text, std::initializer_list<const char*> keys)
+{
+    for (const char* key : keys) {
+        const std::regex pattern("\\\"" + std::string(key) + "\\\"\\s*:\\s*(-?[0-9]+)");
+        std::smatch match;
+        if (std::regex_search(text, match, pattern) && match.size() > 1) {
+            try {
+                return std::stoi(match[1].str());
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> ExtractBalancedAfterKey(
+    const std::string& text,
+    std::string_view key,
+    char open_char,
+    char close_char)
+{
+    const std::string pattern = "\"" + std::string(key) + "\"";
+    std::size_t key_pos = 0;
+    while ((key_pos = text.find(pattern, key_pos)) != std::string::npos) {
+        const std::size_t pos = text.find(open_char, key_pos + pattern.size());
+        if (pos == std::string::npos) {
+            return std::nullopt;
+        }
+
+        int depth = 0;
+        bool in_string = false;
+        bool escaped = false;
+        for (std::size_t i = pos; i < text.size(); ++i) {
+            const char c = text[i];
+            if (in_string) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    in_string = false;
+                }
+                continue;
+            }
+
+            if (c == '"') {
+                in_string = true;
+            } else if (c == open_char) {
+                ++depth;
+            } else if (c == close_char) {
+                --depth;
+                if (depth == 0) {
+                    return text.substr(pos, i - pos + 1);
+                }
+            }
+        }
+        key_pos += pattern.size();
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> ExtractArrayAfterKey(const std::string& text, std::string_view key)
+{
+    return ExtractBalancedAfterKey(text, key, '[', ']');
+}
+
+[[nodiscard]] std::optional<std::string> ExtractObjectAfterKey(const std::string& text, std::string_view key)
+{
+    return ExtractBalancedAfterKey(text, key, '{', '}');
+}
+
+[[nodiscard]] std::vector<std::string> ExtractQuotedStrings(const std::string& text)
+{
+    std::vector<std::string> values;
+    bool in_string = false;
+    bool escaped = false;
+    std::string current;
+
+    for (const char c : text) {
+        if (!in_string) {
+            if (c == '"') {
+                in_string = true;
+                current.clear();
+            }
+            continue;
+        }
+
+        if (escaped) {
+            switch (c) {
+                case 'n':
+                    current.push_back('\n');
+                    break;
+                case 'r':
+                    current.push_back('\r');
+                    break;
+                case 't':
+                    current.push_back('\t');
+                    break;
+                default:
+                    current.push_back(c);
+                    break;
+            }
+            escaped = false;
+            continue;
+        }
+        if (c == '\\') {
+            escaped = true;
+            continue;
+        }
+        if (c == '"') {
+            values.push_back(current);
+            in_string = false;
+            continue;
+        }
+        current.push_back(c);
+    }
+    return values;
+}
+
+[[nodiscard]] std::vector<int> ExtractIntegers(const std::string& text)
+{
+    std::vector<int> values;
+    const std::regex integer_pattern("-?[0-9]+");
+    for (auto it = std::sregex_iterator(text.begin(), text.end(), integer_pattern); it != std::sregex_iterator(); ++it) {
+        try {
+            values.push_back(std::stoi(it->str()));
+        } catch (...) {
+            return {};
+        }
+    }
+    return values;
+}
+
+[[nodiscard]] std::vector<std::string> ExtractTopLevelObjectsFromArray(std::string_view array_text)
+{
+    std::vector<std::string> objects;
+    int object_depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    std::size_t object_start = std::string_view::npos;
+
+    for (std::size_t i = 0; i < array_text.size(); ++i) {
+        const char c = array_text[i];
+        if (in_string) {
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if (c == '"') {
+            in_string = true;
+        } else if (c == '{') {
+            if (object_depth == 0) {
+                object_start = i;
+            }
+            ++object_depth;
+        } else if (c == '}') {
+            --object_depth;
+            if (object_depth == 0 && object_start != std::string_view::npos) {
+                objects.emplace_back(array_text.substr(object_start, i - object_start + 1));
+                object_start = std::string_view::npos;
+            }
+        }
+    }
+    return objects;
+}
+
+[[nodiscard]] std::size_t ExpectedCellCount(int width, int height)
+{
+    if (width <= 0 || height <= 0) {
+        return 0;
+    }
+    return static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+}
+
+[[nodiscard]] std::string GridName(std::string_view file, std::string_view key)
+{
+    return std::string(file) + ":" + std::string(key);
+}
+
+[[nodiscard]] RuntimeGrid<std::string> ParseStringGrid(
+    const std::string& text,
+    int width,
+    int height,
+    std::string_view file,
+    Diagnostics& diagnostics)
+{
+    RuntimeGrid<std::string> grid;
+    grid.width = width;
+    grid.height = height;
+
+    const std::optional<std::string> rows = ExtractArrayAfterKey(text, "rows");
+    if (!rows.has_value()) {
+        diagnostics.AddWarning("runtime terrain grid missing rows source=" + std::string(file));
+        return grid;
+    }
+
+    const std::vector<std::string> strings = ExtractQuotedStrings(*rows);
+    const std::size_t expected = ExpectedCellCount(width, height);
+    if (strings.size() == expected) {
+        grid.cells = strings;
+        return grid;
+    }
+
+    if (strings.size() == static_cast<std::size_t>(height)
+        && std::all_of(strings.begin(), strings.end(), [width](const std::string& row) {
+               return row.size() == static_cast<std::size_t>(width);
+           })) {
+        grid.cells.reserve(expected);
+        for (const std::string& row : strings) {
+            for (const char value : row) {
+                grid.cells.emplace_back(1, value);
+            }
+        }
+        return grid;
+    }
+
+    diagnostics.AddWarning(
+        "runtime terrain grid shape mismatch source=" + std::string(file) + " values=" + std::to_string(strings.size())
+        + " expected=" + std::to_string(expected));
+    grid.cells.clear();
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<std::uint8_t> ParseBooleanRowsGrid(
+    const std::string& text,
+    int width,
+    int height,
+    std::string_view file,
+    Diagnostics& diagnostics)
+{
+    RuntimeGrid<std::uint8_t> grid;
+    grid.width = width;
+    grid.height = height;
+
+    const std::optional<std::string> rows = ExtractArrayAfterKey(text, "rows");
+    if (!rows.has_value()) {
+        diagnostics.AddWarning("runtime boolean grid missing rows source=" + std::string(file));
+        return grid;
+    }
+
+    const std::vector<std::string> strings = ExtractQuotedStrings(*rows);
+    const std::size_t expected = ExpectedCellCount(width, height);
+    if (strings.size() == static_cast<std::size_t>(height)
+        && std::all_of(strings.begin(), strings.end(), [width](const std::string& row) {
+               return row.size() == static_cast<std::size_t>(width);
+           })) {
+        grid.cells.reserve(expected);
+        for (const std::string& row : strings) {
+            for (const char value : row) {
+                grid.cells.push_back(value == '1' ? std::uint8_t{1} : std::uint8_t{0});
+            }
+        }
+        return grid;
+    }
+
+    const std::vector<int> numbers = ExtractIntegers(*rows);
+    if (numbers.size() == expected) {
+        grid.cells.reserve(expected);
+        for (int value : numbers) {
+            grid.cells.push_back(value != 0 ? std::uint8_t{1} : std::uint8_t{0});
+        }
+        return grid;
+    }
+
+    diagnostics.AddWarning(
+        "runtime boolean grid shape mismatch source=" + std::string(file) + " values="
+        + std::to_string(std::max(strings.size(), numbers.size())) + " expected=" + std::to_string(expected));
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<int> ParseIntegerRowsGrid(
+    const std::string& text,
+    int width,
+    int height,
+    std::string_view file,
+    std::string_view key,
+    Diagnostics& diagnostics)
+{
+    RuntimeGrid<int> grid;
+    grid.width = width;
+    grid.height = height;
+
+    std::string section = text;
+    if (!key.empty()) {
+        const std::optional<std::string> object = ExtractObjectAfterKey(text, key);
+        if (!object.has_value()) {
+            diagnostics.AddWarning("runtime integer grid object missing source=" + GridName(file, key));
+            return grid;
+        }
+        section = *object;
+    }
+
+    const std::optional<std::string> rows = ExtractArrayAfterKey(section, "rows");
+    if (!rows.has_value()) {
+        diagnostics.AddWarning("runtime integer grid missing rows source=" + GridName(file, key));
+        return grid;
+    }
+
+    std::vector<int> values = ExtractIntegers(*rows);
+    const std::size_t expected = ExpectedCellCount(width, height);
+    if (values.size() != expected) {
+        diagnostics.AddWarning(
+            "runtime integer grid shape mismatch source=" + GridName(file, key) + " values=" + std::to_string(values.size())
+            + " expected=" + std::to_string(expected));
+        return grid;
+    }
+
+    grid.cells = std::move(values);
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<std::string> ReadTerrainGrid(const MapPackageInfo& package, Diagnostics& diagnostics)
+{
+    constexpr std::string_view kTerrainFile = "layers/terrain.json";
+    const std::filesystem::path terrain_path = package.path / kTerrainFile;
+    if (Exists(terrain_path)) {
+        const std::string text = ReadTextFileLimited(terrain_path, kMaxRuntimeGridReadBytes, diagnostics);
+        if (!text.empty()) {
+            return ParseStringGrid(text, package.width.value_or(0), package.height.value_or(0), kTerrainFile, diagnostics);
+        }
+    }
+
+    constexpr std::string_view kTileFile = "layers/tile_grid.json";
+    const std::filesystem::path tile_path = package.path / kTileFile;
+    if (Exists(tile_path)) {
+        const std::string text = ReadTextFileLimited(tile_path, kMaxRuntimeGridReadBytes, diagnostics);
+        if (!text.empty()) {
+            return ParseStringGrid(text, package.width.value_or(0), package.height.value_or(0), kTileFile, diagnostics);
+        }
+    }
+
+    RuntimeGrid<std::string> grid;
+    grid.width = package.width.value_or(0);
+    grid.height = package.height.value_or(0);
+    diagnostics.AddWarning("runtime terrain grid unavailable");
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<std::uint8_t> ReadCollisionGrid(const MapPackageInfo& package, Diagnostics& diagnostics)
+{
+    constexpr std::string_view kCollisionFile = "layers/collision.json";
+    const std::filesystem::path collision_path = package.path / kCollisionFile;
+    if (Exists(collision_path)) {
+        const std::string text = ReadTextFileLimited(collision_path, kMaxRuntimeGridReadBytes, diagnostics);
+        if (!text.empty()) {
+            return ParseBooleanRowsGrid(text, package.width.value_or(0), package.height.value_or(0), kCollisionFile, diagnostics);
+        }
+    }
+
+    constexpr std::string_view kRuntimeFile = "runtime_grids.json";
+    const std::filesystem::path runtime_path = package.path / kRuntimeFile;
+    if (Exists(runtime_path)) {
+        const std::string text = ReadTextFileLimited(runtime_path, kMaxRuntimeGridReadBytes, diagnostics);
+        const std::optional<std::string> object = ExtractObjectAfterKey(text, "collision_grid");
+        if (object.has_value()) {
+            return ParseBooleanRowsGrid(*object, package.width.value_or(0), package.height.value_or(0), kRuntimeFile, diagnostics);
+        }
+    }
+
+    RuntimeGrid<std::uint8_t> grid;
+    grid.width = package.width.value_or(0);
+    grid.height = package.height.value_or(0);
+    diagnostics.AddWarning("runtime collision grid unavailable");
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<int> ReadSparseElevationLayer(const MapPackageInfo& package, Diagnostics& diagnostics)
+{
+    RuntimeGrid<int> grid;
+    grid.width = package.width.value_or(0);
+    grid.height = package.height.value_or(0);
+
+    constexpr std::string_view kElevationFile = "layers/elevation.json";
+    const std::filesystem::path elevation_path = package.path / kElevationFile;
+    if (!Exists(elevation_path)) {
+        diagnostics.AddWarning("runtime height grid unavailable");
+        return grid;
+    }
+
+    const std::string text = ReadTextFileLimited(elevation_path, kMaxRuntimeGridReadBytes, diagnostics);
+    if (text.empty()) {
+        return grid;
+    }
+
+    const std::optional<std::string> elevation = ExtractObjectAfterKey(text, "elevation");
+    if (!elevation.has_value()) {
+        diagnostics.AddWarning("runtime sparse elevation object missing source=" + std::string(kElevationFile));
+        return grid;
+    }
+
+    const int default_level = ExtractIntByKeys(*elevation, {"default"}).value_or(0);
+    grid.cells.assign(ExpectedCellCount(grid.width, grid.height), default_level);
+
+    const std::optional<std::string> cells = ExtractArrayAfterKey(*elevation, "cells");
+    if (!cells.has_value()) {
+        return grid;
+    }
+
+    int skipped = 0;
+    for (const std::string& object : ExtractTopLevelObjectsFromArray(*cells)) {
+        const std::optional<int> x = ExtractIntByKeys(object, {"x"});
+        const std::optional<int> y = ExtractIntByKeys(object, {"y"});
+        const std::optional<int> level = ExtractIntByKeys(object, {"level"});
+        if (!x.has_value() || !y.has_value() || !level.has_value()) {
+            ++skipped;
+            continue;
+        }
+        const TileCoord coord{*x, *y};
+        if (!grid.Contains(coord)) {
+            ++skipped;
+            continue;
+        }
+        const std::size_t index = static_cast<std::size_t>(*y) * static_cast<std::size_t>(grid.width)
+            + static_cast<std::size_t>(*x);
+        grid.cells[index] = *level;
+    }
+
+    if (skipped > 0) {
+        diagnostics.AddWarning("runtime sparse elevation skipped invalid cells count=" + std::to_string(skipped));
+    }
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<int> ReadHeightGrid(const MapPackageInfo& package, Diagnostics& diagnostics)
+{
+    constexpr std::string_view kRuntimeFile = "runtime_grids.json";
+    const std::filesystem::path runtime_path = package.path / kRuntimeFile;
+    if (Exists(runtime_path)) {
+        const std::string text = ReadTextFileLimited(runtime_path, kMaxRuntimeGridReadBytes, diagnostics);
+        if (!text.empty()) {
+            RuntimeGrid<int> grid = ParseIntegerRowsGrid(
+                text,
+                package.width.value_or(0),
+                package.height.value_or(0),
+                kRuntimeFile,
+                "height_grid",
+                diagnostics);
+            if (grid.IsValid()) {
+                return grid;
+            }
+        }
+    }
+
+    return ReadSparseElevationLayer(package, diagnostics);
+}
+
+[[nodiscard]] std::optional<TileCoord> ReadPointFromStartGoal(
+    const std::string& text,
+    std::string_view key,
+    int width,
+    int height,
+    Diagnostics& diagnostics)
+{
+    const std::optional<std::string> object = ExtractObjectAfterKey(text, key);
+    if (!object.has_value()) {
+        return std::nullopt;
+    }
+
+    const std::optional<int> x = ExtractIntByKeys(*object, {"x"});
+    const std::optional<int> y = ExtractIntByKeys(*object, {"y"});
+    if (!x.has_value() || !y.has_value()) {
+        diagnostics.AddWarning("runtime point missing coordinate key=" + std::string(key));
+        return std::nullopt;
+    }
+
+    const TileCoord coord{*x, *y};
+    if (coord.x < 0 || coord.y < 0 || coord.x >= width || coord.y >= height) {
+        diagnostics.AddWarning(
+            "runtime point outside map key=" + std::string(key) + " x=" + std::to_string(coord.x)
+            + " y=" + std::to_string(coord.y));
+        return std::nullopt;
+    }
+    return coord;
+}
+
+void ReadStartGoal(RuntimeMap& runtime, const MapPackageInfo& package)
+{
+    constexpr std::string_view kStartGoalFile = "layers/start_goal.json";
+    const std::filesystem::path start_goal_path = package.path / kStartGoalFile;
+    if (!Exists(start_goal_path)) {
+        runtime.diagnostics.AddWarning("runtime start/goal layer unavailable");
+        return;
+    }
+
+    const std::string text = ReadTextFileLimited(start_goal_path, kMaxRuntimeGridReadBytes, runtime.diagnostics);
+    if (text.empty()) {
+        return;
+    }
+
+    runtime.info.start = ReadPointFromStartGoal(
+        text,
+        "start",
+        runtime.info.width,
+        runtime.info.height,
+        runtime.diagnostics);
+    runtime.info.goal = ReadPointFromStartGoal(
+        text,
+        "goal",
+        runtime.info.width,
+        runtime.info.height,
+        runtime.diagnostics);
+    runtime.info.start_goal_loaded = runtime.info.start.has_value() && runtime.info.goal.has_value();
+}
+
+void UpdateHeightRange(RuntimeMap& runtime)
+{
+    if (!runtime.height.IsValid()) {
+        return;
+    }
+
+    auto [min_it, max_it] = std::minmax_element(runtime.height.cells.begin(), runtime.height.cells.end());
+    if (min_it != runtime.height.cells.end() && max_it != runtime.height.cells.end()) {
+        runtime.info.levels = LevelRange{*min_it, *max_it};
+    }
+}
+
+void ValidateRuntimeMap(RuntimeMap& runtime)
+{
+    if (!runtime.info.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime map dimensions are invalid");
+        return;
+    }
+
+    if (!runtime.terrain.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime terrain grid is not loaded");
+    }
+    if (!runtime.collision.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime collision grid is not loaded");
+    }
+    if (!runtime.height.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime height grid is not loaded");
+    }
+    if (!runtime.info.start_goal_loaded) {
+        runtime.diagnostics.AddWarning("runtime start/goal points are not fully loaded");
+    }
+}
+
+[[nodiscard]] int CountBlockedCells(const RuntimeGrid<std::uint8_t>& grid)
+{
+    if (!grid.IsValid()) {
+        return 0;
+    }
+    return static_cast<int>(std::count_if(grid.cells.begin(), grid.cells.end(), [](std::uint8_t value) {
+        return value != 0;
+    }));
+}
+
+[[nodiscard]] std::string FormatPoint(const std::optional<TileCoord>& coord)
+{
+    if (!coord.has_value()) {
+        return "none";
+    }
+    return std::to_string(coord->x) + "," + std::to_string(coord->y);
+}
+
+}  // namespace
 
 bool RuntimeMapInfo::IsValid() const
 {
-    return width > 0 && height > 0;
+    return width > 0 && height > 0 && tile_size_px > 0;
 }
 
 bool RuntimeMap::IsValid() const
 {
     return info.IsValid();
+}
+
+bool RuntimeMap::HasCoreGrids() const
+{
+    return terrain.IsValid() && collision.IsValid() && height.IsValid();
 }
 
 RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
@@ -23,11 +644,54 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     }
     runtime.info.generator_version = package.generator_version;
     runtime.info.schema_version = package.schema_version;
-    runtime.info.terrain_loaded = package.terrain_available;
-    runtime.info.elevation_loaded = package.elevation_available;
-    runtime.info.collision_loaded = package.collision_available;
     runtime.overview = package.overview;
+
+    if (!package.loaded || !runtime.info.IsValid()) {
+        ValidateRuntimeMap(runtime);
+        return runtime;
+    }
+
+    runtime.terrain = ReadTerrainGrid(package, runtime.diagnostics);
+    runtime.collision = ReadCollisionGrid(package, runtime.diagnostics);
+    runtime.height = ReadHeightGrid(package, runtime.diagnostics);
+    runtime.info.terrain_loaded = runtime.terrain.IsValid();
+    runtime.info.collision_loaded = runtime.collision.IsValid();
+    runtime.info.elevation_loaded = runtime.height.IsValid();
+    runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
+    UpdateHeightRange(runtime);
+    ReadStartGoal(runtime, package);
+    ValidateRuntimeMap(runtime);
     return runtime;
+}
+
+std::string ToLogString(const RuntimeMap& map)
+{
+    std::ostringstream out;
+    out << "status=" << (map.IsValid() ? "loaded" : "invalid");
+    if (map.info.IsValid()) {
+        out << " size=" << map.info.width << 'x' << map.info.height << " tile=" << map.info.tile_size_px;
+    }
+    if (map.info.levels.has_value()) {
+        out << " levels=" << map.info.levels->min << ".." << map.info.levels->max;
+    }
+    out << " terrain=" << (map.info.terrain_loaded ? "loaded" : "missing");
+    out << " collision=" << (map.info.collision_loaded ? "loaded" : "missing");
+    if (map.info.collision_loaded) {
+        out << " blocked=" << map.info.blocked_cells;
+    }
+    out << " height=" << (map.info.elevation_loaded ? "loaded" : "missing");
+    out << " start=" << FormatPoint(map.info.start);
+    out << " goal=" << FormatPoint(map.info.goal);
+    if (!map.info.generator_version.empty()) {
+        out << " generator=" << map.info.generator_version;
+    }
+    if (!map.info.schema_version.empty()) {
+        out << " schema=" << map.info.schema_version;
+    }
+    if (!map.diagnostics.warnings.empty()) {
+        out << " warnings=" << map.diagnostics.warnings.size();
+    }
+    return out.str();
 }
 
 }  // namespace vox3d

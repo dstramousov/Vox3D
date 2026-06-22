@@ -2,6 +2,7 @@
 
 #include "ui_draw.hpp"
 #include "vox3d/map/map_package.hpp"
+#include "vox3d/map/runtime_map.hpp"
 
 #include <raylib.h>
 
@@ -162,6 +163,11 @@ bool App::Initialize()
     logger_.Info("map", ToLogString(workspace_.map));
     for (const auto& warning : workspace_.map.warnings) {
         logger_.Warn("map", warning);
+    }
+    workspace_.runtime_map = BuildRuntimeMap(workspace_.map);
+    logger_.Info("runtime_map", ToLogString(workspace_.runtime_map));
+    for (const auto& warning : workspace_.runtime_map.diagnostics.warnings) {
+        logger_.Warn("runtime_map", warning);
     }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 

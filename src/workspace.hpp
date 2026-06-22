@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vox3d/map/map_package.hpp"
+#include "vox3d/map/runtime_map.hpp"
 
 #include <string_view>
 #include <vector>
@@ -64,6 +65,7 @@ struct WorkspaceState {
     bool show_collision_layer = false;
     bool show_grid_layer = false;
     MapPackageInfo map;
+    RuntimeMap runtime_map;
 };
 
 /**
