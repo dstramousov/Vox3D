@@ -3,6 +3,7 @@
 #include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
+#include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
 #include <string_view>
@@ -70,6 +71,7 @@ struct WorkspaceState {
     RuntimeMap runtime_map;
     ChunkGrid chunk_grid;
     VoxelWorld voxel_world;
+    FaceVisibilityResult face_visibility;
 };
 
 /**

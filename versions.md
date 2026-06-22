@@ -115,3 +115,9 @@
 - Added the first `VoxelWorld` foundation in `vox3d_core`, building compact implicit voxel columns from runtime map height, terrain, and collision grids.
 - Added block types, voxel block lookup helpers, world validation, and voxel-world statistics for columns, solid blocks, empty blocks, and blocked columns.
 - Wired editor startup to build and log the voxel world while keeping 3D rendering, face culling, greedy meshing, and block destruction unchanged.
+
+## v0.2.9 -> v0.3.0
+
+- Added voxel face-visibility analysis in `vox3d_core`, counting visible and culled faces without creating renderer resources.
+- Added per-direction visible face counters, cull-ratio diagnostics, and compact face-visibility logging.
+- Wired editor startup to build and log face-visibility statistics while keeping 3D rendering, mesh buffers, greedy meshing, and block destruction unchanged.

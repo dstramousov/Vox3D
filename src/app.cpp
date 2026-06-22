@@ -4,6 +4,7 @@
 #include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
+#include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
 #include <raylib.h>
@@ -180,6 +181,11 @@ bool App::Initialize()
     logger_.Info("voxel_world", ToLogString(workspace_.voxel_world));
     for (const auto& warning : workspace_.voxel_world.diagnostics.warnings) {
         logger_.Warn("voxel_world", warning);
+    }
+    workspace_.face_visibility = BuildFaceVisibility(workspace_.voxel_world);
+    logger_.Info("face_visibility", ToLogString(workspace_.face_visibility));
+    for (const auto& warning : workspace_.face_visibility.diagnostics.warnings) {
+        logger_.Warn("face_visibility", warning);
     }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
