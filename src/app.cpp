@@ -1,7 +1,7 @@
 #include "app.hpp"
 
 #include "ui_draw.hpp"
-#include "map_package.hpp"
+#include "vox3d/map/map_package.hpp"
 
 #include <raylib.h>
 

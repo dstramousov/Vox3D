@@ -56,11 +56,21 @@ struct MapPackageInfo {
     bool terrain_available = false;
     bool elevation_available = false;
     bool collision_available = false;
+    bool runtime_grids_available = false;
     std::optional<int> width;
     std::optional<int> height;
     std::optional<int> tile_size;
     std::optional<int> min_level;
     std::optional<int> max_level;
+    std::optional<long long> resolved_seed;
+    std::optional<int> object_count;
+    std::optional<int> place_count;
+    std::optional<int> marker_count;
+    std::string schema_version;
+    std::string package_schema_version;
+    std::string generator_version;
+    std::string pipeline_version;
+    std::string profile;
     std::string source_file;
     std::string status;
     MapOverview overview;
@@ -71,10 +81,10 @@ struct MapPackageInfo {
 /**
  * @brief Inspects a map package path and loads a bounded diagnostic overview.
  *
- * The loader validates the directory, looks for common metadata/runtime-grid files,
- * extracts a small summary, and builds a top-down terrain preview when a supported
- * grid file is present. Missing optional files are reported as warnings, not fatal
- * errors.
+ * The loader validates the directory, reads the TopDownMapGen v0.0.68
+ * map_package/map.json metadata, inspects known package files, and builds a
+ * bounded top-down terrain preview from layers/terrain.json. Missing optional
+ * files are reported as warnings, not fatal errors.
  *
  * @param package_path Path to the map package directory.
  * @return Discovered map package information.

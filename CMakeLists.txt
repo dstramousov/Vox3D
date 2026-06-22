@@ -1,11 +1,25 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VoX3D VERSION 0.2.5 LANGUAGES CXX)
+project(VoX3D VERSION 0.2.6 LANGUAGES CXX)
 
 option(VOX3D_FETCH_RAYLIB "Fetch raylib with CMake FetchContent when no system package is found" ON)
 set(VOX3D_DEPS_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "Persistent dependency cache directory")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+add_library(vox3d_core STATIC
+    src/vox3d/map/map_package.cpp
+    src/vox3d/map/runtime_map.cpp
+)
+
+target_compile_features(vox3d_core PUBLIC cxx_std_20)
+target_include_directories(vox3d_core PUBLIC src)
+
+if(MSVC)
+    target_compile_options(vox3d_core PRIVATE /W4)
+else()
+    target_compile_options(vox3d_core PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
 add_executable(vox3d
     src/app.cpp
@@ -13,7 +27,6 @@ add_executable(vox3d
     src/confirm_dialog.cpp
     src/logger.cpp
     src/main.cpp
-    src/map_package.cpp
     src/menu.cpp
     src/process_metrics.cpp
     src/ui_draw.cpp
@@ -53,7 +66,7 @@ if(NOT raylib_FOUND)
     FetchContent_MakeAvailable(raylib)
 endif()
 
-target_link_libraries(vox3d PRIVATE raylib)
+target_link_libraries(vox3d PRIVATE vox3d_core raylib)
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(vox3d PRIVATE pthread)

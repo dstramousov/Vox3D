@@ -1,6 +1,6 @@
 #pragma once
 
-#include "map_package.hpp"
+#include "vox3d/map/map_package.hpp"
 
 #include <string_view>
 #include <vector>

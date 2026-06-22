@@ -1,4 +1,4 @@
-#include "map_package.hpp"
+#include "vox3d/map/map_package.hpp"
 
 #include <algorithm>
 #include <array>
@@ -69,6 +69,34 @@ constexpr std::size_t kMaxOverviewCells = 512U * 512U;
     return std::nullopt;
 }
 
+[[nodiscard]] std::optional<long long> ExtractLongLongByKeys(const std::string& text, std::initializer_list<const char*> keys)
+{
+    for (const char* key : keys) {
+        const std::regex pattern("\\\"" + std::string(key) + "\\\"\\s*:\\s*(-?[0-9]+)");
+        std::smatch match;
+        if (std::regex_search(text, match, pattern) && match.size() > 1) {
+            try {
+                return std::stoll(match[1].str());
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::string ExtractStringByKeys(const std::string& text, std::initializer_list<const char*> keys)
+{
+    for (const char* key : keys) {
+        const std::regex pattern("\\\"" + std::string(key) + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
+        std::smatch match;
+        if (std::regex_search(text, match, pattern) && match.size() > 1) {
+            return match[1].str();
+        }
+    }
+    return {};
+}
+
 [[nodiscard]] std::filesystem::path RelativeToPackage(const std::filesystem::path& package_path, const std::filesystem::path& path)
 {
     std::error_code error;
@@ -82,13 +110,13 @@ constexpr std::size_t kMaxOverviewCells = 512U * 512U;
 void ExtractMetadata(MapPackageInfo& info, const std::filesystem::path& source_path, const std::string& text)
 {
     if (!info.width.has_value()) {
-        info.width = ExtractIntByKeys(text, {"width", "map_width", "cols", "columns"});
+        info.width = ExtractIntByKeys(text, {"width_tiles", "width", "map_width", "cols", "columns"});
     }
     if (!info.height.has_value()) {
-        info.height = ExtractIntByKeys(text, {"height", "map_height", "rows"});
+        info.height = ExtractIntByKeys(text, {"height_tiles", "height", "map_height", "rows"});
     }
     if (!info.tile_size.has_value()) {
-        info.tile_size = ExtractIntByKeys(text, {"tile_size", "tile_px", "tile_size_px"});
+        info.tile_size = ExtractIntByKeys(text, {"tile_size_px", "tile_size", "tile_px"});
     }
     if (!info.min_level.has_value()) {
         info.min_level = ExtractIntByKeys(text, {"min_level", "min_elevation", "level_min", "z_min"});
@@ -96,9 +124,31 @@ void ExtractMetadata(MapPackageInfo& info, const std::filesystem::path& source_p
     if (!info.max_level.has_value()) {
         info.max_level = ExtractIntByKeys(text, {"max_level", "max_elevation", "level_max", "z_max"});
     }
+    if (!info.resolved_seed.has_value()) {
+        info.resolved_seed = ExtractLongLongByKeys(text, {"resolved_seed"});
+    }
+    if (info.schema_version.empty()) {
+        info.schema_version = ExtractStringByKeys(text, {"schema_version"});
+    }
+    if (info.package_schema_version.empty()) {
+        info.package_schema_version = ExtractStringByKeys(text, {"package_schema_version"});
+    }
+    if (info.generator_version.empty()) {
+        info.generator_version = ExtractStringByKeys(text, {"generator_version"});
+    }
+    if (info.pipeline_version.empty()) {
+        info.pipeline_version = ExtractStringByKeys(text, {"pipeline_version"});
+    }
+    if (info.profile.empty()) {
+        info.profile = ExtractStringByKeys(text, {"profile"});
+    }
     info.metadata_available = info.width.has_value() || info.height.has_value() || info.tile_size.has_value()
-        || info.min_level.has_value() || info.max_level.has_value();
-    info.source_file = RelativeToPackage(info.path, source_path).string();
+        || info.min_level.has_value() || info.max_level.has_value() || !info.schema_version.empty()
+        || !info.generator_version.empty();
+    const std::string relative_source = RelativeToPackage(info.path, source_path).string();
+    if (info.source_file.empty() || relative_source == "map.json") {
+        info.source_file = relative_source;
+    }
 }
 
 [[nodiscard]] bool Exists(const std::filesystem::path& path)
@@ -117,27 +167,30 @@ void ExtractMetadata(MapPackageInfo& info, const std::filesystem::path& source_p
 
 void DiscoverKnownFiles(MapPackageInfo& info)
 {
-    constexpr std::array<std::string_view, 20> known_files{
-        "package_manifest.json",
-        "map_package_manifest.json",
-        "manifest.json",
-        "metadata.json",
-        "generation_summary.json",
-        "summary.json",
-        "tactical_map.json",
-        "runtime_grids/tile_grid.json",
-        "runtime_grids/terrain.json",
-        "runtime_grids/elevation.json",
-        "runtime_grids/collision.json",
-        "runtime_grids/movement_costs.json",
+    constexpr std::array<std::string_view, 23> known_files{
+        "map.json",
+        "runtime_grids.json",
         "layers/tile_grid.json",
         "layers/terrain.json",
         "layers/elevation.json",
         "layers/collision.json",
-        "tile_grid.json",
-        "terrain.json",
+        "layers/movement_costs.json",
+        "layers/start_goal.json",
+        "catalogs/tile_types.json",
+        "catalogs/object_types.json",
+        "render/tile_render_hints.json",
+        "render/object_render_hints.json",
+        "objects/runtime_objects.json",
+        "objects/places.json",
+        "markers.json",
         "world_graph.json",
         "routes.json",
+        "gameplay_zones.json",
+        "elevation_model.json",
+        "elevation_features.json",
+        "elevation_transitions.json",
+        "gameplay/spawn_rules.json",
+        "gameplay/object_rules.json",
     };
 
     for (std::string_view relative : known_files) {
@@ -147,27 +200,26 @@ void DiscoverKnownFiles(MapPackageInfo& info)
         }
     }
 
+    info.runtime_grids_available = std::any_of(info.present_files.begin(), info.present_files.end(), [](const std::string& file) {
+        return file == "runtime_grids.json";
+    });
     info.terrain_available = std::any_of(info.present_files.begin(), info.present_files.end(), [](const std::string& file) {
-        return file.find("terrain") != std::string::npos || file.find("tile_grid") != std::string::npos;
+        return file == "layers/terrain.json" || file == "layers/tile_grid.json";
     });
     info.elevation_available = std::any_of(info.present_files.begin(), info.present_files.end(), [](const std::string& file) {
-        return file.find("elevation") != std::string::npos;
+        return file == "layers/elevation.json" || file == "elevation_model.json";
     });
     info.collision_available = std::any_of(info.present_files.begin(), info.present_files.end(), [](const std::string& file) {
-        return file.find("collision") != std::string::npos;
+        return file == "layers/collision.json" || file == "runtime_grids.json";
     });
 }
 
 void TryReadMetadata(MapPackageInfo& info)
 {
-    constexpr std::array<std::string_view, 7> metadata_candidates{
-        "package_manifest.json",
-        "map_package_manifest.json",
-        "manifest.json",
-        "metadata.json",
-        "generation_summary.json",
-        "summary.json",
-        "tactical_map.json",
+    constexpr std::array<std::string_view, 3> metadata_candidates{
+        "map.json",
+        "runtime_grids.json",
+        "layers/terrain.json",
     };
 
     for (std::string_view relative : metadata_candidates) {
@@ -183,7 +235,7 @@ void TryReadMetadata(MapPackageInfo& info)
             continue;
         }
         ExtractMetadata(info, candidate, text);
-        if (info.metadata_available && info.width.has_value() && info.height.has_value()) {
+        if (relative == std::string_view{"map.json"}) {
             return;
         }
     }
@@ -406,7 +458,8 @@ void TryReadMetadata(MapPackageInfo& info)
 
 [[nodiscard]] std::optional<std::string> FindBestGridArray(const std::string& text)
 {
-    constexpr std::array<std::string_view, 8> keys{
+    constexpr std::array<std::string_view, 9> keys{
+        "rows",
         "grid",
         "data",
         "tiles",
@@ -428,15 +481,10 @@ void TryReadMetadata(MapPackageInfo& info)
 
 void TryReadOverview(MapPackageInfo& info)
 {
-    constexpr std::array<std::string_view, 8> grid_candidates{
-        "runtime_grids/tile_grid.json",
-        "runtime_grids/terrain.json",
-        "layers/tile_grid.json",
+    constexpr std::array<std::string_view, 3> grid_candidates{
         "layers/terrain.json",
-        "tile_grid.json",
-        "terrain.json",
-        "tactical_map.json",
-        "metadata.json",
+        "layers/tile_grid.json",
+        "runtime_grids.json",
     };
 
     for (std::string_view relative : grid_candidates) {
@@ -500,12 +548,10 @@ void TryReadElevationRange(MapPackageInfo& info)
         return;
     }
 
-    constexpr std::array<std::string_view, 5> elevation_candidates{
-        "runtime_grids/elevation.json",
+    constexpr std::array<std::string_view, 3> elevation_candidates{
         "layers/elevation.json",
-        "elevation.json",
+        "runtime_grids.json",
         "elevation_model.json",
-        "tactical_map.json",
     };
 
     for (std::string_view relative : elevation_candidates) {
@@ -527,22 +573,10 @@ void TryReadElevationRange(MapPackageInfo& info)
             return;
         }
 
-        auto array_section = ExtractArrayAfterKey(text, "grid");
-        if (!array_section.has_value()) {
-            array_section = ExtractArrayAfterKey(text, "data");
-        }
-        if (!array_section.has_value()) {
-            continue;
-        }
-
-        const std::regex integer_pattern("-?[0-9]+");
-        auto begin = std::sregex_iterator(array_section->begin(), array_section->end(), integer_pattern);
-        auto end = std::sregex_iterator();
         bool found_any = false;
         int min_value = 0;
         int max_value = 0;
-        for (auto it = begin; it != end; ++it) {
-            const int value = std::stoi(it->str());
+        auto add_value = [&](int value) {
             if (!found_any) {
                 min_value = value;
                 max_value = value;
@@ -551,12 +585,98 @@ void TryReadElevationRange(MapPackageInfo& info)
                 min_value = std::min(min_value, value);
                 max_value = std::max(max_value, value);
             }
+        };
+
+        if (const std::optional<int> default_level = ExtractIntByKeys(text, {"default"}); default_level.has_value()) {
+            add_value(*default_level);
         }
+
+        const std::regex level_pattern("\"level\"\\s*:\\s*(-?[0-9]+)");
+        for (auto it = std::sregex_iterator(text.begin(), text.end(), level_pattern); it != std::sregex_iterator(); ++it) {
+            add_value(std::stoi((*it)[1].str()));
+        }
+
+        if (!found_any) {
+            auto array_section = ExtractArrayAfterKey(text, "height_grid");
+            if (!array_section.has_value()) {
+                array_section = ExtractArrayAfterKey(text, "grid");
+            }
+            if (array_section.has_value()) {
+                const std::regex integer_pattern("-?[0-9]+");
+                for (auto it = std::sregex_iterator(array_section->begin(), array_section->end(), integer_pattern);
+                     it != std::sregex_iterator();
+                     ++it) {
+                    add_value(std::stoi(it->str()));
+                }
+            }
+        }
+
         if (found_any) {
             info.min_level = min_value;
             info.max_level = max_value;
             info.elevation_available = true;
             return;
+        }
+    }
+}
+
+[[nodiscard]] int CountTopLevelObjectsInArray(std::string_view array_text)
+{
+    int depth = 0;
+    int count = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (const char c : array_text) {
+        if (in_string) {
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (c == '"') {
+            in_string = true;
+        } else if (c == '{') {
+            if (depth == 0) {
+                ++count;
+            }
+            ++depth;
+        } else if (c == '}') {
+            --depth;
+        }
+    }
+    return count;
+}
+
+void TryReadItemCounts(MapPackageInfo& info)
+{
+    struct CountCandidate {
+        std::string_view path;
+        std::optional<int> MapPackageInfo::*field;
+    };
+    constexpr std::array<CountCandidate, 3> candidates{
+        CountCandidate{"objects/runtime_objects.json", &MapPackageInfo::object_count},
+        CountCandidate{"objects/places.json", &MapPackageInfo::place_count},
+        CountCandidate{"markers.json", &MapPackageInfo::marker_count},
+    };
+
+    for (const CountCandidate& candidate : candidates) {
+        const std::filesystem::path path = info.path / candidate.path;
+        if (!Exists(path)) {
+            continue;
+        }
+        std::string warning;
+        const std::string text = ReadTextFileLimited(path, kMaxMetadataReadBytes, warning);
+        if (!warning.empty()) {
+            info.warnings.push_back(warning);
+            continue;
+        }
+        auto array = ExtractArrayAfterKey(text, "items");
+        if (array.has_value()) {
+            info.*(candidate.field) = CountTopLevelObjectsInArray(*array);
         }
     }
 }
@@ -625,6 +745,7 @@ MapPackageInfo LoadMapPackageInfo(const std::filesystem::path& package_path)
     TryReadMetadata(info);
     TryReadOverview(info);
     TryReadElevationRange(info);
+    TryReadItemCounts(info);
     info.loaded = true;
     info.status = BuildStatus(info);
     return info;
@@ -643,11 +764,32 @@ std::string ToLogString(const MapPackageInfo& info)
     if (info.min_level.has_value() && info.max_level.has_value()) {
         out << " levels=" << *info.min_level << ".." << *info.max_level;
     }
+    if (!info.generator_version.empty()) {
+        out << " generator=" << info.generator_version;
+    }
+    if (!info.schema_version.empty()) {
+        out << " schema=" << info.schema_version;
+    }
+    if (!info.package_schema_version.empty()) {
+        out << " package_schema=" << info.package_schema_version;
+    }
+    if (info.resolved_seed.has_value()) {
+        out << " seed=" << *info.resolved_seed;
+    }
     if (!info.source_file.empty()) {
         out << " metadata=" << info.source_file;
     }
     if (info.overview.IsValid()) {
         out << " overview=" << info.overview.source_file;
+    }
+    if (info.object_count.has_value()) {
+        out << " objects=" << *info.object_count;
+    }
+    if (info.place_count.has_value()) {
+        out << " places=" << *info.place_count;
+    }
+    if (info.marker_count.has_value()) {
+        out << " markers=" << *info.marker_count;
     }
     out << " files=" << info.present_files.size();
     return out.str();

@@ -89,3 +89,9 @@
 - Removed the decorative bottom pseudo-button block from the right workspace panel.
 - Changed the right panel into a click-driven accordion menu: clicking a section opens or closes its subitems, while mouse hover only reports hover state.
 - Added initial 2D layer toggles for terrain, elevation, collision, and grid through the accordion subitems.
+
+## v0.2.5 -> v0.2.6
+
+- Added the first `vox3d_core` static library target and moved map package loading out of the editor executable.
+- Reworked map package inspection around the real TopDownMapGen v0.0.68 package layout, starting from `map.json` and known layer/catalog/render/object files.
+- Added a lightweight `RuntimeMap` shell for future voxel/chunk/mesh builders while keeping the editor UI behavior unchanged.
