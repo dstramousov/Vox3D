@@ -4,6 +4,7 @@
 #include "confirm_dialog.hpp"
 #include "menu.hpp"
 #include "process_metrics.hpp"
+#include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
 #include "ui_layout.hpp"
@@ -46,11 +47,17 @@ void DrawPlaceholderScreen(
  * @brief Draws the main workspace screen.
  *
  * @param workspace Workspace state to draw.
+ * @param mesh_preview Optional uploaded 3D mesh preview renderer.
  * @param fonts Fonts used for workspace text.
  * @param labels Localized labels used for workspace controls.
  * @param layout Cached UI layout.
  */
-void DrawWorkspace(const WorkspaceState& workspace, const UiFontSet& fonts, const UiLabels& labels, const UiLayoutCache& layout);
+void DrawWorkspace(
+    const WorkspaceState& workspace,
+    const RaylibChunkMeshPreview* mesh_preview,
+    const UiFontSet& fonts,
+    const UiLabels& labels,
+    const UiLayoutCache& layout);
 
 /**
  * @brief Draws the FPS counter.

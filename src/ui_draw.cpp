@@ -800,7 +800,12 @@ void DrawPlaceholderScreen(
 
 
 
-void DrawWorkspace(const WorkspaceState& workspace_state, const UiFontSet& fonts, const UiLabels& labels, const UiLayoutCache& layout)
+void DrawWorkspace(
+    const WorkspaceState& workspace_state,
+    const RaylibChunkMeshPreview* mesh_preview,
+    const UiFontSet& fonts,
+    const UiLabels& labels,
+    const UiLayoutCache& layout)
 {
     const UiMetrics& metrics = layout.metrics;
     const WorkspaceLayout& workspace = layout.workspace;
@@ -875,21 +880,28 @@ void DrawWorkspace(const WorkspaceState& workspace_state, const UiFontSet& fonts
         info_y += compact_size + metrics.workspace_tool_gap * 0.4F;
     }
 
-    DrawWorkspaceOverview(workspace_state, workspace, metrics);
-    if (!workspace_state.map.overview.IsValid() || !workspace_state.show_terrain_layer) {
-        DrawWorkspaceWirePlaceholder(workspace, metrics);
-        DrawTextCentered(
-            fonts.text,
-            labels.workspace_overview_unavailable,
-            workspace.map_overview.y + workspace.map_overview.height * 0.5F + metrics.workspace_status_font_size * 2.2F,
-            metrics.workspace_status_font_size,
-            FontSpacing(metrics.workspace_status_font_size),
-            kEditorViewportText,
-            static_cast<int>(workspace.viewport.width));
+    if (workspace_state.show_3d_preview && mesh_preview != nullptr && mesh_preview->IsUploaded()) {
+        DrawRectangleRec(workspace.map_overview, Color{18, 22, 24, 255});
+        mesh_preview->Draw(workspace.map_overview, workspace_state.chunk_meshes);
+        DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
+    } else {
+        DrawWorkspaceOverview(workspace_state, workspace, metrics);
+        if (!workspace_state.map.overview.IsValid() || !workspace_state.show_terrain_layer) {
+            DrawWorkspaceWirePlaceholder(workspace, metrics);
+            DrawTextCentered(
+                fonts.text,
+                labels.workspace_overview_unavailable,
+                workspace.map_overview.y + workspace.map_overview.height * 0.5F + metrics.workspace_status_font_size * 2.2F,
+                metrics.workspace_status_font_size,
+                FontSpacing(metrics.workspace_status_font_size),
+                kEditorViewportText,
+                static_cast<int>(workspace.viewport.width));
+        }
     }
 
-    const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | "
-        + labels.workspace_status_escape_hint;
+    const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
+    const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | view="
+        + preview_mode + " | F3 2D/3D | " + labels.workspace_status_escape_hint;
     DrawTextEx(
         fonts.text,
         status.c_str(),

@@ -5,6 +5,7 @@
 #include "logger.hpp"
 #include "menu.hpp"
 #include "process_metrics.hpp"
+#include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
 #include "ui_layout.hpp"
@@ -84,6 +85,7 @@ private:
     void LoadUiFonts();
     void RefreshProcessMemoryInfo();
     void UnloadUiFonts();
+    void UnloadPreviewResources();
     void LogSelectedItemChanged() const;
     [[nodiscard]] UiFontSet UiFonts() const;
     [[nodiscard]] AppScreen CurrentScreen() const;
@@ -97,6 +99,7 @@ private:
     AppScreen screen_ = AppScreen::kWorkspace;
     PlaceholderAction placeholder_selected_action_ = PlaceholderAction::kMainMenu;
     WorkspaceState workspace_;
+    RaylibChunkMeshPreview chunk_mesh_preview_;
     std::string hovered_item_ = "none";
     UiLayoutCache layout_cache_{};
     bool layout_dirty_ = true;

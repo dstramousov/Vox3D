@@ -193,6 +193,11 @@ bool App::Initialize()
     for (const auto& warning : workspace_.chunk_meshes.diagnostics.warnings) {
         logger_.Warn("chunk_mesh", warning);
     }
+    const bool preview_uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes);
+    logger_.Info("render3d", ToLogString(chunk_mesh_preview_.Stats()));
+    if (!preview_uploaded) {
+        logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");
+    }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
     LoadUiFonts();
@@ -246,6 +251,7 @@ int App::Run()
 
 void App::Shutdown()
 {
+    UnloadPreviewResources();
     UnloadUiFonts();
     if (window_initialized_) {
         CloseWindow();
@@ -336,6 +342,12 @@ void App::HandleWorkspaceInput()
     if (IsKeyPressed(KEY_ESCAPE)) {
         RequestExitConfirmation();
         return;
+    }
+
+    if (IsKeyPressed(KEY_F3) && chunk_mesh_preview_.IsUploaded()) {
+        workspace_.show_3d_preview = !workspace_.show_3d_preview;
+        layout_dirty_ = true;
+        logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "2d"));
     }
 
     if (IsKeyPressedAny({KEY_UP, KEY_W, KEY_LEFT, KEY_A})) {
@@ -511,7 +523,7 @@ void App::Draw()
             DrawMainMenu(main_menu_.State(), UiFonts(), labels_, layout_cache_);
             break;
         case AppScreen::kWorkspace:
-            DrawWorkspace(workspace_, UiFonts(), labels_, layout_cache_);
+            DrawWorkspace(workspace_, &chunk_mesh_preview_, UiFonts(), labels_, layout_cache_);
             break;
         case AppScreen::kSettingsPlaceholder:
             DrawPlaceholderScreen(labels_.placeholder_settings_title, placeholder_selected_action_, UiFonts(), labels_, layout_cache_);
@@ -684,11 +696,17 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         case WorkspacePanelItem::kLayerGrid:
             workspace_.show_grid_layer = !workspace_.show_grid_layer;
             break;
+        case WorkspacePanelItem::kView2DMap:
+            workspace_.show_3d_preview = false;
+            logger_.Info("workspace", "preview mode=2d");
+            break;
+        case WorkspacePanelItem::kView3DPreview:
+            workspace_.show_3d_preview = chunk_mesh_preview_.IsUploaded();
+            logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "2d_unavailable"));
+            break;
         case WorkspacePanelItem::kMapOverview:
         case WorkspacePanelItem::kMapPackage:
         case WorkspacePanelItem::kMapValidate:
-        case WorkspacePanelItem::kView2DMap:
-        case WorkspacePanelItem::kView3DPreview:
         case WorkspacePanelItem::kViewFitMap:
         case WorkspacePanelItem::kViewResetView:
         case WorkspacePanelItem::kRenderOverview:
@@ -826,6 +844,15 @@ void App::UnloadUiFonts()
         text_font_loaded_ = false;
         text_font_ = Font{};
         logger_.Debug("assets", "text font unloaded");
+    }
+}
+
+
+void App::UnloadPreviewResources()
+{
+    if (chunk_mesh_preview_.IsUploaded()) {
+        chunk_mesh_preview_.Unload();
+        logger_.Debug("render3d", "preview resources unloaded");
     }
 }
 

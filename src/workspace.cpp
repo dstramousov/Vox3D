@@ -77,8 +77,8 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             };
         case WorkspaceTool::kView:
             return {
-                {WorkspacePanelItem::kView2DMap, true, true},
-                {WorkspacePanelItem::kView3DPreview, false, false},
+                {WorkspacePanelItem::kView2DMap, true, !workspace.show_3d_preview},
+                {WorkspacePanelItem::kView3DPreview, workspace.chunk_meshes.IsValid(), workspace.show_3d_preview},
                 {WorkspacePanelItem::kViewFitMap, false, false},
                 {WorkspacePanelItem::kViewResetView, false, false},
             };

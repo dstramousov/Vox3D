@@ -127,3 +127,9 @@
 - Added renderer-independent per-chunk mesh data generation in `vox3d_core`, emitting visible voxel faces as indexed quads without creating raylib resources.
 - Added chunk mesh summaries for generated faces, vertices, indices, non-empty chunks, and validation diagnostics.
 - Wired editor startup to build and log chunk mesh data while keeping 3D rendering, camera controls, greedy meshing, and dirty-chunk rebuilds unchanged.
+
+## v0.3.1 -> v0.3.2
+
+- Added the first raylib-backed 3D preview path as a separate `vox3d_raylib` layer on top of renderer-independent chunk mesh data.
+- Uploaded non-empty chunk meshes into per-chunk raylib models, preserving `vox3d_core` as renderer-independent logic.
+- Added F3 and workspace View panel switching between the existing 2D map overview and the new 3D mesh preview.

@@ -68,6 +68,7 @@ struct WorkspaceState {
     bool show_elevation_layer = false;
     bool show_collision_layer = false;
     bool show_grid_layer = false;
+    bool show_3d_preview = false;
     MapPackageInfo map;
     RuntimeMap runtime_map;
     ChunkGrid chunk_grid;
