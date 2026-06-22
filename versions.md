@@ -109,3 +109,9 @@
 - Added per-chunk bounds, blocked-cell counts, height ranges, dirty flags, validation, and compact chunk-grid logging.
 - Wired editor startup to build and log the chunk grid while keeping 3D, voxel meshes, and rendering behavior unchanged.
 - Fixed the unused `MapTileText` warning by showing tile size in the workspace info panel.
+
+## v0.2.8 -> v0.2.9
+
+- Added the first `VoxelWorld` foundation in `vox3d_core`, building compact implicit voxel columns from runtime map height, terrain, and collision grids.
+- Added block types, voxel block lookup helpers, world validation, and voxel-world statistics for columns, solid blocks, empty blocks, and blocked columns.
+- Wired editor startup to build and log the voxel world while keeping 3D rendering, face culling, greedy meshing, and block destruction unchanged.

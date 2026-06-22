@@ -4,6 +4,7 @@
 #include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
+#include "vox3d/voxel/voxel_world.hpp"
 
 #include <raylib.h>
 
@@ -174,6 +175,11 @@ bool App::Initialize()
     logger_.Info("chunk_grid", ToLogString(workspace_.chunk_grid));
     for (const auto& warning : workspace_.chunk_grid.diagnostics.warnings) {
         logger_.Warn("chunk_grid", warning);
+    }
+    workspace_.voxel_world = BuildVoxelWorld(workspace_.runtime_map, workspace_.chunk_grid);
+    logger_.Info("voxel_world", ToLogString(workspace_.voxel_world));
+    for (const auto& warning : workspace_.voxel_world.diagnostics.warnings) {
+        logger_.Warn("voxel_world", warning);
     }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
