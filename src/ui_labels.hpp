@@ -66,9 +66,11 @@ struct UiLabels {
     std::string workspace_subitem_fit_view = "Fit View";
     std::string workspace_subitem_reset_view = "Reset View";
     std::string workspace_subitem_grid = "Grid";
-    std::string workspace_subitem_wire = "Wire";
+    std::string workspace_subitem_chunk_bounds = "Chunk Bounds";
+    std::string workspace_subitem_world_grid = "World Grid";
+    std::string workspace_subitem_collision_overlay = "Collision Overlay";
     std::string workspace_subitem_solid = "Solid";
-    std::string workspace_subitem_height = "Height";
+    std::string workspace_subitem_height = "Height Overlay";
     std::string workspace_subitem_memory = "Memory";
     std::string workspace_subitem_logs = "Logs";
     std::string workspace_subitem_language = "Language";

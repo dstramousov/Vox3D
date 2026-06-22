@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vox3d/chunk/chunk_grid.hpp"
+#include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
 
 #include <raylib.h>
@@ -9,6 +11,16 @@
 #include <vector>
 
 namespace vox3d {
+
+/**
+ * @brief Upload statistics for the raylib chunk-mesh preview renderer.
+ */
+struct RaylibChunkMeshDebugOverlayOptions {
+    bool show_chunk_bounds = false;
+    bool show_world_grid = false;
+    bool show_collision = false;
+    bool show_height = false;
+};
 
 /**
  * @brief Upload statistics for the raylib chunk-mesh preview renderer.
@@ -67,8 +79,17 @@ public:
      * @param viewport Screen-space viewport rectangle.
      * @param build_result Original mesh build summary used for map dimensions.
      * @param camera Camera used for the 3D preview draw pass.
+     * @param runtime_map Optional runtime map used by debug overlays.
+     * @param chunk_grid Optional chunk grid used by debug overlays.
+     * @param overlays 3D debug overlay visibility flags.
      */
-    void Draw(Rectangle viewport, const ChunkMeshBuildResult& build_result, const Camera3D& camera) const;
+    void Draw(
+        Rectangle viewport,
+        const ChunkMeshBuildResult& build_result,
+        const Camera3D& camera,
+        const RuntimeMap* runtime_map = nullptr,
+        const ChunkGrid* chunk_grid = nullptr,
+        RaylibChunkMeshDebugOverlayOptions overlays = {}) const;
 
     /**
      * @brief Releases uploaded raylib Model resources.

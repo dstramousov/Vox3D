@@ -139,3 +139,9 @@
 - Added a raylib free-fly 3D preview camera with WASD movement, Q/E vertical movement, Shift/Ctrl speed modifiers, RMB mouse look, velocity smoothing, reset, and fit-to-map controls.
 - Wired the workspace View panel and footer hints to the new 3D camera controls while keeping `vox3d_core` renderer-independent.
 - Fixed the workspace info panel to report loaded runtime terrain/elevation/collision data instead of layer visibility toggles.
+
+## v0.3.3 -> v0.3.4
+
+- Added 3D debug overlay toggles for chunk bounds, world grid, collision cells, and sampled height markers in the raylib preview path.
+- Wired the Render workspace panel and hotkeys F4/F5/F6/F7 to the new overlay flags without changing `vox3d_core` mesh generation.
+- Extended the workspace info panel and footer hints with chunk/face diagnostics and 3D overlay controls.

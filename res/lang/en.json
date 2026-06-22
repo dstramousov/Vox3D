@@ -66,9 +66,11 @@
   "workspace.subitem.fit_view": "Fit View",
   "workspace.subitem.reset_view": "Reset View",
   "workspace.subitem.grid": "Grid",
-  "workspace.subitem.wire": "Wire",
+  "workspace.subitem.chunk_bounds": "Chunk Bounds",
+  "workspace.subitem.world_grid": "World Grid",
+  "workspace.subitem.collision_overlay": "Collision Overlay",
   "workspace.subitem.solid": "Solid",
-  "workspace.subitem.height": "Height",
+  "workspace.subitem.height": "Height Overlay",
   "workspace.subitem.memory": "Memory",
   "workspace.subitem.logs": "Logs",
   "workspace.subitem.language": "Language"

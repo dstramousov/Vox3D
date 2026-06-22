@@ -226,7 +226,9 @@ UiLabels DefaultUiLabels(std::string_view language)
         labels.workspace_subitem_fit_view = "Вмістити";
         labels.workspace_subitem_reset_view = "Скинути вид";
         labels.workspace_subitem_grid = "Сітка";
-        labels.workspace_subitem_wire = "Каркас";
+        labels.workspace_subitem_chunk_bounds = "Межі чанків";
+        labels.workspace_subitem_world_grid = "Сітка світу";
+        labels.workspace_subitem_collision_overlay = "Колізія";
         labels.workspace_subitem_solid = "Суцільний";
         labels.workspace_subitem_height = "Висота";
         labels.workspace_subitem_memory = "Пам'ять";
@@ -328,7 +330,9 @@ bool LoadUiLabelsFromFile(
     AssignLabel(*values, "workspace.subitem.fit_view", labels.workspace_subitem_fit_view, diagnostics);
     AssignLabel(*values, "workspace.subitem.reset_view", labels.workspace_subitem_reset_view, diagnostics);
     AssignLabel(*values, "workspace.subitem.grid", labels.workspace_subitem_grid, diagnostics);
-    AssignLabel(*values, "workspace.subitem.wire", labels.workspace_subitem_wire, diagnostics);
+    AssignLabel(*values, "workspace.subitem.chunk_bounds", labels.workspace_subitem_chunk_bounds, diagnostics);
+    AssignLabel(*values, "workspace.subitem.world_grid", labels.workspace_subitem_world_grid, diagnostics);
+    AssignLabel(*values, "workspace.subitem.collision_overlay", labels.workspace_subitem_collision_overlay, diagnostics);
     AssignLabel(*values, "workspace.subitem.solid", labels.workspace_subitem_solid, diagnostics);
     AssignLabel(*values, "workspace.subitem.height", labels.workspace_subitem_height, diagnostics);
     AssignLabel(*values, "workspace.subitem.memory", labels.workspace_subitem_memory, diagnostics);

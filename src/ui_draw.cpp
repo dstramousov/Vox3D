@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace vox3d {
 namespace {
@@ -218,8 +219,12 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return labels.workspace_subitem_grid;
         case WorkspacePanelItem::kRenderOverview:
             return labels.workspace_subitem_overview;
-        case WorkspacePanelItem::kRenderWire:
-            return labels.workspace_subitem_wire;
+        case WorkspacePanelItem::kRenderChunkBounds:
+            return labels.workspace_subitem_chunk_bounds;
+        case WorkspacePanelItem::kRenderWorldGrid:
+            return labels.workspace_subitem_world_grid;
+        case WorkspacePanelItem::kRenderCollision:
+            return labels.workspace_subitem_collision_overlay;
         case WorkspacePanelItem::kRenderHeight:
             return labels.workspace_subitem_height;
         case WorkspacePanelItem::kDebugMemory:
@@ -862,7 +867,7 @@ void DrawWorkspace(
     const float compact_size = std::max(10.0F, metrics.workspace_status_font_size - 1.0F);
     const float compact_spacing = FontSpacing(compact_size);
     const float info_bottom = workspace.tool_info.y + workspace.tool_info.height;
-    const std::array<std::string, 8> tool_info_lines{
+    std::vector<std::string> tool_info_lines{
         labels.workspace_status_ready + ": " + MapStatusLabel(workspace_state.map, labels),
         labels.workspace_map_label + ": " + (workspace_state.map.configured ? workspace_state.map.path.filename().string() : labels.debug_none),
         labels.workspace_size_label + ": " + MapSizeText(workspace_state.map, labels),
@@ -872,6 +877,13 @@ void DrawWorkspace(
         labels.workspace_elevation_label + ": " + BoolText(workspace_state.runtime_map.info.elevation_loaded, labels),
         labels.workspace_collision_label + ": " + BoolText(workspace_state.runtime_map.info.collision_loaded, labels),
     };
+    if (workspace_state.chunk_grid.IsValid()) {
+        tool_info_lines.push_back("Chunks: " + std::to_string(workspace_state.chunk_grid.info.chunks_x) + "x"
+            + std::to_string(workspace_state.chunk_grid.info.chunks_y));
+    }
+    if (workspace_state.chunk_meshes.IsValid()) {
+        tool_info_lines.push_back("Faces: " + std::to_string(workspace_state.chunk_meshes.info.visible_faces));
+    }
     float info_y = workspace.tool_info.y;
     for (const auto& line : tool_info_lines) {
         if (info_y + compact_size > info_bottom) {
@@ -883,7 +895,19 @@ void DrawWorkspace(
 
     if (workspace_state.show_3d_preview && mesh_preview != nullptr && preview_camera != nullptr && mesh_preview->IsUploaded()) {
         DrawRectangleRec(workspace.map_overview, Color{18, 22, 24, 255});
-        mesh_preview->Draw(workspace.map_overview, workspace_state.chunk_meshes, *preview_camera);
+        const RaylibChunkMeshDebugOverlayOptions overlays{
+            workspace_state.show_3d_chunk_bounds,
+            workspace_state.show_3d_world_grid,
+            workspace_state.show_3d_collision_overlay,
+            workspace_state.show_3d_height_overlay,
+        };
+        mesh_preview->Draw(
+            workspace.map_overview,
+            workspace_state.chunk_meshes,
+            *preview_camera,
+            &workspace_state.runtime_map,
+            &workspace_state.chunk_grid,
+            overlays);
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {
         DrawWorkspaceOverview(workspace_state, workspace, metrics);
@@ -902,7 +926,7 @@ void DrawWorkspace(
 
     const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
     const std::string controls = workspace_state.show_3d_preview
-        ? " | RMB look | WASD | Q/E | Shift/Ctrl | R reset | F fit | F3 | "
+        ? " | RMB look | WASD | Q/E | F4 chunks | F5 grid | F6 collision | F7 height | F3 | "
         : " | F3 2D/3D | ";
     const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | view="
         + preview_mode + controls + labels.workspace_status_escape_hint;

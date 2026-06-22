@@ -50,8 +50,12 @@ std::string_view ToString(WorkspacePanelItem item)
             return "layer_grid";
         case WorkspacePanelItem::kRenderOverview:
             return "render_overview";
-        case WorkspacePanelItem::kRenderWire:
-            return "render_wire";
+        case WorkspacePanelItem::kRenderChunkBounds:
+            return "render_chunk_bounds";
+        case WorkspacePanelItem::kRenderWorldGrid:
+            return "render_world_grid";
+        case WorkspacePanelItem::kRenderCollision:
+            return "render_collision";
         case WorkspacePanelItem::kRenderHeight:
             return "render_height";
         case WorkspacePanelItem::kDebugMemory:
@@ -96,9 +100,11 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             };
         case WorkspaceTool::kRender:
             return {
-                {WorkspacePanelItem::kRenderOverview, true, true},
-                {WorkspacePanelItem::kRenderWire, false, false},
-                {WorkspacePanelItem::kRenderHeight, false, false},
+                {WorkspacePanelItem::kRenderOverview, workspace.show_3d_preview && workspace.chunk_meshes.IsValid(), workspace.show_3d_preview},
+                {WorkspacePanelItem::kRenderChunkBounds, workspace.show_3d_preview && workspace.chunk_grid.IsValid(), workspace.show_3d_chunk_bounds},
+                {WorkspacePanelItem::kRenderWorldGrid, workspace.show_3d_preview && workspace.chunk_meshes.IsValid(), workspace.show_3d_world_grid},
+                {WorkspacePanelItem::kRenderCollision, workspace.show_3d_preview && workspace.runtime_map.info.collision_loaded, workspace.show_3d_collision_overlay},
+                {WorkspacePanelItem::kRenderHeight, workspace.show_3d_preview && workspace.runtime_map.info.elevation_loaded, workspace.show_3d_height_overlay},
             };
         case WorkspaceTool::kDebug:
             return {

@@ -41,7 +41,9 @@ enum class WorkspacePanelItem {
     kLayerCollision,
     kLayerGrid,
     kRenderOverview,
-    kRenderWire,
+    kRenderChunkBounds,
+    kRenderWorldGrid,
+    kRenderCollision,
     kRenderHeight,
     kDebugMemory,
     kDebugFps,
@@ -69,6 +71,10 @@ struct WorkspaceState {
     bool show_collision_layer = false;
     bool show_grid_layer = false;
     bool show_3d_preview = false;
+    bool show_3d_chunk_bounds = false;
+    bool show_3d_world_grid = false;
+    bool show_3d_collision_overlay = false;
+    bool show_3d_height_overlay = false;
     MapPackageInfo map;
     RuntimeMap runtime_map;
     ChunkGrid chunk_grid;

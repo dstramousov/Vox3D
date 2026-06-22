@@ -74,6 +74,13 @@ namespace {
     return result;
 }
 
+void ToggleOverlayFlag(bool& flag, std::string_view name, Logger& logger, bool& layout_dirty)
+{
+    flag = !flag;
+    layout_dirty = true;
+    logger.Info("render3d", std::string(name) + "=" + (flag ? "on" : "off"));
+}
+
 [[nodiscard]] int RaylibTraceLogLevel(std::string_view value)
 {
     const std::string normalized = Lowercase(value);
@@ -375,6 +382,18 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_F)) {
             preview_camera_.FitToMap(workspace_.chunk_meshes);
             logger_.Info("camera3d", "fit map " + ToLogString(preview_camera_.Status()));
+        }
+        if (IsKeyPressed(KEY_F4)) {
+            ToggleOverlayFlag(workspace_.show_3d_chunk_bounds, "chunk_bounds", logger_, layout_dirty_);
+        }
+        if (IsKeyPressed(KEY_F5)) {
+            ToggleOverlayFlag(workspace_.show_3d_world_grid, "world_grid", logger_, layout_dirty_);
+        }
+        if (IsKeyPressed(KEY_F6)) {
+            ToggleOverlayFlag(workspace_.show_3d_collision_overlay, "collision_overlay", logger_, layout_dirty_);
+        }
+        if (IsKeyPressed(KEY_F7)) {
+            ToggleOverlayFlag(workspace_.show_3d_height_overlay, "height_overlay", logger_, layout_dirty_);
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
@@ -753,12 +772,22 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             preview_camera_.ResetView();
             logger_.Info("camera3d", "reset view " + ToLogString(preview_camera_.Status()));
             break;
+        case WorkspacePanelItem::kRenderChunkBounds:
+            workspace_.show_3d_chunk_bounds = !workspace_.show_3d_chunk_bounds;
+            break;
+        case WorkspacePanelItem::kRenderWorldGrid:
+            workspace_.show_3d_world_grid = !workspace_.show_3d_world_grid;
+            break;
+        case WorkspacePanelItem::kRenderCollision:
+            workspace_.show_3d_collision_overlay = !workspace_.show_3d_collision_overlay;
+            break;
+        case WorkspacePanelItem::kRenderHeight:
+            workspace_.show_3d_height_overlay = !workspace_.show_3d_height_overlay;
+            break;
         case WorkspacePanelItem::kMapOverview:
         case WorkspacePanelItem::kMapPackage:
         case WorkspacePanelItem::kMapValidate:
         case WorkspacePanelItem::kRenderOverview:
-        case WorkspacePanelItem::kRenderWire:
-        case WorkspacePanelItem::kRenderHeight:
         case WorkspacePanelItem::kDebugMemory:
         case WorkspacePanelItem::kDebugFps:
         case WorkspacePanelItem::kDebugLogs:

@@ -178,6 +178,146 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     return LoadModelFromMesh(mesh);
 }
 
+
+[[nodiscard]] Vector3 TileCenterWorld(int tile_x, int tile_y, float level, int map_width, int map_height)
+{
+    return Vector3{
+        static_cast<float>(tile_x) + 0.5F - static_cast<float>(map_width) * 0.5F,
+        level,
+        static_cast<float>(map_height) * 0.5F - static_cast<float>(tile_y) - 0.5F,
+    };
+}
+
+[[nodiscard]] Vector3 TileCornerWorld(float tile_x, float tile_y, float level, int map_width, int map_height)
+{
+    return Vector3{
+        tile_x - static_cast<float>(map_width) * 0.5F,
+        level,
+        static_cast<float>(map_height) * 0.5F - tile_y,
+    };
+}
+
+[[nodiscard]] float OverlayBaseLevel(const ChunkMeshBuildResult& build_result)
+{
+    if (!build_result.info.levels.has_value()) {
+        return 0.0F;
+    }
+    return static_cast<float>(build_result.info.levels->min);
+}
+
+void DrawChunkBoundsOverlay(const ChunkGrid& chunks, int map_width, int map_height)
+{
+    constexpr Color kChunkColor{255, 214, 92, 210};
+    for (const ChunkInfo& chunk : chunks.chunks) {
+        if (!chunk.bounds.IsValid()) {
+            continue;
+        }
+        const float level = chunk.levels.has_value() ? static_cast<float>(chunk.levels->max + 1) : 0.08F;
+        const Vector3 nw = TileCornerWorld(static_cast<float>(chunk.bounds.min_x), static_cast<float>(chunk.bounds.min_y), level, map_width, map_height);
+        const Vector3 ne = TileCornerWorld(static_cast<float>(chunk.bounds.max_x), static_cast<float>(chunk.bounds.min_y), level, map_width, map_height);
+        const Vector3 se = TileCornerWorld(static_cast<float>(chunk.bounds.max_x), static_cast<float>(chunk.bounds.max_y), level, map_width, map_height);
+        const Vector3 sw = TileCornerWorld(static_cast<float>(chunk.bounds.min_x), static_cast<float>(chunk.bounds.max_y), level, map_width, map_height);
+        DrawLine3D(nw, ne, kChunkColor);
+        DrawLine3D(ne, se, kChunkColor);
+        DrawLine3D(se, sw, kChunkColor);
+        DrawLine3D(sw, nw, kChunkColor);
+    }
+}
+
+void DrawWorldGridOverlay(const ChunkMeshBuildResult& build_result)
+{
+    const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
+    const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
+    const float level = OverlayBaseLevel(build_result) - 0.02F;
+    const int step = std::max(4, build_result.info.chunk_size_x > 0 ? build_result.info.chunk_size_x : 16);
+    constexpr Color kGridColor{190, 210, 220, 90};
+
+    for (int x = 0; x <= build_result.info.map_width; x += step) {
+        const Vector3 a = TileCornerWorld(static_cast<float>(x), 0.0F, level, build_result.info.map_width, build_result.info.map_height);
+        const Vector3 b = TileCornerWorld(static_cast<float>(x), map_height, level, build_result.info.map_width, build_result.info.map_height);
+        DrawLine3D(a, b, kGridColor);
+    }
+    for (int y = 0; y <= build_result.info.map_height; y += step) {
+        const Vector3 a = TileCornerWorld(0.0F, static_cast<float>(y), level, build_result.info.map_width, build_result.info.map_height);
+        const Vector3 b = TileCornerWorld(map_width, static_cast<float>(y), level, build_result.info.map_width, build_result.info.map_height);
+        DrawLine3D(a, b, kGridColor);
+    }
+}
+
+void DrawCollisionOverlay(const RuntimeMap& map)
+{
+    if (!map.collision.IsValid() || !map.height.IsValid()) {
+        return;
+    }
+
+    constexpr Color kCollisionColor{240, 72, 72, 155};
+    constexpr Vector3 kSize{0.78F, 0.08F, 0.78F};
+    for (int y = 0; y < map.info.height; ++y) {
+        for (int x = 0; x < map.info.width; ++x) {
+            const auto index = static_cast<std::size_t>(y) * static_cast<std::size_t>(map.info.width) + static_cast<std::size_t>(x);
+            if (map.collision.cells[index] == 0U) {
+                continue;
+            }
+            const float level = static_cast<float>(map.height.cells[index] + 1) + 0.08F;
+            DrawCubeV(TileCenterWorld(x, y, level, map.info.width, map.info.height), kSize, kCollisionColor);
+        }
+    }
+}
+
+[[nodiscard]] Color HeightColor(int level, LevelRange range)
+{
+    const int span = std::max(1, range.max - range.min);
+    const float t = std::clamp(static_cast<float>(level - range.min) / static_cast<float>(span), 0.0F, 1.0F);
+    return Color{
+        static_cast<unsigned char>(80.0F + 175.0F * t),
+        static_cast<unsigned char>(170.0F - 80.0F * t),
+        static_cast<unsigned char>(255.0F - 175.0F * t),
+        220,
+    };
+}
+
+void DrawHeightOverlay(const RuntimeMap& map)
+{
+    if (!map.height.IsValid() || !map.info.levels.has_value()) {
+        return;
+    }
+
+    const int sample_step = std::max(1, std::max(map.info.width, map.info.height) / 96);
+    const LevelRange levels = *map.info.levels;
+    for (int y = 0; y < map.info.height; y += sample_step) {
+        for (int x = 0; x < map.info.width; x += sample_step) {
+            const auto index = static_cast<std::size_t>(y) * static_cast<std::size_t>(map.info.width) + static_cast<std::size_t>(x);
+            const int level = map.height.cells[index];
+            const Vector3 a = TileCenterWorld(x, y, static_cast<float>(level + 1) + 0.05F, map.info.width, map.info.height);
+            const Vector3 b = TileCenterWorld(x, y, static_cast<float>(level + 1) + 0.85F, map.info.width, map.info.height);
+            DrawLine3D(a, b, HeightColor(level, levels));
+        }
+    }
+}
+
+void DrawDebugOverlays(
+    const ChunkMeshBuildResult& build_result,
+    const RuntimeMap* runtime_map,
+    const ChunkGrid* chunk_grid,
+    RaylibChunkMeshDebugOverlayOptions overlays)
+{
+    if (overlays.show_world_grid) {
+        DrawWorldGridOverlay(build_result);
+    }
+    if (overlays.show_chunk_bounds && chunk_grid != nullptr && chunk_grid->IsValid()) {
+        DrawChunkBoundsOverlay(*chunk_grid, build_result.info.map_width, build_result.info.map_height);
+    }
+    if (runtime_map == nullptr || !runtime_map->IsValid()) {
+        return;
+    }
+    if (overlays.show_collision) {
+        DrawCollisionOverlay(*runtime_map);
+    }
+    if (overlays.show_height) {
+        DrawHeightOverlay(*runtime_map);
+    }
+}
+
 }  // namespace
 
 bool RaylibChunkMeshPreviewStats::IsValid() const
@@ -225,7 +365,13 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result)
     return stats_.uploaded;
 }
 
-void RaylibChunkMeshPreview::Draw(Rectangle viewport, const ChunkMeshBuildResult& build_result, const Camera3D& camera) const
+void RaylibChunkMeshPreview::Draw(
+    Rectangle viewport,
+    const ChunkMeshBuildResult& build_result,
+    const Camera3D& camera,
+    const RuntimeMap* runtime_map,
+    const ChunkGrid* chunk_grid,
+    RaylibChunkMeshDebugOverlayOptions overlays) const
 {
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
@@ -245,9 +391,7 @@ void RaylibChunkMeshPreview::Draw(Rectangle viewport, const ChunkMeshBuildResult
         DrawModel(model, kOrigin, kScale, kTint);
     }
 
-    const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
-    const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
-    DrawGrid(static_cast<int>(std::max(map_width, map_height) / 8.0F), 8.0F);
+    DrawDebugOverlays(build_result, runtime_map, chunk_grid, overlays);
 
     EndMode3D();
     EndScissorMode();
