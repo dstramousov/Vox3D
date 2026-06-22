@@ -133,3 +133,9 @@
 - Added the first raylib-backed 3D preview path as a separate `vox3d_raylib` layer on top of renderer-independent chunk mesh data.
 - Uploaded non-empty chunk meshes into per-chunk raylib models, preserving `vox3d_core` as renderer-independent logic.
 - Added F3 and workspace View panel switching between the existing 2D map overview and the new 3D mesh preview.
+
+## v0.3.2 -> v0.3.3
+
+- Added a raylib free-fly 3D preview camera with WASD movement, Q/E vertical movement, Shift/Ctrl speed modifiers, RMB mouse look, velocity smoothing, reset, and fit-to-map controls.
+- Wired the workspace View panel and footer hints to the new 3D camera controls while keeping `vox3d_core` renderer-independent.
+- Fixed the workspace info panel to report loaded runtime terrain/elevation/collision data instead of layer visibility toggles.

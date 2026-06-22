@@ -803,6 +803,7 @@ void DrawPlaceholderScreen(
 void DrawWorkspace(
     const WorkspaceState& workspace_state,
     const RaylibChunkMeshPreview* mesh_preview,
+    const Camera3D* preview_camera,
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout)
@@ -867,9 +868,9 @@ void DrawWorkspace(
         labels.workspace_size_label + ": " + MapSizeText(workspace_state.map, labels),
         labels.workspace_tile_label + ": " + MapTileText(workspace_state.map, labels),
         labels.workspace_levels_label + ": " + MapLevelsText(workspace_state.map, labels),
-        labels.workspace_terrain_label + ": " + BoolText(workspace_state.show_terrain_layer, labels),
-        labels.workspace_elevation_label + ": " + BoolText(workspace_state.show_elevation_layer, labels),
-        labels.workspace_collision_label + ": " + BoolText(workspace_state.show_collision_layer, labels),
+        labels.workspace_terrain_label + ": " + BoolText(workspace_state.runtime_map.info.terrain_loaded, labels),
+        labels.workspace_elevation_label + ": " + BoolText(workspace_state.runtime_map.info.elevation_loaded, labels),
+        labels.workspace_collision_label + ": " + BoolText(workspace_state.runtime_map.info.collision_loaded, labels),
     };
     float info_y = workspace.tool_info.y;
     for (const auto& line : tool_info_lines) {
@@ -880,9 +881,9 @@ void DrawWorkspace(
         info_y += compact_size + metrics.workspace_tool_gap * 0.4F;
     }
 
-    if (workspace_state.show_3d_preview && mesh_preview != nullptr && mesh_preview->IsUploaded()) {
+    if (workspace_state.show_3d_preview && mesh_preview != nullptr && preview_camera != nullptr && mesh_preview->IsUploaded()) {
         DrawRectangleRec(workspace.map_overview, Color{18, 22, 24, 255});
-        mesh_preview->Draw(workspace.map_overview, workspace_state.chunk_meshes);
+        mesh_preview->Draw(workspace.map_overview, workspace_state.chunk_meshes, *preview_camera);
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {
         DrawWorkspaceOverview(workspace_state, workspace, metrics);
@@ -900,8 +901,11 @@ void DrawWorkspace(
     }
 
     const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
+    const std::string controls = workspace_state.show_3d_preview
+        ? " | RMB look | WASD | Q/E | Shift/Ctrl | R reset | F fit | F3 | "
+        : " | F3 2D/3D | ";
     const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | view="
-        + preview_mode + " | F3 2D/3D | " + labels.workspace_status_escape_hint;
+        + preview_mode + controls + labels.workspace_status_escape_hint;
     DrawTextEx(
         fonts.text,
         status.c_str(),

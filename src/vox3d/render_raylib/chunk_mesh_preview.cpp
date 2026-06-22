@@ -178,24 +178,6 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     return LoadModelFromMesh(mesh);
 }
 
-[[nodiscard]] Camera3D BuildCamera(const ChunkMeshBuildResult& build_result)
-{
-    const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
-    const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
-    const float span = std::max(map_width, map_height);
-    const float min_level = build_result.info.levels.has_value() ? static_cast<float>(build_result.info.levels->min) : 0.0F;
-    const float max_level = build_result.info.levels.has_value() ? static_cast<float>(build_result.info.levels->max) : 12.0F;
-    const float target_y = (min_level + max_level) * 0.40F;
-
-    Camera3D camera{};
-    camera.position = Vector3{span * 0.56F, span * 0.72F + std::max(18.0F, max_level), span * 0.70F};
-    camera.target = Vector3{0.0F, target_y, 0.0F};
-    camera.up = Vector3{0.0F, 1.0F, 0.0F};
-    camera.fovy = 45.0F;
-    camera.projection = CAMERA_PERSPECTIVE;
-    return camera;
-}
-
 }  // namespace
 
 bool RaylibChunkMeshPreviewStats::IsValid() const
@@ -243,7 +225,7 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result)
     return stats_.uploaded;
 }
 
-void RaylibChunkMeshPreview::Draw(Rectangle viewport, const ChunkMeshBuildResult& build_result) const
+void RaylibChunkMeshPreview::Draw(Rectangle viewport, const ChunkMeshBuildResult& build_result, const Camera3D& camera) const
 {
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
@@ -254,7 +236,7 @@ void RaylibChunkMeshPreview::Draw(Rectangle viewport, const ChunkMeshBuildResult
         static_cast<int>(viewport.y),
         static_cast<int>(viewport.width),
         static_cast<int>(viewport.height));
-    BeginMode3D(BuildCamera(build_result));
+    BeginMode3D(camera);
 
     constexpr Vector3 kOrigin{0.0F, 0.0F, 0.0F};
     constexpr float kScale = 1.0F;

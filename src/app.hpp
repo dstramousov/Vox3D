@@ -6,6 +6,7 @@
 #include "menu.hpp"
 #include "process_metrics.hpp"
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
+#include "vox3d/render_raylib/free_fly_camera.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
 #include "ui_layout.hpp"
@@ -65,9 +66,9 @@ public:
 private:
     void HandleInput(float dt);
     void HandleMainMenuInput();
-    void HandleScreenInput();
+    void HandleScreenInput(float dt);
     void HandlePlaceholderInput();
-    void HandleWorkspaceInput();
+    void HandleWorkspaceInput(float dt);
     void HandleDialogInput();
     void Update(float dt);
     void Draw();
@@ -100,6 +101,7 @@ private:
     PlaceholderAction placeholder_selected_action_ = PlaceholderAction::kMainMenu;
     WorkspaceState workspace_;
     RaylibChunkMeshPreview chunk_mesh_preview_;
+    FreeFlyCameraController preview_camera_;
     std::string hovered_item_ = "none";
     UiLayoutCache layout_cache_{};
     bool layout_dirty_ = true;

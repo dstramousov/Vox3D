@@ -48,6 +48,7 @@ void DrawPlaceholderScreen(
  *
  * @param workspace Workspace state to draw.
  * @param mesh_preview Optional uploaded 3D mesh preview renderer.
+ * @param preview_camera Optional camera used by the 3D preview renderer.
  * @param fonts Fonts used for workspace text.
  * @param labels Localized labels used for workspace controls.
  * @param layout Cached UI layout.
@@ -55,6 +56,7 @@ void DrawPlaceholderScreen(
 void DrawWorkspace(
     const WorkspaceState& workspace,
     const RaylibChunkMeshPreview* mesh_preview,
+    const Camera3D* preview_camera,
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout);

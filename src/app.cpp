@@ -195,7 +195,10 @@ bool App::Initialize()
     }
     const bool preview_uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes);
     logger_.Info("render3d", ToLogString(chunk_mesh_preview_.Stats()));
-    if (!preview_uploaded) {
+    if (preview_uploaded) {
+        preview_camera_.FitToMap(workspace_.chunk_meshes);
+        logger_.Info("camera3d", ToLogString(preview_camera_.Status()));
+    } else {
         logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");
     }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
@@ -251,6 +254,7 @@ int App::Run()
 
 void App::Shutdown()
 {
+    preview_camera_.ReleaseMouse();
     UnloadPreviewResources();
     UnloadUiFonts();
     if (window_initialized_) {
@@ -261,7 +265,6 @@ void App::Shutdown()
 
 void App::HandleInput(float dt)
 {
-    (void)dt;
     hovered_item_ = labels_.debug_none;
 
     if (dialog_.type != ModalDialog::kNone) {
@@ -278,7 +281,7 @@ void App::HandleInput(float dt)
         return;
     }
 
-    HandleScreenInput();
+    HandleScreenInput(dt);
 }
 
 void App::HandleMainMenuInput()
@@ -326,10 +329,10 @@ void App::HandleMainMenuInput()
     }
 }
 
-void App::HandleScreenInput()
+void App::HandleScreenInput(float dt)
 {
     if (screen_ == AppScreen::kWorkspace) {
-        HandleWorkspaceInput();
+        HandleWorkspaceInput(dt);
         return;
     }
     if (screen_ == AppScreen::kSettingsPlaceholder) {
@@ -337,8 +340,14 @@ void App::HandleScreenInput()
     }
 }
 
-void App::HandleWorkspaceInput()
+void App::HandleWorkspaceInput(float dt)
 {
+    if (workspace_.show_3d_preview && preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_ESCAPE)) {
+        preview_camera_.ReleaseMouse();
+        logger_.Debug("camera3d", "mouse capture released by escape");
+        return;
+    }
+
     if (IsKeyPressed(KEY_ESCAPE)) {
         RequestExitConfirmation();
         return;
@@ -346,15 +355,46 @@ void App::HandleWorkspaceInput()
 
     if (IsKeyPressed(KEY_F3) && chunk_mesh_preview_.IsUploaded()) {
         workspace_.show_3d_preview = !workspace_.show_3d_preview;
+        if (!workspace_.show_3d_preview) {
+            preview_camera_.ReleaseMouse();
+        }
         layout_dirty_ = true;
         logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "2d"));
     }
 
-    if (IsKeyPressedAny({KEY_UP, KEY_W, KEY_LEFT, KEY_A})) {
-        SelectPreviousWorkspaceTool();
+    if (layout_dirty_) {
+        RebuildLayout();
     }
-    if (IsKeyPressedAny({KEY_DOWN, KEY_S, KEY_RIGHT, KEY_D, KEY_TAB})) {
-        SelectNextWorkspaceTool();
+
+    const bool camera_mode = workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded() && preview_camera_.IsInitialized();
+    if (camera_mode) {
+        if (IsKeyPressed(KEY_R)) {
+            preview_camera_.ResetView();
+            logger_.Info("camera3d", "reset view " + ToLogString(preview_camera_.Status()));
+        }
+        if (IsKeyPressed(KEY_F)) {
+            preview_camera_.FitToMap(workspace_.chunk_meshes);
+            logger_.Info("camera3d", "fit map " + ToLogString(preview_camera_.Status()));
+        }
+        preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
+    } else {
+        preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
+    }
+
+    if (camera_mode) {
+        if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_LEFT)) {
+            SelectPreviousWorkspaceTool();
+        }
+        if (IsKeyPressedAny({KEY_DOWN, KEY_RIGHT, KEY_TAB})) {
+            SelectNextWorkspaceTool();
+        }
+    } else {
+        if (IsKeyPressedAny({KEY_UP, KEY_W, KEY_LEFT, KEY_A})) {
+            SelectPreviousWorkspaceTool();
+        }
+        if (IsKeyPressedAny({KEY_DOWN, KEY_S, KEY_RIGHT, KEY_D, KEY_TAB})) {
+            SelectNextWorkspaceTool();
+        }
     }
     if (IsKeyPressed(KEY_ENTER)) {
         ToggleWorkspaceTool(workspace_.selected_tool);
@@ -523,7 +563,7 @@ void App::Draw()
             DrawMainMenu(main_menu_.State(), UiFonts(), labels_, layout_cache_);
             break;
         case AppScreen::kWorkspace:
-            DrawWorkspace(workspace_, &chunk_mesh_preview_, UiFonts(), labels_, layout_cache_);
+            DrawWorkspace(workspace_, &chunk_mesh_preview_, &preview_camera_.Camera(), UiFonts(), labels_, layout_cache_);
             break;
         case AppScreen::kSettingsPlaceholder:
             DrawPlaceholderScreen(labels_.placeholder_settings_title, placeholder_selected_action_, UiFonts(), labels_, layout_cache_);
@@ -698,17 +738,24 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::kView2DMap:
             workspace_.show_3d_preview = false;
+            preview_camera_.ReleaseMouse();
             logger_.Info("workspace", "preview mode=2d");
             break;
         case WorkspacePanelItem::kView3DPreview:
             workspace_.show_3d_preview = chunk_mesh_preview_.IsUploaded();
             logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "2d_unavailable"));
             break;
+        case WorkspacePanelItem::kViewFitMap:
+            preview_camera_.FitToMap(workspace_.chunk_meshes);
+            logger_.Info("camera3d", "fit map " + ToLogString(preview_camera_.Status()));
+            break;
+        case WorkspacePanelItem::kViewResetView:
+            preview_camera_.ResetView();
+            logger_.Info("camera3d", "reset view " + ToLogString(preview_camera_.Status()));
+            break;
         case WorkspacePanelItem::kMapOverview:
         case WorkspacePanelItem::kMapPackage:
         case WorkspacePanelItem::kMapValidate:
-        case WorkspacePanelItem::kViewFitMap:
-        case WorkspacePanelItem::kViewResetView:
         case WorkspacePanelItem::kRenderOverview:
         case WorkspacePanelItem::kRenderWire:
         case WorkspacePanelItem::kRenderHeight:
@@ -740,6 +787,7 @@ void App::RequestExitConfirmation(bool from_window_close)
     if (dialog_.type == ModalDialog::kExitConfirmation) {
         return;
     }
+    preview_camera_.ReleaseMouse();
     exit_requested_from_window_ = from_window_close;
     dialog_.type = ModalDialog::kExitConfirmation;
     dialog_.selected_choice = DialogChoice::kNo;

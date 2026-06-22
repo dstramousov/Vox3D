@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VoX3D VERSION 0.3.2 LANGUAGES CXX)
+project(VoX3D VERSION 0.3.3 LANGUAGES CXX)
 
 option(VOX3D_FETCH_RAYLIB "Fetch raylib with CMake FetchContent when no system package is found" ON)
 set(VOX3D_DEPS_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "Persistent dependency cache directory")
@@ -72,6 +72,7 @@ endif()
 
 add_library(vox3d_raylib STATIC
     src/vox3d/render_raylib/chunk_mesh_preview.cpp
+    src/vox3d/render_raylib/free_fly_camera.cpp
 )
 
 target_compile_features(vox3d_raylib PUBLIC cxx_std_20)

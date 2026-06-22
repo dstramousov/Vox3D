@@ -66,8 +66,9 @@ public:
      *
      * @param viewport Screen-space viewport rectangle.
      * @param build_result Original mesh build summary used for map dimensions.
+     * @param camera Camera used for the 3D preview draw pass.
      */
-    void Draw(Rectangle viewport, const ChunkMeshBuildResult& build_result) const;
+    void Draw(Rectangle viewport, const ChunkMeshBuildResult& build_result, const Camera3D& camera) const;
 
     /**
      * @brief Releases uploaded raylib Model resources.
