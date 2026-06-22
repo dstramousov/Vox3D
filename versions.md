@@ -121,3 +121,9 @@
 - Added voxel face-visibility analysis in `vox3d_core`, counting visible and culled faces without creating renderer resources.
 - Added per-direction visible face counters, cull-ratio diagnostics, and compact face-visibility logging.
 - Wired editor startup to build and log face-visibility statistics while keeping 3D rendering, mesh buffers, greedy meshing, and block destruction unchanged.
+
+## v0.3.0 -> v0.3.1
+
+- Added renderer-independent per-chunk mesh data generation in `vox3d_core`, emitting visible voxel faces as indexed quads without creating raylib resources.
+- Added chunk mesh summaries for generated faces, vertices, indices, non-empty chunks, and validation diagnostics.
+- Wired editor startup to build and log chunk mesh data while keeping 3D rendering, camera controls, greedy meshing, and dirty-chunk rebuilds unchanged.

@@ -4,6 +4,7 @@
 #include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
+#include "vox3d/mesh/chunk_mesh_builder.hpp"
 #include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
@@ -186,6 +187,11 @@ bool App::Initialize()
     logger_.Info("face_visibility", ToLogString(workspace_.face_visibility));
     for (const auto& warning : workspace_.face_visibility.diagnostics.warnings) {
         logger_.Warn("face_visibility", warning);
+    }
+    workspace_.chunk_meshes = BuildChunkMeshes(workspace_.voxel_world, workspace_.chunk_grid);
+    logger_.Info("chunk_mesh", ToLogString(workspace_.chunk_meshes));
+    for (const auto& warning : workspace_.chunk_meshes.diagnostics.warnings) {
+        logger_.Warn("chunk_mesh", warning);
     }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
