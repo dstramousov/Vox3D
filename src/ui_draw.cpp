@@ -856,10 +856,11 @@ void DrawWorkspace(const WorkspaceState& workspace_state, const UiFontSet& fonts
     const float compact_size = std::max(10.0F, metrics.workspace_status_font_size - 1.0F);
     const float compact_spacing = FontSpacing(compact_size);
     const float info_bottom = workspace.tool_info.y + workspace.tool_info.height;
-    const std::array<std::string, 7> tool_info_lines{
+    const std::array<std::string, 8> tool_info_lines{
         labels.workspace_status_ready + ": " + MapStatusLabel(workspace_state.map, labels),
         labels.workspace_map_label + ": " + (workspace_state.map.configured ? workspace_state.map.path.filename().string() : labels.debug_none),
         labels.workspace_size_label + ": " + MapSizeText(workspace_state.map, labels),
+        labels.workspace_tile_label + ": " + MapTileText(workspace_state.map, labels),
         labels.workspace_levels_label + ": " + MapLevelsText(workspace_state.map, labels),
         labels.workspace_terrain_label + ": " + BoolText(workspace_state.show_terrain_layer, labels),
         labels.workspace_elevation_label + ": " + BoolText(workspace_state.show_elevation_layer, labels),

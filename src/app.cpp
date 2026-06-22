@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include "ui_draw.hpp"
+#include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
 
@@ -168,6 +169,11 @@ bool App::Initialize()
     logger_.Info("runtime_map", ToLogString(workspace_.runtime_map));
     for (const auto& warning : workspace_.runtime_map.diagnostics.warnings) {
         logger_.Warn("runtime_map", warning);
+    }
+    workspace_.chunk_grid = BuildChunkGrid(workspace_.runtime_map);
+    logger_.Info("chunk_grid", ToLogString(workspace_.chunk_grid));
+    for (const auto& warning : workspace_.chunk_grid.diagnostics.warnings) {
+        logger_.Warn("chunk_grid", warning);
     }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 

@@ -102,3 +102,10 @@
 - Expanded `RuntimeMap` into a real editor-independent data layer with dense terrain, collision, and height grids.
 - Added runtime map validation, start/goal extraction, blocked-cell counts, and height-range calculation from loaded grid data.
 - Wired the editor startup to build and log the new runtime map while keeping UI and renderer behavior unchanged.
+
+## v0.2.7 -> v0.2.8
+
+- Added the first `ChunkGrid` foundation in `vox3d_core`, splitting runtime maps into fixed tile chunks.
+- Added per-chunk bounds, blocked-cell counts, height ranges, dirty flags, validation, and compact chunk-grid logging.
+- Wired editor startup to build and log the chunk grid while keeping 3D, voxel meshes, and rendering behavior unchanged.
+- Fixed the unused `MapTileText` warning by showing tile size in the workspace info panel.

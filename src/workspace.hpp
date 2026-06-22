@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
 
@@ -66,6 +67,7 @@ struct WorkspaceState {
     bool show_grid_layer = false;
     MapPackageInfo map;
     RuntimeMap runtime_map;
+    ChunkGrid chunk_grid;
 };
 
 /**
