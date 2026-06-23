@@ -779,6 +779,8 @@ void App::RefreshMeshOptimizationStats()
     }
     if (workspace_.terrain_chunk_meshes.IsValid()) {
         workspace_.mesh_stats.terrain_faces = workspace_.terrain_chunk_meshes.info.visible_faces;
+        workspace_.mesh_stats.terrain_raw_top_faces = workspace_.terrain_chunk_meshes.info.terrain_raw_top_faces;
+        workspace_.mesh_stats.terrain_raw_wall_faces = workspace_.terrain_chunk_meshes.info.terrain_raw_wall_faces;
         workspace_.mesh_stats.terrain_top_faces = workspace_.terrain_chunk_meshes.info.terrain_top_faces;
         workspace_.mesh_stats.terrain_wall_faces = workspace_.terrain_chunk_meshes.info.terrain_wall_faces;
     }

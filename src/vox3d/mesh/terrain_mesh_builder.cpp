@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 #include <sstream>
+#include <vector>
 
 namespace vox3d {
 namespace {
@@ -14,6 +15,36 @@ struct TerrainEdge {
     FaceDirection direction = FaceDirection::kWest;
     int dx = 0;
     int dy = 0;
+};
+
+struct TopMaskCell {
+    bool visible = false;
+    int height = 0;
+    BlockTypeId block_type = BlockTypeId::kEmpty;
+};
+
+struct TopSpan {
+    TileCoord tile;
+    int width = 1;
+    int height_tiles = 1;
+    int level = 0;
+    BlockTypeId block_type = BlockTypeId::kEmpty;
+};
+
+struct WallCell {
+    bool visible = false;
+    int bottom_level = 0;
+    int top_level = 0;
+    BlockTypeId block_type = BlockTypeId::kEmpty;
+};
+
+struct WallSpan {
+    TileCoord tile;
+    int length = 1;
+    int bottom_level = 0;
+    int top_level = 0;
+    FaceDirection direction = FaceDirection::kWest;
+    BlockTypeId block_type = BlockTypeId::kEmpty;
 };
 
 constexpr std::array<TerrainEdge, 4> kTerrainEdges{{
@@ -32,6 +63,11 @@ constexpr std::array<TerrainEdge, 4> kTerrainEdges{{
 }
 
 [[nodiscard]] std::size_t GridIndex(int x, int y, int width)
+{
+    return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
+}
+
+[[nodiscard]] std::size_t MaskIndex(int x, int y, int width)
 {
     return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
 }
@@ -58,6 +94,17 @@ constexpr std::array<TerrainEdge, 4> kTerrainEdges{{
 [[nodiscard]] int TileHeight(const RuntimeMap& map, TileCoord tile)
 {
     return map.height.cells[GridIndex(tile.x, tile.y, map.info.width)];
+}
+
+[[nodiscard]] bool SameTopMaskType(const TopMaskCell& a, const TopMaskCell& b)
+{
+    return a.visible && b.visible && a.height == b.height && a.block_type == b.block_type;
+}
+
+[[nodiscard]] bool SameWallMaskType(const WallCell& a, const WallCell& b)
+{
+    return a.visible && b.visible && a.bottom_level == b.bottom_level && a.top_level == b.top_level
+        && a.block_type == b.block_type;
 }
 
 void EmitQuad(
@@ -90,36 +137,42 @@ void EmitQuad(
     mesh.indices.push_back(first_vertex + 3U);
 }
 
-[[nodiscard]] std::array<MeshPosition, 4> TopCorners(int x, int y, float top_z)
+[[nodiscard]] std::array<MeshPosition, 4> TopSpanCorners(const TopSpan& span)
 {
-    const float x0 = static_cast<float>(x);
-    const float x1 = static_cast<float>(x + 1);
-    const float y0 = static_cast<float>(y);
-    const float y1 = static_cast<float>(y + 1);
-    return {{{x0, y0, top_z}, {x1, y0, top_z}, {x1, y1, top_z}, {x0, y1, top_z}}};
+    const float x0 = static_cast<float>(span.tile.x);
+    const float x1 = static_cast<float>(span.tile.x + span.width);
+    const float y0 = static_cast<float>(span.tile.y);
+    const float y1 = static_cast<float>(span.tile.y + span.height_tiles);
+    const float z = static_cast<float>(span.level + 1);
+    return {{{x0, y0, z}, {x1, y0, z}, {x1, y1, z}, {x0, y1, z}}};
 }
 
-[[nodiscard]] std::array<MeshPosition, 4> WallCorners(
-    int x,
-    int y,
-    float bottom_z,
-    float top_z,
-    FaceDirection direction)
+[[nodiscard]] std::array<MeshPosition, 4> WallSpanCorners(const WallSpan& span)
 {
-    const float x0 = static_cast<float>(x);
-    const float x1 = static_cast<float>(x + 1);
-    const float y0 = static_cast<float>(y);
-    const float y1 = static_cast<float>(y + 1);
+    const float x0 = static_cast<float>(span.tile.x);
+    const float x1 = static_cast<float>(span.tile.x + 1);
+    const float y0 = static_cast<float>(span.tile.y);
+    const float y1 = static_cast<float>(span.tile.y + 1);
+    const float bottom_z = static_cast<float>(span.bottom_level + 1);
+    const float top_z = static_cast<float>(span.top_level + 1);
 
-    switch (direction) {
-        case FaceDirection::kWest:
-            return {{{x0, y0, bottom_z}, {x0, y0, top_z}, {x0, y1, top_z}, {x0, y1, bottom_z}}};
-        case FaceDirection::kEast:
-            return {{{x1, y1, bottom_z}, {x1, y1, top_z}, {x1, y0, top_z}, {x1, y0, bottom_z}}};
-        case FaceDirection::kNorth:
-            return {{{x1, y0, bottom_z}, {x1, y0, top_z}, {x0, y0, top_z}, {x0, y0, bottom_z}}};
-        case FaceDirection::kSouth:
-            return {{{x0, y1, bottom_z}, {x0, y1, top_z}, {x1, y1, top_z}, {x1, y1, bottom_z}}};
+    switch (span.direction) {
+        case FaceDirection::kWest: {
+            const float y_end = y0 + static_cast<float>(span.length);
+            return {{{x0, y0, bottom_z}, {x0, y0, top_z}, {x0, y_end, top_z}, {x0, y_end, bottom_z}}};
+        }
+        case FaceDirection::kEast: {
+            const float y_end = y0 + static_cast<float>(span.length);
+            return {{{x1, y_end, bottom_z}, {x1, y_end, top_z}, {x1, y0, top_z}, {x1, y0, bottom_z}}};
+        }
+        case FaceDirection::kNorth: {
+            const float x_end = x0 + static_cast<float>(span.length);
+            return {{{x_end, y0, bottom_z}, {x_end, y0, top_z}, {x0, y0, top_z}, {x0, y0, bottom_z}}};
+        }
+        case FaceDirection::kSouth: {
+            const float x_end = x0 + static_cast<float>(span.length);
+            return {{{x0, y1, bottom_z}, {x0, y1, top_z}, {x_end, y1, top_z}, {x_end, y1, bottom_z}}};
+        }
         case FaceDirection::kDown:
         case FaceDirection::kUp:
             break;
@@ -127,56 +180,35 @@ void EmitQuad(
     return {{{x0, y0, bottom_z}, {x0, y0, top_z}, {x0, y1, top_z}, {x0, y1, bottom_z}}};
 }
 
-void EmitTopSurface(
-    const RuntimeMap& map,
-    TileCoord tile,
-    ChunkMeshData& mesh,
-    ChunkMeshBuildInfo& info,
-    Diagnostics& diagnostics)
+void EmitTopSpan(ChunkMeshData& mesh, const TopSpan& span, ChunkMeshBuildInfo& info, Diagnostics& diagnostics)
 {
     if (!CanAppendQuad(mesh)) {
-        diagnostics.AddWarning("terrain mesh skipped top faces because uint32 index space is exhausted");
+        diagnostics.AddWarning("terrain mesh skipped top spans because uint32 index space is exhausted");
         return;
     }
 
-    const int height = TileHeight(map, tile);
-    const float top_z = static_cast<float>(height + 1);
-    const BlockTypeId block_type = SurfaceBlockType(map, tile);
-    EmitQuad(mesh, BlockCoord{tile.x, tile.y, height}, block_type, FaceDirection::kUp, TopCorners(tile.x, tile.y, top_z));
+    EmitQuad(
+        mesh,
+        BlockCoord{span.tile.x, span.tile.y, span.level},
+        span.block_type,
+        FaceDirection::kUp,
+        TopSpanCorners(span));
     ++info.terrain_top_faces;
 }
 
-void EmitWallIfNeeded(
-    const RuntimeMap& map,
-    TileCoord tile,
-    const TerrainEdge& edge,
-    ChunkMeshData& mesh,
-    ChunkMeshBuildInfo& info,
-    Diagnostics& diagnostics)
+void EmitWallSpan(ChunkMeshData& mesh, const WallSpan& span, ChunkMeshBuildInfo& info, Diagnostics& diagnostics)
 {
-    const int height = TileHeight(map, tile);
-    const TileCoord neighbor{tile.x + edge.dx, tile.y + edge.dy};
-
-    const int neighbor_height = ContainsTile(map, neighbor)
-        ? TileHeight(map, neighbor)
-        : (map.info.levels.has_value() ? map.info.levels->min - 1 : height - 1);
-    if (neighbor_height >= height) {
-        return;
-    }
     if (!CanAppendQuad(mesh)) {
-        diagnostics.AddWarning("terrain mesh skipped wall faces because uint32 index space is exhausted");
+        diagnostics.AddWarning("terrain mesh skipped wall spans because uint32 index space is exhausted");
         return;
     }
 
-    const float bottom_z = static_cast<float>(neighbor_height + 1);
-    const float top_z = static_cast<float>(height + 1);
-    const BlockTypeId block_type = SurfaceBlockType(map, tile);
     EmitQuad(
         mesh,
-        BlockCoord{tile.x, tile.y, neighbor_height},
-        block_type,
-        edge.direction,
-        WallCorners(tile.x, tile.y, bottom_z, top_z, edge.direction));
+        BlockCoord{span.tile.x, span.tile.y, span.bottom_level},
+        span.block_type,
+        span.direction,
+        WallSpanCorners(span));
     ++info.terrain_wall_faces;
 }
 
@@ -186,11 +218,184 @@ void ReserveTerrainChunkBuffers(const ChunkInfo& chunk, ChunkMeshData& mesh)
         return;
     }
 
-    constexpr std::size_t kExpectedFacesPerTile = 3;
-    const std::size_t expected_faces = chunk.TileCount() * kExpectedFacesPerTile;
+    const std::size_t expected_faces = chunk.TileCount();
     mesh.faces.reserve(expected_faces);
     mesh.vertices.reserve(expected_faces * 4ULL);
     mesh.indices.reserve(expected_faces * 6ULL);
+}
+
+void BuildTopMask(const RuntimeMap& map, const ChunkInfo& chunk, std::vector<TopMaskCell>& mask, ChunkMeshBuildInfo& info)
+{
+    const int width = chunk.bounds.Width();
+    const int height = chunk.bounds.Height();
+    mask.assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), TopMaskCell{});
+
+    for (int local_y = 0; local_y < height; ++local_y) {
+        const int world_y = chunk.bounds.min_y + local_y;
+        for (int local_x = 0; local_x < width; ++local_x) {
+            const int world_x = chunk.bounds.min_x + local_x;
+            const TileCoord tile{world_x, world_y};
+            TopMaskCell& cell = mask[MaskIndex(local_x, local_y, width)];
+            cell.visible = true;
+            cell.height = TileHeight(map, tile);
+            cell.block_type = SurfaceBlockType(map, tile);
+            ++info.terrain_raw_top_faces;
+        }
+    }
+}
+
+void EmitMergedTopSpans(
+    ChunkMeshData& mesh,
+    const ChunkInfo& chunk,
+    std::vector<TopMaskCell>& mask,
+    ChunkMeshBuildInfo& info,
+    Diagnostics& diagnostics)
+{
+    const int width = chunk.bounds.Width();
+    const int height = chunk.bounds.Height();
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            TopMaskCell& start = mask[MaskIndex(x, y, width)];
+            if (!start.visible) {
+                continue;
+            }
+
+            int span_width = 1;
+            while (x + span_width < width && SameTopMaskType(start, mask[MaskIndex(x + span_width, y, width)])) {
+                ++span_width;
+            }
+
+            int span_height = 1;
+            bool can_extend = true;
+            while (y + span_height < height && can_extend) {
+                for (int test_x = 0; test_x < span_width; ++test_x) {
+                    if (!SameTopMaskType(start, mask[MaskIndex(x + test_x, y + span_height, width)])) {
+                        can_extend = false;
+                        break;
+                    }
+                }
+                if (can_extend) {
+                    ++span_height;
+                }
+            }
+
+            EmitTopSpan(
+                mesh,
+                TopSpan{
+                    TileCoord{chunk.bounds.min_x + x, chunk.bounds.min_y + y},
+                    span_width,
+                    span_height,
+                    start.height,
+                    start.block_type,
+                },
+                info,
+                diagnostics);
+
+            for (int clear_y = 0; clear_y < span_height; ++clear_y) {
+                for (int clear_x = 0; clear_x < span_width; ++clear_x) {
+                    mask[MaskIndex(x + clear_x, y + clear_y, width)].visible = false;
+                }
+            }
+        }
+    }
+}
+
+[[nodiscard]] WallCell BuildWallCell(const RuntimeMap& map, TileCoord tile, const TerrainEdge& edge)
+{
+    WallCell cell;
+    const int height = TileHeight(map, tile);
+    const TileCoord neighbor{tile.x + edge.dx, tile.y + edge.dy};
+    const int neighbor_height = ContainsTile(map, neighbor)
+        ? TileHeight(map, neighbor)
+        : (map.info.levels.has_value() ? map.info.levels->min - 1 : height - 1);
+    if (neighbor_height >= height) {
+        return cell;
+    }
+
+    cell.visible = true;
+    cell.bottom_level = neighbor_height;
+    cell.top_level = height;
+    cell.block_type = SurfaceBlockType(map, tile);
+    return cell;
+}
+
+void EmitMergedYWallSpans(
+    const RuntimeMap& map,
+    const ChunkInfo& chunk,
+    const TerrainEdge& edge,
+    ChunkMeshData& mesh,
+    ChunkMeshBuildInfo& info,
+    Diagnostics& diagnostics)
+{
+    for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
+        int y = chunk.bounds.min_y;
+        while (y < chunk.bounds.max_y) {
+            const TileCoord tile{x, y};
+            const WallCell start = BuildWallCell(map, tile, edge);
+            if (!start.visible) {
+                ++y;
+                continue;
+            }
+
+            ++info.terrain_raw_wall_faces;
+            int length = 1;
+            while (y + length < chunk.bounds.max_y) {
+                const WallCell next = BuildWallCell(map, TileCoord{x, y + length}, edge);
+                if (!SameWallMaskType(start, next)) {
+                    break;
+                }
+                ++info.terrain_raw_wall_faces;
+                ++length;
+            }
+
+            EmitWallSpan(
+                mesh,
+                WallSpan{tile, length, start.bottom_level, start.top_level, edge.direction, start.block_type},
+                info,
+                diagnostics);
+            y += length;
+        }
+    }
+}
+
+void EmitMergedXWallSpans(
+    const RuntimeMap& map,
+    const ChunkInfo& chunk,
+    const TerrainEdge& edge,
+    ChunkMeshData& mesh,
+    ChunkMeshBuildInfo& info,
+    Diagnostics& diagnostics)
+{
+    for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
+        int x = chunk.bounds.min_x;
+        while (x < chunk.bounds.max_x) {
+            const TileCoord tile{x, y};
+            const WallCell start = BuildWallCell(map, tile, edge);
+            if (!start.visible) {
+                ++x;
+                continue;
+            }
+
+            ++info.terrain_raw_wall_faces;
+            int length = 1;
+            while (x + length < chunk.bounds.max_x) {
+                const WallCell next = BuildWallCell(map, TileCoord{x + length, y}, edge);
+                if (!SameWallMaskType(start, next)) {
+                    break;
+                }
+                ++info.terrain_raw_wall_faces;
+                ++length;
+            }
+
+            EmitWallSpan(
+                mesh,
+                WallSpan{tile, length, start.bottom_level, start.top_level, edge.direction, start.block_type},
+                info,
+                diagnostics);
+            x += length;
+        }
+    }
 }
 
 void BuildTerrainChunkMesh(
@@ -204,13 +409,23 @@ void BuildTerrainChunkMesh(
     mesh.bounds = chunk.bounds;
     ReserveTerrainChunkBuffers(chunk, mesh);
 
-    for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
-        for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
-            const TileCoord tile{x, y};
-            EmitTopSurface(map, tile, mesh, info, diagnostics);
-            for (const TerrainEdge& edge : kTerrainEdges) {
-                EmitWallIfNeeded(map, tile, edge, mesh, info, diagnostics);
-            }
+    std::vector<TopMaskCell> top_mask;
+    BuildTopMask(map, chunk, top_mask, info);
+    EmitMergedTopSpans(mesh, chunk, top_mask, info, diagnostics);
+
+    for (const TerrainEdge& edge : kTerrainEdges) {
+        switch (edge.direction) {
+            case FaceDirection::kWest:
+            case FaceDirection::kEast:
+                EmitMergedYWallSpans(map, chunk, edge, mesh, info, diagnostics);
+                break;
+            case FaceDirection::kNorth:
+            case FaceDirection::kSouth:
+                EmitMergedXWallSpans(map, chunk, edge, mesh, info, diagnostics);
+                break;
+            case FaceDirection::kDown:
+            case FaceDirection::kUp:
+                break;
         }
     }
 }

@@ -100,6 +100,8 @@ struct ChunkMeshBuildInfo {
     std::optional<LevelRange> levels;
     std::uint64_t solid_blocks = 0;
     std::uint64_t visible_faces = 0;
+    std::uint64_t terrain_raw_top_faces = 0;
+    std::uint64_t terrain_raw_wall_faces = 0;
     std::uint64_t terrain_top_faces = 0;
     std::uint64_t terrain_wall_faces = 0;
     std::uint64_t vertices = 0;
@@ -140,6 +142,8 @@ struct MeshOptimizationStats {
     std::uint64_t culled_faces = 0;
     std::uint64_t simple_faces = 0;
     std::uint64_t greedy_faces = 0;
+    std::uint64_t terrain_raw_top_faces = 0;
+    std::uint64_t terrain_raw_wall_faces = 0;
     std::uint64_t terrain_top_faces = 0;
     std::uint64_t terrain_wall_faces = 0;
     std::uint64_t terrain_faces = 0;
@@ -174,6 +178,27 @@ struct MeshOptimizationStats {
      * @return Relative change from greedy_faces to terrain_faces.
      */
     [[nodiscard]] double TerrainVsGreedyDeltaRatio() const;
+
+    /**
+     * @brief Returns the saved-face ratio from raw terrain faces to merged terrain faces.
+     *
+     * @return Ratio in range [0, 1], or 0 when raw terrain face count is zero.
+     */
+    [[nodiscard]] double TerrainMergeReductionRatio() const;
+
+    /**
+     * @brief Returns the saved-face ratio from raw terrain top faces to merged top spans.
+     *
+     * @return Ratio in range [0, 1], or 0 when raw top face count is zero.
+     */
+    [[nodiscard]] double TerrainTopMergeReductionRatio() const;
+
+    /**
+     * @brief Returns the saved-face ratio from raw terrain wall faces to merged wall spans.
+     *
+     * @return Ratio in range [0, 1], or 0 when raw wall face count is zero.
+     */
+    [[nodiscard]] double TerrainWallMergeReductionRatio() const;
 
     /**
      * @brief Returns the saved-face ratio from naive to active mesh faces.

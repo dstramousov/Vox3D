@@ -9,10 +9,11 @@ namespace vox3d {
 /**
  * @brief Builds renderer-independent stepped-heightfield terrain meshes.
  *
- * The builder uses the runtime map as the source of truth. It emits one top
- * surface per tile and one vertical wall per tile edge only when the neighbour
- * is lower or outside the map. It does not generate full voxel columns, ramps,
- * stairs, bridges, renderer resources, or GPU buffers.
+ * The builder uses the runtime map as the source of truth. It emits merged
+ * top-surface spans for adjacent tiles with the same height and block type,
+ * and merged wall/cliff spans only where neighbouring tiles are lower or
+ * outside the map. It does not generate full voxel columns, ramps, stairs,
+ * bridges, renderer resources, or GPU buffers.
  *
  * @param map Runtime map containing dense terrain, collision, and height grids.
  * @param chunks Chunk grid defining per-chunk tile bounds.

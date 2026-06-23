@@ -546,7 +546,9 @@ std::uint64_t ChunkMeshData::FaceCount() const
 bool ChunkMeshBuildInfo::IsValid() const
 {
     const bool terrain_counts_valid = mode != ChunkMeshBuildMode::kTerrainSurface
-        || terrain_top_faces + terrain_wall_faces == visible_faces;
+        || (terrain_top_faces + terrain_wall_faces == visible_faces
+            && terrain_raw_top_faces >= terrain_top_faces
+            && terrain_raw_wall_faces >= terrain_wall_faces);
     return map_width > 0 && map_height > 0 && chunks_x > 0 && chunks_y > 0
         && static_cast<std::uint64_t>(total_chunks) == ExpectedChunkCount(chunks_x, chunks_y) && levels.has_value()
         && levels->max >= levels->min && vertices == visible_faces * 4ULL && indices == visible_faces * 6ULL
@@ -577,6 +579,21 @@ double MeshOptimizationStats::TerrainVsGreedyDeltaRatio() const
         return 0.0;
     }
     return (static_cast<double>(terrain_faces) - static_cast<double>(greedy_faces)) / static_cast<double>(greedy_faces);
+}
+
+double MeshOptimizationStats::TerrainMergeReductionRatio() const
+{
+    return ReductionRatio(terrain_raw_top_faces + terrain_raw_wall_faces, terrain_faces);
+}
+
+double MeshOptimizationStats::TerrainTopMergeReductionRatio() const
+{
+    return ReductionRatio(terrain_raw_top_faces, terrain_top_faces);
+}
+
+double MeshOptimizationStats::TerrainWallMergeReductionRatio() const
+{
+    return ReductionRatio(terrain_raw_wall_faces, terrain_wall_faces);
 }
 
 double MeshOptimizationStats::ActiveReductionRatio() const
@@ -661,6 +678,8 @@ std::string ToLogString(const ChunkMeshBuildResult& result)
     out << " non_empty=" << result.info.non_empty_chunks;
     out << " faces=" << result.info.visible_faces;
     if (result.info.mode == ChunkMeshBuildMode::kTerrainSurface) {
+        out << " raw_top=" << result.info.terrain_raw_top_faces;
+        out << " raw_walls=" << result.info.terrain_raw_wall_faces;
         out << " top=" << result.info.terrain_top_faces;
         out << " walls=" << result.info.terrain_wall_faces;
     }
@@ -683,6 +702,8 @@ std::string ToLogString(const MeshOptimizationStats& stats)
     out << " simple_faces=" << stats.simple_faces;
     out << " greedy_faces=" << stats.greedy_faces;
     out << " terrain_faces=" << stats.terrain_faces;
+    out << " terrain_raw_top=" << stats.terrain_raw_top_faces;
+    out << " terrain_raw_walls=" << stats.terrain_raw_wall_faces;
     out << " terrain_top=" << stats.terrain_top_faces;
     out << " terrain_walls=" << stats.terrain_wall_faces;
     out << " active_faces=" << stats.active_faces;
@@ -699,6 +720,8 @@ std::string ToLogString(const MeshOptimizationStats& stats)
     AppendPercent(out, stats.GreedyReductionRatio());
     out << " terrain_vs_greedy=";
     AppendPercent(out, stats.TerrainVsGreedyDeltaRatio());
+    out << " terrain_merge_saved=";
+    AppendPercent(out, stats.TerrainMergeReductionRatio());
     out << " total_saved=";
     AppendPercent(out, stats.ActiveReductionRatio());
     return out.str();

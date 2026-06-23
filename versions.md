@@ -194,3 +194,9 @@
 - Fixed mouse-capture release so Esc is consumed before any exit confirmation can be opened while the 3D camera owns the cursor.
 - Added F2 as an explicit mouse-release hotkey for the 3D camera capture mode.
 - Updated the workspace Help tab to document the mouse-release behavior without changing the rendering or mesh pipeline.
+
+## v0.4.2 -> v0.4.3
+
+- Added span merging for stepped terrain top surfaces so adjacent tiles with the same height and block type are emitted as one larger quad.
+- Added one-dimensional span merging for terrain wall/cliff faces along chunk rows or columns while preserving the existing terrain surface mesh mode.
+- Added terrain raw-vs-merged diagnostics for top faces, wall faces, total terrain faces, and merge-saved ratios in logs and the workspace Stats tab.

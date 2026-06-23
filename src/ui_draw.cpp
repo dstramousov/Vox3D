@@ -221,9 +221,15 @@ void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& worksp
     lines.push_back("Comparison");
     lines.push_back("  Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
     lines.push_back("  Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
-    lines.push_back("  Terrain: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
-    lines.push_back("  Terrain T/W: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
+    lines.push_back("  Terrain raw: "
+        + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces
+            + workspace_state.mesh_stats.terrain_raw_wall_faces));
+    lines.push_back("  Terrain merged: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
+    lines.push_back("  Raw T/W: " + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.terrain_raw_wall_faces));
+    lines.push_back("  Merged T/W: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
         + std::to_string(workspace_state.mesh_stats.terrain_wall_faces));
+    lines.push_back("  Terrain merge: " + CompactPercent(workspace_state.mesh_stats.TerrainMergeReductionRatio()));
     lines.push_back("  Terrain vs greedy: " + CompactSignedPercent(workspace_state.mesh_stats.TerrainVsGreedyDeltaRatio()));
     if (workspace_state.chunk_size_comparison.available) {
         lines.push_back("");
