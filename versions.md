@@ -188,3 +188,9 @@
 - Replaced the overloaded right-side workspace panel with explicit `Menu`, `Stats`, `Inspect`, and `Help` tabs.
 - Moved noisy map, mesh, dirty-cache, and camera diagnostics out of the main menu into the dedicated `Stats` tab.
 - Shortened the bottom status bar and preserved the 3D camera view when switching mesh mode, chunk size, overlays, or 2D/3D mode.
+
+## v0.4.1 -> v0.4.2
+
+- Fixed mouse-capture release so Esc is consumed before any exit confirmation can be opened while the 3D camera owns the cursor.
+- Added F2 as an explicit mouse-release hotkey for the 3D camera capture mode.
+- Updated the workspace Help tab to document the mouse-release behavior without changing the rendering or mesh pipeline.

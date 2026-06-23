@@ -125,6 +125,7 @@ private:
     bool window_close_request_armed_ = true;
     bool exit_requested_from_window_ = false;
     bool dialog_input_blocked_until_next_frame_ = false;
+    bool suppress_window_close_request_this_frame_ = false;
     ProcessMemoryInfo process_memory_{};
     float process_memory_sample_timer_ = 0.0F;
     Font title_font_{};

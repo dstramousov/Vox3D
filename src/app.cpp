@@ -251,6 +251,7 @@ bool App::Initialize()
     SetExitKey(KEY_NULL);
 
     InitWindow(config_.base_width, config_.base_height, config_.app_name.c_str());
+    SetExitKey(KEY_NULL);
     if (!IsWindowReady()) {
         logger_.Fatal(
             "window",
@@ -331,8 +332,17 @@ int App::Run()
 
     running_ = true;
     while (running_) {
+        suppress_window_close_request_this_frame_ = false;
+
+        const float dt = GetFrameTime();
+        HandleInput(dt);
+        Update(dt);
+
         const bool close_requested = WindowShouldClose();
-        if (close_requested && window_close_request_armed_) {
+        if (close_requested && suppress_window_close_request_this_frame_) {
+            logger_.Debug("window", "close request suppressed after mouse release");
+            window_close_request_armed_ = false;
+        } else if (close_requested && window_close_request_armed_) {
             logger_.Info("window", "close requested");
             RequestExitConfirmation(true);
             window_close_request_armed_ = false;
@@ -340,9 +350,6 @@ int App::Run()
             window_close_request_armed_ = true;
         }
 
-        const float dt = GetFrameTime();
-        HandleInput(dt);
-        Update(dt);
         Draw();
     }
 
@@ -440,9 +447,17 @@ void App::HandleScreenInput(float dt)
 
 void App::HandleWorkspaceInput(float dt)
 {
-    if (workspace_.show_3d_preview && preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_ESCAPE)) {
+    const bool release_capture_by_escape = IsKeyPressed(KEY_ESCAPE);
+    const bool release_capture_by_hotkey = IsKeyPressed(KEY_F2);
+    if (workspace_.show_3d_preview && preview_camera_.IsCursorCaptured()
+        && (release_capture_by_escape || release_capture_by_hotkey)) {
         preview_camera_.ReleaseMouse();
-        logger_.Debug("camera3d", "mouse capture released by escape");
+        if (release_capture_by_escape) {
+            suppress_window_close_request_this_frame_ = true;
+        }
+        logger_.Debug(
+            "camera3d",
+            std::string("mouse capture released by ") + (release_capture_by_escape ? "escape" : "f2"));
         return;
     }
 

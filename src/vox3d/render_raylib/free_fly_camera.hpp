@@ -87,8 +87,8 @@ public:
      * @brief Updates camera velocity, position, and mouse look from raylib input.
      *
      * Clicking inside the 3D viewport captures the mouse. While captured, mouse
-     * movement controls view direction until Escape releases the cursor. Movement
-     * uses WASD for forward/strafe movement and Q/E for vertical movement.
+     * movement controls view direction until the application releases the cursor.
+     * Movement uses WASD for forward/strafe movement and Q/E for vertical movement.
      *
      * @param dt Frame delta time in seconds.
      * @param viewport Screen-space rectangle used for mouse capture activation.

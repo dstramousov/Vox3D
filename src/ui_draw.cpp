@@ -289,13 +289,14 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
 {
     return {
         "Hotkeys",
+        "  F2   Release mouse",
         "  F3   2D / 3D",
         "  F8   Mesh mode",
         "  F9   Chunk size",
         "  F10  Dirty rebuild probe",
         "  F    Fit view",
         "  R    Reset camera",
-        "  Esc  Release mouse / exit",
+        "  Esc  Release mouse first, then exit",
         "",
         "3D Camera",
         "  Click viewport to capture mouse",
