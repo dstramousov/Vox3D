@@ -158,3 +158,9 @@
 - Reworked the right workspace panel into a mode-oriented tree with top-level 2D map, 3D world, selection, package data, debug, and settings sections.
 - Added nested row metadata for groups, actions, checkboxes, radios, and value rows so future selection/picking data has a stable place in the UI.
 - Removed the decorative VoX3D title from the top of the right panel and starts the menu directly from the tree rows.
+
+## v0.3.6 -> v0.3.7
+
+- Added greedy chunk meshing in `vox3d_core` while keeping the previous simple visible-face mesh builder as a selectable baseline.
+- Added mesh optimization diagnostics for naive faces, culled faces, simple faces, greedy faces, active vertices/indices, draw models, and saved-face ratios.
+- Wired the workspace 3D mesh panel, F8 hotkey, status bar, info panel, and logs to report measurable render/mesh profit when switching mesh modes or debug overlays.

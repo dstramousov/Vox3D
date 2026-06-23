@@ -12,8 +12,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cmath>
 #include <filesystem>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -74,11 +76,68 @@ namespace {
     return result;
 }
 
-void ToggleOverlayFlag(bool& flag, std::string_view name, Logger& logger, bool& layout_dirty)
+void ToggleOverlayFlag(
+    bool& flag,
+    std::string_view name,
+    std::uint64_t primitive_count,
+    Logger& logger,
+    bool& layout_dirty)
 {
     flag = !flag;
     layout_dirty = true;
-    logger.Info("render3d", std::string(name) + "=" + (flag ? "on" : "off"));
+
+    std::ostringstream out;
+    out << name << '=' << (flag ? "on" : "off");
+    out << " debug_primitives=" << primitive_count;
+    out << " delta=" << (flag ? "+" : "-") << primitive_count;
+    logger.Info("render3d", out.str());
+}
+
+[[nodiscard]] std::uint64_t WorldGridLineCount(const ChunkMeshBuildResult& mesh)
+{
+    if (!mesh.IsValid()) {
+        return 0;
+    }
+    const int step = std::max(4, mesh.info.chunk_size_x > 0 ? mesh.info.chunk_size_x : 16);
+    const auto x_lines = static_cast<std::uint64_t>((mesh.info.map_width + step) / step);
+    const auto y_lines = static_cast<std::uint64_t>((mesh.info.map_height + step) / step);
+    return x_lines + y_lines;
+}
+
+[[nodiscard]] std::uint64_t HeightMarkerCount(const RuntimeMap& map)
+{
+    if (!map.height.IsValid()) {
+        return 0;
+    }
+    const int sample_step = std::max(1, std::max(map.info.width, map.info.height) / 96);
+    const auto x_count = static_cast<std::uint64_t>((map.info.width + sample_step - 1) / sample_step);
+    const auto y_count = static_cast<std::uint64_t>((map.info.height + sample_step - 1) / sample_step);
+    return x_count * y_count;
+}
+
+[[nodiscard]] std::uint64_t OverlayPrimitiveCount(const WorkspaceState& workspace, WorkspacePanelItem item)
+{
+    switch (item) {
+        case WorkspacePanelItem::kRenderChunkBounds:
+            return workspace.chunk_grid.IsValid() ? static_cast<std::uint64_t>(workspace.chunk_grid.info.total_chunks) * 4ULL : 0;
+        case WorkspacePanelItem::kRenderWorldGrid:
+            return WorldGridLineCount(workspace.chunk_meshes);
+        case WorkspacePanelItem::kRenderCollision:
+            return workspace.runtime_map.info.collision_loaded
+                ? static_cast<std::uint64_t>(workspace.runtime_map.info.blocked_cells)
+                : 0;
+        case WorkspacePanelItem::kRenderHeight:
+            return HeightMarkerCount(workspace.runtime_map);
+        default:
+            return 0;
+    }
+}
+
+[[nodiscard]] std::string PercentText(double ratio)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << ratio * 100.0 << '%';
+    return out.str();
 }
 
 [[nodiscard]] int RaylibTraceLogLevel(std::string_view value)
@@ -195,22 +254,30 @@ bool App::Initialize()
     for (const auto& warning : workspace_.face_visibility.diagnostics.warnings) {
         logger_.Warn("face_visibility", warning);
     }
-    workspace_.chunk_meshes = BuildChunkMeshes(workspace_.voxel_world, workspace_.chunk_grid);
-    logger_.Info("chunk_mesh", ToLogString(workspace_.chunk_meshes));
-    for (const auto& warning : workspace_.chunk_meshes.diagnostics.warnings) {
+    workspace_.simple_chunk_meshes = BuildChunkMeshes(
+        workspace_.voxel_world,
+        workspace_.chunk_grid,
+        ChunkMeshBuildMode::kSimpleFaces);
+    logger_.Info("chunk_mesh", ToLogString(workspace_.simple_chunk_meshes));
+    for (const auto& warning : workspace_.simple_chunk_meshes.diagnostics.warnings) {
         logger_.Warn("chunk_mesh", warning);
     }
-    const bool preview_uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes);
-    logger_.Info("render3d", ToLogString(chunk_mesh_preview_.Stats()));
-    if (!preview_uploaded) {
-        logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");
+    workspace_.greedy_chunk_meshes = BuildChunkMeshes(
+        workspace_.voxel_world,
+        workspace_.chunk_grid,
+        ChunkMeshBuildMode::kGreedyFaces);
+    logger_.Info("chunk_mesh", ToLogString(workspace_.greedy_chunk_meshes));
+    for (const auto& warning : workspace_.greedy_chunk_meshes.diagnostics.warnings) {
+        logger_.Warn("chunk_mesh", warning);
     }
+    workspace_.chunk_meshes = workspace_.simple_chunk_meshes;
+    UploadActiveChunkMesh("initial");
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
     LoadUiFonts();
     RefreshProcessMemoryInfo();
     RebuildLayout();
-    if (preview_uploaded) {
+    if (chunk_mesh_preview_.IsUploaded()) {
         FitPreviewCameraToViewport("initial");
     }
 
@@ -385,16 +452,42 @@ void App::HandleWorkspaceInput(float dt)
             FitPreviewCameraToViewport("hotkey");
         }
         if (IsKeyPressed(KEY_F4)) {
-            ToggleOverlayFlag(workspace_.show_3d_chunk_bounds, "chunk_bounds", logger_, layout_dirty_);
+            ToggleOverlayFlag(
+                workspace_.show_3d_chunk_bounds,
+                "chunk_bounds",
+                OverlayPrimitiveCount(workspace_, WorkspacePanelItem::kRenderChunkBounds),
+                logger_,
+                layout_dirty_);
         }
         if (IsKeyPressed(KEY_F5)) {
-            ToggleOverlayFlag(workspace_.show_3d_world_grid, "world_grid", logger_, layout_dirty_);
+            ToggleOverlayFlag(
+                workspace_.show_3d_world_grid,
+                "world_grid",
+                OverlayPrimitiveCount(workspace_, WorkspacePanelItem::kRenderWorldGrid),
+                logger_,
+                layout_dirty_);
         }
         if (IsKeyPressed(KEY_F6)) {
-            ToggleOverlayFlag(workspace_.show_3d_collision_overlay, "collision_overlay", logger_, layout_dirty_);
+            ToggleOverlayFlag(
+                workspace_.show_3d_collision_overlay,
+                "collision_overlay",
+                OverlayPrimitiveCount(workspace_, WorkspacePanelItem::kRenderCollision),
+                logger_,
+                layout_dirty_);
         }
         if (IsKeyPressed(KEY_F7)) {
-            ToggleOverlayFlag(workspace_.show_3d_height_overlay, "height_overlay", logger_, layout_dirty_);
+            ToggleOverlayFlag(
+                workspace_.show_3d_height_overlay,
+                "height_overlay",
+                OverlayPrimitiveCount(workspace_, WorkspacePanelItem::kRenderHeight),
+                logger_,
+                layout_dirty_);
+        }
+        if (IsKeyPressed(KEY_F8)) {
+            const ChunkMeshBuildMode next_mode = workspace_.mesh_mode == ChunkMeshBuildMode::kSimpleFaces
+                ? ChunkMeshBuildMode::kGreedyFaces
+                : ChunkMeshBuildMode::kSimpleFaces;
+            SetMeshBuildMode(next_mode, "hotkey");
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
@@ -614,6 +707,70 @@ void App::RebuildLayout()
     layout_dirty_ = false;
 }
 
+void App::RefreshMeshOptimizationStats()
+{
+    workspace_.mesh_stats = MeshOptimizationStats{};
+    workspace_.mesh_stats.active_mode = workspace_.mesh_mode;
+
+    if (workspace_.face_visibility.IsValid()) {
+        workspace_.mesh_stats.solid_blocks = workspace_.face_visibility.info.solid_blocks;
+        workspace_.mesh_stats.naive_faces = workspace_.face_visibility.info.naive_faces;
+        workspace_.mesh_stats.culled_faces = workspace_.face_visibility.info.culled_faces;
+    }
+    if (workspace_.simple_chunk_meshes.IsValid()) {
+        workspace_.mesh_stats.simple_faces = workspace_.simple_chunk_meshes.info.visible_faces;
+    }
+    if (workspace_.greedy_chunk_meshes.IsValid()) {
+        workspace_.mesh_stats.greedy_faces = workspace_.greedy_chunk_meshes.info.visible_faces;
+    }
+    if (workspace_.chunk_meshes.IsValid()) {
+        workspace_.mesh_stats.active_faces = workspace_.chunk_meshes.info.visible_faces;
+        workspace_.mesh_stats.active_vertices = workspace_.chunk_meshes.info.vertices;
+        workspace_.mesh_stats.active_indices = workspace_.chunk_meshes.info.indices;
+        workspace_.mesh_stats.mesh_chunks = workspace_.chunk_meshes.info.non_empty_chunks;
+    }
+
+    const RaylibChunkMeshPreviewStats& upload = chunk_mesh_preview_.Stats();
+    workspace_.mesh_stats.draw_models = upload.models;
+    workspace_.mesh_stats.skipped_chunks = upload.skipped_chunks;
+}
+
+void App::UploadActiveChunkMesh(std::string_view reason)
+{
+    const bool uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes);
+    RefreshMeshOptimizationStats();
+    logger_.Info("render3d", "upload reason=" + std::string(reason) + " " + ToLogString(chunk_mesh_preview_.Stats()));
+    logger_.Info("mesh_stats", ToLogString(workspace_.mesh_stats));
+    if (!uploaded) {
+        logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");
+    }
+}
+
+void App::SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason)
+{
+    if (workspace_.mesh_mode == mode && workspace_.chunk_meshes.IsValid()) {
+        logger_.Debug("mesh_stats", "mesh mode unchanged mode=" + std::string(ToString(mode)));
+        return;
+    }
+
+    const ChunkMeshBuildResult& selected = mode == ChunkMeshBuildMode::kGreedyFaces
+        ? workspace_.greedy_chunk_meshes
+        : workspace_.simple_chunk_meshes;
+    if (!selected.IsValid()) {
+        logger_.Warn("mesh_stats", "mesh mode switch ignored invalid mode=" + std::string(ToString(mode)));
+        return;
+    }
+
+    workspace_.mesh_mode = mode;
+    workspace_.chunk_meshes = selected;
+    UploadActiveChunkMesh(reason);
+    layout_dirty_ = true;
+
+    if (workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded()) {
+        FitPreviewCameraToViewport("mesh_mode");
+    }
+}
+
 void App::ActivateSelectedMenuItem()
 {
     const MenuItem* item = main_menu_.SelectedItem();
@@ -788,16 +945,42 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             logger_.Info("camera3d", "reset view " + ToLogString(preview_camera_.Status()));
             break;
         case WorkspacePanelItem::kRenderChunkBounds:
-            workspace_.show_3d_chunk_bounds = !workspace_.show_3d_chunk_bounds;
+            ToggleOverlayFlag(
+                workspace_.show_3d_chunk_bounds,
+                "chunk_bounds",
+                OverlayPrimitiveCount(workspace_, item),
+                logger_,
+                layout_dirty_);
             break;
         case WorkspacePanelItem::kRenderWorldGrid:
-            workspace_.show_3d_world_grid = !workspace_.show_3d_world_grid;
+            ToggleOverlayFlag(
+                workspace_.show_3d_world_grid,
+                "world_grid",
+                OverlayPrimitiveCount(workspace_, item),
+                logger_,
+                layout_dirty_);
             break;
         case WorkspacePanelItem::kRenderCollision:
-            workspace_.show_3d_collision_overlay = !workspace_.show_3d_collision_overlay;
+            ToggleOverlayFlag(
+                workspace_.show_3d_collision_overlay,
+                "collision_overlay",
+                OverlayPrimitiveCount(workspace_, item),
+                logger_,
+                layout_dirty_);
             break;
         case WorkspacePanelItem::kRenderHeight:
-            workspace_.show_3d_height_overlay = !workspace_.show_3d_height_overlay;
+            ToggleOverlayFlag(
+                workspace_.show_3d_height_overlay,
+                "height_overlay",
+                OverlayPrimitiveCount(workspace_, item),
+                logger_,
+                layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DMeshSimple:
+            SetMeshBuildMode(ChunkMeshBuildMode::kSimpleFaces, "panel");
+            break;
+        case WorkspacePanelItem::k3DMeshGreedy:
+            SetMeshBuildMode(ChunkMeshBuildMode::kGreedyFaces, "panel");
             break;
         default:
             break;

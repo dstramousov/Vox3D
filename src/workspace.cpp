@@ -127,10 +127,18 @@ std::string_view ToString(WorkspacePanelItem item)
             return "render_height";
         case WorkspacePanelItem::k3DMeshGroup:
             return "3d_mesh";
+        case WorkspacePanelItem::k3DMeshSimple:
+            return "3d_mesh_simple";
+        case WorkspacePanelItem::k3DMeshGreedy:
+            return "3d_mesh_greedy";
         case WorkspacePanelItem::k3DVisibleFaces:
             return "3d_visible_faces";
         case WorkspacePanelItem::k3DCulledFaces:
             return "3d_culled_faces";
+        case WorkspacePanelItem::k3DGreedySaved:
+            return "3d_greedy_saved";
+        case WorkspacePanelItem::k3DTotalSaved:
+            return "3d_total_saved";
         case WorkspacePanelItem::k3DChunkMeshes:
             return "3d_chunk_meshes";
         case WorkspacePanelItem::k3DDirtyChunks:
@@ -253,8 +261,12 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 Checkbox(Item::kRenderCollision, 2, workspace.show_3d_preview && workspace.runtime_map.info.collision_loaded, workspace.show_3d_collision_overlay),
                 Checkbox(Item::kRenderHeight, 2, workspace.show_3d_preview && workspace.runtime_map.info.elevation_loaded, workspace.show_3d_height_overlay),
                 Group(Item::k3DMeshGroup, 1),
+                Radio(Item::k3DMeshSimple, 2, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces),
+                Radio(Item::k3DMeshGreedy, 2, workspace.greedy_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces),
                 Value(Item::k3DVisibleFaces, 2, workspace.face_visibility.IsValid()),
                 Value(Item::k3DCulledFaces, 2, workspace.face_visibility.IsValid()),
+                Value(Item::k3DGreedySaved, 2, workspace.greedy_chunk_meshes.IsValid()),
+                Value(Item::k3DTotalSaved, 2, workspace.chunk_meshes.IsValid()),
                 Value(Item::k3DChunkMeshes, 2, workspace.chunk_meshes.IsValid()),
                 Value(Item::k3DDirtyChunks, 2, false),
             };

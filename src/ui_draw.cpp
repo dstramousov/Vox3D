@@ -135,6 +135,30 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return out.str();
 }
 
+[[nodiscard]] std::string CompactPercent(double ratio)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << ratio * 100.0 << '%';
+    return out.str();
+}
+
+[[nodiscard]] std::string MeshModeLabel(ChunkMeshBuildMode mode)
+{
+    switch (mode) {
+        case ChunkMeshBuildMode::kSimpleFaces:
+            return "simple";
+        case ChunkMeshBuildMode::kGreedyFaces:
+            return "greedy";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string CompactMeshStats(const MeshOptimizationStats& stats)
+{
+    return "mesh=" + MeshModeLabel(stats.active_mode) + " faces=" + std::to_string(stats.active_faces)
+        + " saved=" + CompactPercent(stats.ActiveReductionRatio());
+}
+
 [[nodiscard]] std::string CompactVector(Vector3 value)
 {
     return CompactFloat(value.x) + "," + CompactFloat(value.y) + "," + CompactFloat(value.z);
@@ -279,10 +303,18 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return labels.workspace_subitem_height;
         case WorkspacePanelItem::k3DMeshGroup:
             return "Mesh";
+        case WorkspacePanelItem::k3DMeshSimple:
+            return "Simple Faces";
+        case WorkspacePanelItem::k3DMeshGreedy:
+            return "Greedy Faces";
         case WorkspacePanelItem::k3DVisibleFaces:
             return "Visible Faces";
         case WorkspacePanelItem::k3DCulledFaces:
             return "Culled Faces";
+        case WorkspacePanelItem::k3DGreedySaved:
+            return "Greedy Saved";
+        case WorkspacePanelItem::k3DTotalSaved:
+            return "Total Saved";
         case WorkspacePanelItem::k3DChunkMeshes:
             return "Chunk Meshes";
         case WorkspacePanelItem::k3DDirtyChunks:
@@ -1023,7 +1055,11 @@ void DrawWorkspace(
             + std::to_string(workspace_state.chunk_grid.info.chunks_y));
     }
     if (workspace_state.chunk_meshes.IsValid()) {
-        tool_info_lines.push_back("Faces: " + std::to_string(workspace_state.chunk_meshes.info.visible_faces));
+        tool_info_lines.push_back("Mesh: " + MeshModeLabel(workspace_state.mesh_mode));
+        tool_info_lines.push_back("Faces: " + std::to_string(workspace_state.mesh_stats.active_faces));
+        tool_info_lines.push_back("Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
+        tool_info_lines.push_back("Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
+        tool_info_lines.push_back("Saved: " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio()));
     }
     if (workspace_state.show_3d_preview && camera_status.initialized) {
         tool_info_lines.push_back(std::string("Cam: ") + (camera_status.cursor_captured ? "captured" : "free"));
@@ -1072,10 +1108,13 @@ void DrawWorkspace(
 
     const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
     const std::string controls = workspace_state.show_3d_preview
-        ? " | click: capture | Esc: release | WASD | Q/E | wheel | F fit | F4-F7 | F3 | "
+        ? " | click: capture | Esc: release | WASD | Q/E | wheel | F fit | F4-F8 | F3 | "
         : " | F3 2D/3D | ";
+    const std::string mesh_status = workspace_state.chunk_meshes.IsValid()
+        ? " | " + CompactMeshStats(workspace_state.mesh_stats)
+        : "";
     const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | view="
-        + preview_mode + controls + labels.workspace_status_escape_hint;
+        + preview_mode + mesh_status + controls + labels.workspace_status_escape_hint;
     DrawTextEx(
         fonts.text,
         status.c_str(),

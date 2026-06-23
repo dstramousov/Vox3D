@@ -77,8 +77,12 @@ enum class WorkspacePanelItem {
     kRenderCollision,
     kRenderHeight,
     k3DMeshGroup,
+    k3DMeshSimple,
+    k3DMeshGreedy,
     k3DVisibleFaces,
     k3DCulledFaces,
+    k3DGreedySaved,
+    k3DTotalSaved,
     k3DChunkMeshes,
     k3DDirtyChunks,
 
@@ -152,7 +156,11 @@ struct WorkspaceState {
     ChunkGrid chunk_grid;
     VoxelWorld voxel_world;
     FaceVisibilityResult face_visibility;
+    ChunkMeshBuildMode mesh_mode = ChunkMeshBuildMode::kSimpleFaces;
+    ChunkMeshBuildResult simple_chunk_meshes;
+    ChunkMeshBuildResult greedy_chunk_meshes;
     ChunkMeshBuildResult chunk_meshes;
+    MeshOptimizationStats mesh_stats;
 };
 
 /**

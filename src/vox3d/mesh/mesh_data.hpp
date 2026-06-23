@@ -9,9 +9,26 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vox3d {
+
+/**
+ * @brief Chunk mesh generation algorithm used by the CPU mesh builder.
+ */
+enum class ChunkMeshBuildMode : std::uint8_t {
+    kSimpleFaces,
+    kGreedyFaces,
+};
+
+/**
+ * @brief Converts a chunk mesh build mode to a stable diagnostic name.
+ *
+ * @param mode Build mode identifier.
+ * @return Stable lowercase string representation.
+ */
+[[nodiscard]] std::string_view ToString(ChunkMeshBuildMode mode);
 
 /**
  * @brief Renderer-independent 3D position used by generated mesh data.
@@ -71,6 +88,7 @@ struct ChunkMeshData {
  * @brief Summary of generated chunk mesh data.
  */
 struct ChunkMeshBuildInfo {
+    ChunkMeshBuildMode mode = ChunkMeshBuildMode::kSimpleFaces;
     int map_width = 0;
     int map_height = 0;
     int chunk_size_x = 0;
@@ -110,11 +128,58 @@ struct ChunkMeshBuildResult {
 };
 
 /**
+ * @brief High-level comparison between naive, culled, and greedy mesh sizes.
+ */
+struct MeshOptimizationStats {
+    ChunkMeshBuildMode active_mode = ChunkMeshBuildMode::kSimpleFaces;
+    std::uint64_t solid_blocks = 0;
+    std::uint64_t naive_faces = 0;
+    std::uint64_t culled_faces = 0;
+    std::uint64_t simple_faces = 0;
+    std::uint64_t greedy_faces = 0;
+    std::uint64_t active_faces = 0;
+    std::uint64_t active_vertices = 0;
+    std::uint64_t active_indices = 0;
+    std::uint64_t mesh_chunks = 0;
+    std::uint64_t draw_models = 0;
+    std::uint64_t skipped_chunks = 0;
+
+    /**
+     * @brief Returns the saved-face ratio from naive to simple visible faces.
+     *
+     * @return Ratio in range [0, 1], or 0 when naive face count is zero.
+     */
+    [[nodiscard]] double FaceCullingReductionRatio() const;
+
+    /**
+     * @brief Returns the saved-face ratio from simple to greedy mesh faces.
+     *
+     * @return Ratio in range [0, 1], or 0 when simple face count is zero.
+     */
+    [[nodiscard]] double GreedyReductionRatio() const;
+
+    /**
+     * @brief Returns the saved-face ratio from naive to active mesh faces.
+     *
+     * @return Ratio in range [0, 1], or 0 when naive face count is zero.
+     */
+    [[nodiscard]] double ActiveReductionRatio() const;
+};
+
+/**
  * @brief Builds a compact stable log string for chunk mesh diagnostics.
  *
  * @param result Chunk mesh build result.
  * @return Compact human-readable summary.
  */
 [[nodiscard]] std::string ToLogString(const ChunkMeshBuildResult& result);
+
+/**
+ * @brief Builds a compact stable log string for mesh optimization diagnostics.
+ *
+ * @param stats Mesh optimization counters.
+ * @return Compact human-readable summary.
+ */
+[[nodiscard]] std::string ToLogString(const MeshOptimizationStats& stats);
 
 }  // namespace vox3d
