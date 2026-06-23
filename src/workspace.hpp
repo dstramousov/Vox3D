@@ -4,9 +4,11 @@
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/face_visibility.hpp"
+#include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 
@@ -77,14 +79,22 @@ enum class WorkspacePanelItem {
     kRenderCollision,
     kRenderHeight,
     k3DMeshGroup,
+    k3DChunkSizeGroup,
+    k3DChunkSize16,
+    k3DChunkSize32,
+    k3DChunkSizeProfit,
     k3DMeshSimple,
     k3DMeshGreedy,
+    k3DDrawModels,
     k3DVisibleFaces,
     k3DCulledFaces,
     k3DGreedySaved,
     k3DTotalSaved,
     k3DChunkMeshes,
+    k3DDirtyRebuildProbe,
     k3DDirtyChunks,
+    k3DRebuiltChunks,
+    k3DRebuildSaved,
 
     kSelectionTileGroup,
     kSelectionTileInfo,
@@ -136,6 +146,42 @@ struct WorkspacePanelItemState {
     bool checked = false;
 };
 
+
+/**
+ * @brief Last measured comparison between two chunk-size builds.
+ */
+struct WorkspaceChunkSizeComparison {
+    bool available = false;
+    int before_chunk_size = 0;
+    int after_chunk_size = 0;
+    int before_total_chunks = 0;
+    int after_total_chunks = 0;
+    std::uint64_t before_draw_models = 0;
+    std::uint64_t after_draw_models = 0;
+    std::uint64_t before_active_faces = 0;
+    std::uint64_t after_active_faces = 0;
+
+    /**
+     * @brief Returns relative draw-model count change after switching chunk size.
+     *
+     * Negative values mean fewer renderer models. Positive values mean more
+     * renderer models. Zero is returned when the baseline is unavailable.
+     *
+     * @return Relative change from before_draw_models to after_draw_models.
+     */
+    [[nodiscard]] double DrawModelDeltaRatio() const;
+
+    /**
+     * @brief Returns relative active-face count change after switching chunk size.
+     *
+     * Negative values mean fewer active faces. Positive values mean more active
+     * faces. Zero is returned when the baseline is unavailable.
+     *
+     * @return Relative change from before_active_faces to after_active_faces.
+     */
+    [[nodiscard]] double FaceDeltaRatio() const;
+};
+
 /**
  * @brief Runtime state for the main workspace screen.
  */
@@ -151,16 +197,22 @@ struct WorkspaceState {
     bool show_3d_world_grid = false;
     bool show_3d_collision_overlay = false;
     bool show_3d_height_overlay = false;
+    int chunk_size_tiles = 16;
+    WorkspaceChunkSizeComparison chunk_size_comparison;
     MapPackageInfo map;
     RuntimeMap runtime_map;
     ChunkGrid chunk_grid;
     VoxelWorld voxel_world;
     FaceVisibilityResult face_visibility;
     ChunkMeshBuildMode mesh_mode = ChunkMeshBuildMode::kSimpleFaces;
+    ChunkMeshCache simple_chunk_mesh_cache;
+    ChunkMeshCache greedy_chunk_mesh_cache;
+    ChunkMeshCache chunk_mesh_cache;
     ChunkMeshBuildResult simple_chunk_meshes;
     ChunkMeshBuildResult greedy_chunk_meshes;
     ChunkMeshBuildResult chunk_meshes;
     MeshOptimizationStats mesh_stats;
+    ChunkMeshRebuildReport last_mesh_rebuild;
 };
 
 /**

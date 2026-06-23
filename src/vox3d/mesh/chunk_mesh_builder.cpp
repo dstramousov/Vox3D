@@ -523,6 +523,11 @@ std::string_view ToString(ChunkMeshBuildMode mode)
     return "unknown";
 }
 
+bool ChunkMeshBuildChunkResult::IsValid() const
+{
+    return mesh.IsValid();
+}
+
 bool ChunkMeshData::IsValid() const
 {
     return bounds.IsValid() && vertices.size() == faces.size() * 4ULL && indices.size() == faces.size() * 6ULL;
@@ -564,6 +569,29 @@ double MeshOptimizationStats::ActiveReductionRatio() const
     return ReductionRatio(naive_faces, active_faces);
 }
 
+ChunkMeshBuildChunkResult BuildChunkMeshForChunk(
+    const VoxelWorld& world,
+    const ChunkInfo& chunk,
+    ChunkMeshBuildMode mode)
+{
+    ChunkMeshBuildChunkResult result;
+
+    if (!world.IsValid()) {
+        result.diagnostics.AddWarning("cannot build chunk mesh from invalid voxel world");
+        return result;
+    }
+    if (!chunk.IsValid()) {
+        result.diagnostics.AddWarning("cannot build chunk mesh from invalid chunk");
+        return result;
+    }
+
+    BuildChunkMesh(world, chunk, mode, result.mesh, result.diagnostics);
+    if (!result.IsValid()) {
+        result.diagnostics.AddWarning("single chunk mesh validation failed after build");
+    }
+    return result;
+}
+
 ChunkMeshBuildResult BuildChunkMeshes(const VoxelWorld& world, const ChunkGrid& chunks, ChunkMeshBuildMode mode)
 {
     ChunkMeshBuildResult result;
@@ -586,10 +614,12 @@ ChunkMeshBuildResult BuildChunkMeshes(const VoxelWorld& world, const ChunkGrid& 
     result.chunks.reserve(chunks.chunks.size());
 
     for (const ChunkInfo& chunk : chunks.chunks) {
-        ChunkMeshData mesh;
-        BuildChunkMesh(world, chunk, mode, mesh, result.diagnostics);
-        AccumulateMeshStats(mesh, result.info);
-        result.chunks.push_back(std::move(mesh));
+        ChunkMeshBuildChunkResult chunk_result = BuildChunkMeshForChunk(world, chunk, mode);
+        for (const auto& warning : chunk_result.diagnostics.warnings) {
+            result.diagnostics.AddWarning(warning);
+        }
+        AccumulateMeshStats(chunk_result.mesh, result.info);
+        result.chunks.push_back(std::move(chunk_result.mesh));
     }
 
     if (!result.IsValid()) {

@@ -80,8 +80,17 @@ private:
     void ToggleWorkspaceTool(WorkspaceTool tool);
     void ActivateWorkspacePanelItem(WorkspacePanelItem item);
     void SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason);
+    void SetChunkSize(int chunk_size, std::string_view reason);
+    void RebuildChunkPipeline(int chunk_size, std::string_view reason);
     void UploadActiveChunkMesh(std::string_view reason);
     void RefreshMeshOptimizationStats();
+    void RefreshChunkSizeComparison(
+        int before_chunk_size,
+        const ChunkGridInfo& before_grid_info,
+        const MeshOptimizationStats& before_stats,
+        bool had_before_stats);
+    void SetActiveMeshCacheFromMode();
+    void RunDirtyRebuildProbe(std::string_view reason);
     void FitPreviewCameraToViewport(std::string_view reason);
     void SetCurrentScreen(AppScreen screen, std::string_view reason);
     void RequestExitConfirmation(bool from_window_close = false);

@@ -7,6 +7,38 @@
 namespace vox3d {
 
 /**
+ * @brief Result of renderer-independent mesh generation for one chunk.
+ */
+struct ChunkMeshBuildChunkResult {
+    ChunkMeshData mesh;
+    Diagnostics diagnostics;
+
+    /**
+     * @brief Returns true when generated chunk mesh data is valid.
+     *
+     * @return True if mesh buffers are internally consistent.
+     */
+    [[nodiscard]] bool IsValid() const;
+};
+
+/**
+ * @brief Builds renderer-independent mesh data for one chunk.
+ *
+ * This is the chunk-local entry point used by dirty rebuild caches. It does
+ * not allocate renderer resources or inspect other chunks beyond block
+ * neighbour queries performed through VoxelWorld.
+ *
+ * @param world Voxel world used as the source of implicit blocks.
+ * @param chunk Chunk to build.
+ * @param mode Mesh build algorithm to use.
+ * @return Generated single-chunk mesh and diagnostics.
+ */
+[[nodiscard]] ChunkMeshBuildChunkResult BuildChunkMeshForChunk(
+    const VoxelWorld& world,
+    const ChunkInfo& chunk,
+    ChunkMeshBuildMode mode = ChunkMeshBuildMode::kSimpleFaces);
+
+/**
  * @brief Builds renderer-independent mesh data for each chunk.
  *
  * In simple mode each visible voxel face is emitted as one indexed quad. In

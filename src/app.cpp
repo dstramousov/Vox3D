@@ -5,6 +5,7 @@
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/chunk_mesh_builder.hpp"
+#include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
@@ -23,6 +24,9 @@
 
 namespace vox3d {
 namespace {
+
+constexpr int kChunkSize16 = 16;
+constexpr int kChunkSize32 = 32;
 
 [[nodiscard]] std::vector<int> BuildFontCodepoints()
 {
@@ -140,6 +144,57 @@ void ToggleOverlayFlag(
     return out.str();
 }
 
+[[nodiscard]] int ToggleChunkSize(int chunk_size)
+{
+    return chunk_size == kChunkSize16 ? kChunkSize32 : kChunkSize16;
+}
+
+[[nodiscard]] bool IsSupportedChunkSize(int chunk_size)
+{
+    return chunk_size == kChunkSize16 || chunk_size == kChunkSize32;
+}
+
+[[nodiscard]] std::string ChunkComparisonLogString(const WorkspaceChunkSizeComparison& comparison)
+{
+    if (!comparison.available) {
+        return "status=unavailable";
+    }
+
+    std::ostringstream out;
+    out << "before=" << comparison.before_chunk_size;
+    out << " after=" << comparison.after_chunk_size;
+    out << " chunks=" << comparison.before_total_chunks << "->" << comparison.after_total_chunks;
+    out << " draw_models=" << comparison.before_draw_models << "->" << comparison.after_draw_models;
+    out << " draw_delta=" << PercentText(comparison.DrawModelDeltaRatio());
+    out << " faces=" << comparison.before_active_faces << "->" << comparison.after_active_faces;
+    out << " face_delta=" << PercentText(comparison.FaceDeltaRatio());
+    return out.str();
+}
+
+[[nodiscard]] ChunkMeshRebuildReport FullCacheBuildReport(const ChunkMeshCache& cache)
+{
+    ChunkMeshRebuildReport report;
+    report.mode = cache.info.mode;
+    report.attempted = true;
+    report.valid = cache.IsValid();
+    report.total_chunks = cache.info.total_chunks;
+    report.dirty_chunks = static_cast<std::uint64_t>(cache.info.total_chunks);
+    report.rebuilt_chunks = static_cast<std::uint64_t>(cache.info.total_chunks);
+    report.reused_chunks = 0;
+    report.old_faces = 0;
+    report.new_faces = cache.info.faces;
+    report.old_vertices = 0;
+    report.new_vertices = cache.info.vertices;
+    report.old_indices = 0;
+    report.new_indices = cache.info.indices;
+    return report;
+}
+
+[[nodiscard]] TileCoord CenterTile(const RuntimeMap& map)
+{
+    return TileCoord{map.info.width / 2, map.info.height / 2};
+}
+
 [[nodiscard]] int RaylibTraceLogLevel(std::string_view value)
 {
     const std::string normalized = Lowercase(value);
@@ -239,39 +294,7 @@ bool App::Initialize()
     for (const auto& warning : workspace_.runtime_map.diagnostics.warnings) {
         logger_.Warn("runtime_map", warning);
     }
-    workspace_.chunk_grid = BuildChunkGrid(workspace_.runtime_map);
-    logger_.Info("chunk_grid", ToLogString(workspace_.chunk_grid));
-    for (const auto& warning : workspace_.chunk_grid.diagnostics.warnings) {
-        logger_.Warn("chunk_grid", warning);
-    }
-    workspace_.voxel_world = BuildVoxelWorld(workspace_.runtime_map, workspace_.chunk_grid);
-    logger_.Info("voxel_world", ToLogString(workspace_.voxel_world));
-    for (const auto& warning : workspace_.voxel_world.diagnostics.warnings) {
-        logger_.Warn("voxel_world", warning);
-    }
-    workspace_.face_visibility = BuildFaceVisibility(workspace_.voxel_world);
-    logger_.Info("face_visibility", ToLogString(workspace_.face_visibility));
-    for (const auto& warning : workspace_.face_visibility.diagnostics.warnings) {
-        logger_.Warn("face_visibility", warning);
-    }
-    workspace_.simple_chunk_meshes = BuildChunkMeshes(
-        workspace_.voxel_world,
-        workspace_.chunk_grid,
-        ChunkMeshBuildMode::kSimpleFaces);
-    logger_.Info("chunk_mesh", ToLogString(workspace_.simple_chunk_meshes));
-    for (const auto& warning : workspace_.simple_chunk_meshes.diagnostics.warnings) {
-        logger_.Warn("chunk_mesh", warning);
-    }
-    workspace_.greedy_chunk_meshes = BuildChunkMeshes(
-        workspace_.voxel_world,
-        workspace_.chunk_grid,
-        ChunkMeshBuildMode::kGreedyFaces);
-    logger_.Info("chunk_mesh", ToLogString(workspace_.greedy_chunk_meshes));
-    for (const auto& warning : workspace_.greedy_chunk_meshes.diagnostics.warnings) {
-        logger_.Warn("chunk_mesh", warning);
-    }
-    workspace_.chunk_meshes = workspace_.simple_chunk_meshes;
-    UploadActiveChunkMesh("initial");
+    RebuildChunkPipeline(workspace_.chunk_size_tiles, "initial");
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
     LoadUiFonts();
@@ -488,6 +511,12 @@ void App::HandleWorkspaceInput(float dt)
                 ? ChunkMeshBuildMode::kGreedyFaces
                 : ChunkMeshBuildMode::kSimpleFaces;
             SetMeshBuildMode(next_mode, "hotkey");
+        }
+        if (IsKeyPressed(KEY_F9)) {
+            SetChunkSize(ToggleChunkSize(workspace_.chunk_size_tiles), "hotkey");
+        }
+        if (IsKeyPressed(KEY_F10)) {
+            RunDirtyRebuildProbe("hotkey");
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
@@ -735,6 +764,164 @@ void App::RefreshMeshOptimizationStats()
     workspace_.mesh_stats.skipped_chunks = upload.skipped_chunks;
 }
 
+void App::RefreshChunkSizeComparison(
+    int before_chunk_size,
+    const ChunkGridInfo& before_grid_info,
+    const MeshOptimizationStats& before_stats,
+    bool had_before_stats)
+{
+    workspace_.chunk_size_comparison = WorkspaceChunkSizeComparison{};
+    if (!had_before_stats || !workspace_.chunk_grid.IsValid() || !workspace_.chunk_meshes.IsValid()) {
+        return;
+    }
+
+    workspace_.chunk_size_comparison.available = true;
+    workspace_.chunk_size_comparison.before_chunk_size = before_chunk_size;
+    workspace_.chunk_size_comparison.after_chunk_size = workspace_.chunk_size_tiles;
+    workspace_.chunk_size_comparison.before_total_chunks = before_grid_info.total_chunks;
+    workspace_.chunk_size_comparison.after_total_chunks = workspace_.chunk_grid.info.total_chunks;
+    workspace_.chunk_size_comparison.before_draw_models = before_stats.draw_models;
+    workspace_.chunk_size_comparison.after_draw_models = workspace_.mesh_stats.draw_models;
+    workspace_.chunk_size_comparison.before_active_faces = before_stats.active_faces;
+    workspace_.chunk_size_comparison.after_active_faces = workspace_.mesh_stats.active_faces;
+}
+
+void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
+{
+    if (!IsSupportedChunkSize(chunk_size)) {
+        logger_.Warn("chunk_pipeline", "unsupported chunk size=" + std::to_string(chunk_size));
+        return;
+    }
+
+    const bool had_before_stats = workspace_.chunk_grid.IsValid() && workspace_.chunk_meshes.IsValid();
+    const int before_chunk_size = workspace_.chunk_size_tiles;
+    const ChunkGridInfo before_grid_info = workspace_.chunk_grid.info;
+    const MeshOptimizationStats before_stats = workspace_.mesh_stats;
+
+    ChunkGrid next_chunk_grid = BuildChunkGrid(workspace_.runtime_map, ChunkGridOptions{chunk_size, chunk_size});
+    logger_.Info("chunk_grid", "reason=" + std::string(reason) + " " + ToLogString(next_chunk_grid));
+    for (const auto& warning : next_chunk_grid.diagnostics.warnings) {
+        logger_.Warn("chunk_grid", warning);
+    }
+
+    VoxelWorld next_voxel_world = BuildVoxelWorld(workspace_.runtime_map, next_chunk_grid);
+    logger_.Info("voxel_world", "reason=" + std::string(reason) + " " + ToLogString(next_voxel_world));
+    for (const auto& warning : next_voxel_world.diagnostics.warnings) {
+        logger_.Warn("voxel_world", warning);
+    }
+
+    FaceVisibilityResult next_face_visibility = BuildFaceVisibility(next_voxel_world);
+    logger_.Info("face_visibility", "reason=" + std::string(reason) + " " + ToLogString(next_face_visibility));
+    for (const auto& warning : next_face_visibility.diagnostics.warnings) {
+        logger_.Warn("face_visibility", warning);
+    }
+
+    ChunkMeshCache next_simple_cache = BuildChunkMeshCache(
+        next_voxel_world,
+        next_chunk_grid,
+        ChunkMeshBuildMode::kSimpleFaces);
+    logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_simple_cache));
+    for (const auto& warning : next_simple_cache.diagnostics.warnings) {
+        logger_.Warn("chunk_mesh_cache", warning);
+    }
+
+    ChunkMeshCache next_greedy_cache = BuildChunkMeshCache(
+        next_voxel_world,
+        next_chunk_grid,
+        ChunkMeshBuildMode::kGreedyFaces);
+    logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_greedy_cache));
+    for (const auto& warning : next_greedy_cache.diagnostics.warnings) {
+        logger_.Warn("chunk_mesh_cache", warning);
+    }
+
+    workspace_.chunk_size_tiles = chunk_size;
+    workspace_.chunk_grid = std::move(next_chunk_grid);
+    workspace_.voxel_world = std::move(next_voxel_world);
+    workspace_.face_visibility = std::move(next_face_visibility);
+    workspace_.simple_chunk_mesh_cache = std::move(next_simple_cache);
+    workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
+    workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
+    workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
+    SetActiveMeshCacheFromMode();
+    workspace_.last_mesh_rebuild = FullCacheBuildReport(workspace_.chunk_mesh_cache);
+
+    UploadActiveChunkMesh(reason);
+    RefreshChunkSizeComparison(before_chunk_size, before_grid_info, before_stats, had_before_stats);
+    if (workspace_.chunk_size_comparison.available) {
+        logger_.Info("chunk_profit", ChunkComparisonLogString(workspace_.chunk_size_comparison));
+    }
+
+    layout_dirty_ = true;
+    if (workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded()) {
+        FitPreviewCameraToViewport("chunk_size");
+    }
+}
+
+void App::SetChunkSize(int chunk_size, std::string_view reason)
+{
+    if (!IsSupportedChunkSize(chunk_size)) {
+        logger_.Warn("chunk_pipeline", "chunk size switch ignored unsupported size=" + std::to_string(chunk_size));
+        return;
+    }
+    if (workspace_.chunk_size_tiles == chunk_size && workspace_.chunk_grid.IsValid()) {
+        logger_.Debug("chunk_pipeline", "chunk size unchanged size=" + std::to_string(chunk_size));
+        return;
+    }
+
+    RebuildChunkPipeline(chunk_size, reason);
+}
+
+void App::SetActiveMeshCacheFromMode()
+{
+    if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
+        workspace_.chunk_mesh_cache = workspace_.greedy_chunk_mesh_cache;
+        workspace_.chunk_meshes = workspace_.greedy_chunk_meshes;
+    } else {
+        workspace_.chunk_mesh_cache = workspace_.simple_chunk_mesh_cache;
+        workspace_.chunk_meshes = workspace_.simple_chunk_meshes;
+    }
+}
+
+void App::RunDirtyRebuildProbe(std::string_view reason)
+{
+    if (!workspace_.runtime_map.IsValid() || !workspace_.chunk_grid.IsValid()) {
+        logger_.Warn("dirty_rebuild", "probe ignored because runtime map or chunk grid is invalid");
+        return;
+    }
+
+    ChunkMeshCache* active_cache = workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces
+        ? &workspace_.greedy_chunk_mesh_cache
+        : &workspace_.simple_chunk_mesh_cache;
+    if (!active_cache->IsValid()) {
+        logger_.Warn("dirty_rebuild", "probe ignored because active cache is invalid");
+        return;
+    }
+
+    const TileCoord tile = CenterTile(workspace_.runtime_map);
+    const std::uint64_t marked = active_cache->MarkTileAndBorderChunksDirty(tile, workspace_.chunk_grid);
+    workspace_.last_mesh_rebuild = RebuildDirtyChunkMeshes(workspace_.voxel_world, workspace_.chunk_grid, active_cache);
+
+    if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
+        workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
+    } else {
+        workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
+    }
+    SetActiveMeshCacheFromMode();
+    UploadActiveChunkMesh(reason);
+
+    std::ostringstream out;
+    out << "reason=" << reason;
+    out << " probe_tile=" << tile.x << ',' << tile.y;
+    out << " newly_marked=" << marked;
+    out << ' ' << ToLogString(workspace_.last_mesh_rebuild);
+    logger_.Info("dirty_rebuild", out.str());
+    for (const auto& warning : workspace_.last_mesh_rebuild.diagnostics.warnings) {
+        logger_.Warn("dirty_rebuild", warning);
+    }
+
+    layout_dirty_ = true;
+}
+
 void App::UploadActiveChunkMesh(std::string_view reason)
 {
     const bool uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes);
@@ -762,7 +949,7 @@ void App::SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason)
     }
 
     workspace_.mesh_mode = mode;
-    workspace_.chunk_meshes = selected;
+    SetActiveMeshCacheFromMode();
     UploadActiveChunkMesh(reason);
     layout_dirty_ = true;
 
@@ -979,8 +1166,17 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         case WorkspacePanelItem::k3DMeshSimple:
             SetMeshBuildMode(ChunkMeshBuildMode::kSimpleFaces, "panel");
             break;
+        case WorkspacePanelItem::k3DChunkSize16:
+            SetChunkSize(kChunkSize16, "panel");
+            break;
+        case WorkspacePanelItem::k3DChunkSize32:
+            SetChunkSize(kChunkSize32, "panel");
+            break;
         case WorkspacePanelItem::k3DMeshGreedy:
             SetMeshBuildMode(ChunkMeshBuildMode::kGreedyFaces, "panel");
+            break;
+        case WorkspacePanelItem::k3DDirtyRebuildProbe:
+            RunDirtyRebuildProbe("panel");
             break;
         default:
             break;

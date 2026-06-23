@@ -142,6 +142,16 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return out.str();
 }
 
+[[nodiscard]] std::string CompactSignedPercent(double ratio)
+{
+    std::ostringstream out;
+    if (ratio > 0.0) {
+        out << '+';
+    }
+    out << std::fixed << std::setprecision(1) << ratio * 100.0 << '%';
+    return out.str();
+}
+
 [[nodiscard]] std::string MeshModeLabel(ChunkMeshBuildMode mode)
 {
     switch (mode) {
@@ -153,9 +163,11 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "unknown";
 }
 
-[[nodiscard]] std::string CompactMeshStats(const MeshOptimizationStats& stats)
+[[nodiscard]] std::string CompactMeshStats(const WorkspaceState& workspace_state)
 {
-    return "mesh=" + MeshModeLabel(stats.active_mode) + " faces=" + std::to_string(stats.active_faces)
+    const MeshOptimizationStats& stats = workspace_state.mesh_stats;
+    return "mesh=" + MeshModeLabel(stats.active_mode) + " chunk=" + std::to_string(workspace_state.chunk_size_tiles)
+        + " faces=" + std::to_string(stats.active_faces) + " models=" + std::to_string(stats.draw_models)
         + " saved=" + CompactPercent(stats.ActiveReductionRatio());
 }
 
@@ -303,10 +315,20 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return labels.workspace_subitem_height;
         case WorkspacePanelItem::k3DMeshGroup:
             return "Mesh";
+        case WorkspacePanelItem::k3DChunkSizeGroup:
+            return "Chunk Size";
+        case WorkspacePanelItem::k3DChunkSize16:
+            return "16x16";
+        case WorkspacePanelItem::k3DChunkSize32:
+            return "32x32";
+        case WorkspacePanelItem::k3DChunkSizeProfit:
+            return "Chunk Profit";
         case WorkspacePanelItem::k3DMeshSimple:
             return "Simple Faces";
         case WorkspacePanelItem::k3DMeshGreedy:
             return "Greedy Faces";
+        case WorkspacePanelItem::k3DDrawModels:
+            return "Draw Models";
         case WorkspacePanelItem::k3DVisibleFaces:
             return "Visible Faces";
         case WorkspacePanelItem::k3DCulledFaces:
@@ -317,8 +339,14 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "Total Saved";
         case WorkspacePanelItem::k3DChunkMeshes:
             return "Chunk Meshes";
+        case WorkspacePanelItem::k3DDirtyRebuildProbe:
+            return "Dirty Rebuild Probe";
         case WorkspacePanelItem::k3DDirtyChunks:
             return "Dirty Chunks";
+        case WorkspacePanelItem::k3DRebuiltChunks:
+            return "Rebuilt Chunks";
+        case WorkspacePanelItem::k3DRebuildSaved:
+            return "Rebuild Saved";
         case WorkspacePanelItem::kSelectionTileGroup:
             return "Selected Tile";
         case WorkspacePanelItem::kSelectionTileInfo:
@@ -1051,15 +1079,30 @@ void DrawWorkspace(
         labels.workspace_collision_label + ": " + BoolText(workspace_state.runtime_map.info.collision_loaded, labels),
     };
     if (workspace_state.chunk_grid.IsValid()) {
+        tool_info_lines.push_back("Chunk Size: " + std::to_string(workspace_state.chunk_size_tiles));
         tool_info_lines.push_back("Chunks: " + std::to_string(workspace_state.chunk_grid.info.chunks_x) + "x"
-            + std::to_string(workspace_state.chunk_grid.info.chunks_y));
+            + std::to_string(workspace_state.chunk_grid.info.chunks_y) + "="
+            + std::to_string(workspace_state.chunk_grid.info.total_chunks));
     }
     if (workspace_state.chunk_meshes.IsValid()) {
         tool_info_lines.push_back("Mesh: " + MeshModeLabel(workspace_state.mesh_mode));
         tool_info_lines.push_back("Faces: " + std::to_string(workspace_state.mesh_stats.active_faces));
+        tool_info_lines.push_back("Models: " + std::to_string(workspace_state.mesh_stats.draw_models));
         tool_info_lines.push_back("Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
         tool_info_lines.push_back("Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
         tool_info_lines.push_back("Saved: " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio()));
+    }
+    if (workspace_state.chunk_size_comparison.available) {
+        tool_info_lines.push_back("Chunk Δ models: " + CompactSignedPercent(workspace_state.chunk_size_comparison.DrawModelDeltaRatio()));
+        tool_info_lines.push_back("Chunk Δ faces: " + CompactSignedPercent(workspace_state.chunk_size_comparison.FaceDeltaRatio()));
+    }
+    if (workspace_state.chunk_mesh_cache.IsValid()) {
+        tool_info_lines.push_back("Dirty: " + std::to_string(workspace_state.chunk_mesh_cache.info.dirty_chunks));
+    }
+    if (workspace_state.last_mesh_rebuild.attempted) {
+        tool_info_lines.push_back("Rebuilt: " + std::to_string(workspace_state.last_mesh_rebuild.rebuilt_chunks) + "/"
+            + std::to_string(workspace_state.last_mesh_rebuild.total_chunks));
+        tool_info_lines.push_back("Rebuild saved: " + CompactPercent(workspace_state.last_mesh_rebuild.SavedRebuildWorkRatio()));
     }
     if (workspace_state.show_3d_preview && camera_status.initialized) {
         tool_info_lines.push_back(std::string("Cam: ") + (camera_status.cursor_captured ? "captured" : "free"));
@@ -1108,10 +1151,10 @@ void DrawWorkspace(
 
     const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
     const std::string controls = workspace_state.show_3d_preview
-        ? " | click: capture | Esc: release | WASD | Q/E | wheel | F fit | F4-F8 | F3 | "
+        ? " | click: capture | Esc: release | WASD | Q/E | wheel | F fit | F4-F10 | F3 | "
         : " | F3 2D/3D | ";
     const std::string mesh_status = workspace_state.chunk_meshes.IsValid()
-        ? " | " + CompactMeshStats(workspace_state.mesh_stats)
+        ? " | " + CompactMeshStats(workspace_state)
         : "";
     const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | view="
         + preview_mode + mesh_status + controls + labels.workspace_status_escape_hint;

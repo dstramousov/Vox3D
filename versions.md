@@ -164,3 +164,15 @@
 - Added greedy chunk meshing in `vox3d_core` while keeping the previous simple visible-face mesh builder as a selectable baseline.
 - Added mesh optimization diagnostics for naive faces, culled faces, simple faces, greedy faces, active vertices/indices, draw models, and saved-face ratios.
 - Wired the workspace 3D mesh panel, F8 hotkey, status bar, info panel, and logs to report measurable render/mesh profit when switching mesh modes or debug overlays.
+
+## v0.3.7 -> v0.3.8
+
+- Added selectable 16x16 and 32x32 chunk-size rebuild modes while preserving the active simple/greedy mesh mode.
+- Rebuilt ChunkGrid, VoxelWorld, face visibility, simple meshes, greedy meshes, and raylib preview upload when chunk size changes.
+- Added chunk-size comparison diagnostics for total chunks, draw models, active faces, and before/after percentage deltas in logs, status, and workspace info.
+
+## v0.3.8 -> v0.3.9
+
+- Added renderer-independent chunk mesh cache data in `vox3d_core` with per-chunk dirty flags.
+- Added dirty chunk rebuild reports for rebuilt/reused chunks, saved rebuild work, and face/vertex/index deltas.
+- Wired the editor to keep simple/greedy mesh caches, expose a dirty rebuild probe, and log measurable cache rebuild profit.

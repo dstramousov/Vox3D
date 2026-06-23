@@ -31,6 +31,14 @@ using Kind = WorkspacePanelItemKind;
     return {item, Kind::kValue, depth, enabled, enabled};
 }
 
+[[nodiscard]] double DeltaRatio(std::uint64_t before, std::uint64_t after)
+{
+    if (before == 0) {
+        return 0.0;
+    }
+    return (static_cast<double>(after) - static_cast<double>(before)) / static_cast<double>(before);
+}
+
 }  // namespace
 
 std::string_view ToString(WorkspaceTool tool)
@@ -52,6 +60,16 @@ std::string_view ToString(WorkspaceTool tool)
             return "settings";
     }
     return "unknown";
+}
+
+double WorkspaceChunkSizeComparison::DrawModelDeltaRatio() const
+{
+    return available ? DeltaRatio(before_draw_models, after_draw_models) : 0.0;
+}
+
+double WorkspaceChunkSizeComparison::FaceDeltaRatio() const
+{
+    return available ? DeltaRatio(before_active_faces, after_active_faces) : 0.0;
 }
 
 std::string_view ToString(WorkspacePanelItem item)
@@ -127,10 +145,20 @@ std::string_view ToString(WorkspacePanelItem item)
             return "render_height";
         case WorkspacePanelItem::k3DMeshGroup:
             return "3d_mesh";
+        case WorkspacePanelItem::k3DChunkSizeGroup:
+            return "3d_chunk_size";
+        case WorkspacePanelItem::k3DChunkSize16:
+            return "3d_chunk_size_16";
+        case WorkspacePanelItem::k3DChunkSize32:
+            return "3d_chunk_size_32";
+        case WorkspacePanelItem::k3DChunkSizeProfit:
+            return "3d_chunk_size_profit";
         case WorkspacePanelItem::k3DMeshSimple:
             return "3d_mesh_simple";
         case WorkspacePanelItem::k3DMeshGreedy:
             return "3d_mesh_greedy";
+        case WorkspacePanelItem::k3DDrawModels:
+            return "3d_draw_models";
         case WorkspacePanelItem::k3DVisibleFaces:
             return "3d_visible_faces";
         case WorkspacePanelItem::k3DCulledFaces:
@@ -141,8 +169,14 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_total_saved";
         case WorkspacePanelItem::k3DChunkMeshes:
             return "3d_chunk_meshes";
+        case WorkspacePanelItem::k3DDirtyRebuildProbe:
+            return "3d_dirty_rebuild_probe";
         case WorkspacePanelItem::k3DDirtyChunks:
             return "3d_dirty_chunks";
+        case WorkspacePanelItem::k3DRebuiltChunks:
+            return "3d_rebuilt_chunks";
+        case WorkspacePanelItem::k3DRebuildSaved:
+            return "3d_rebuild_saved";
         case WorkspacePanelItem::kSelectionTileGroup:
             return "selection_tile";
         case WorkspacePanelItem::kSelectionTileInfo:
@@ -261,14 +295,22 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 Checkbox(Item::kRenderCollision, 2, workspace.show_3d_preview && workspace.runtime_map.info.collision_loaded, workspace.show_3d_collision_overlay),
                 Checkbox(Item::kRenderHeight, 2, workspace.show_3d_preview && workspace.runtime_map.info.elevation_loaded, workspace.show_3d_height_overlay),
                 Group(Item::k3DMeshGroup, 1),
+                Group(Item::k3DChunkSizeGroup, 2),
+                Radio(Item::k3DChunkSize16, 3, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 16),
+                Radio(Item::k3DChunkSize32, 3, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 32),
+                Value(Item::k3DChunkSizeProfit, 3, workspace.chunk_size_comparison.available),
                 Radio(Item::k3DMeshSimple, 2, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces),
                 Radio(Item::k3DMeshGreedy, 2, workspace.greedy_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces),
+                Value(Item::k3DDrawModels, 2, workspace.mesh_stats.draw_models > 0),
                 Value(Item::k3DVisibleFaces, 2, workspace.face_visibility.IsValid()),
                 Value(Item::k3DCulledFaces, 2, workspace.face_visibility.IsValid()),
                 Value(Item::k3DGreedySaved, 2, workspace.greedy_chunk_meshes.IsValid()),
                 Value(Item::k3DTotalSaved, 2, workspace.chunk_meshes.IsValid()),
                 Value(Item::k3DChunkMeshes, 2, workspace.chunk_meshes.IsValid()),
-                Value(Item::k3DDirtyChunks, 2, false),
+                Action(Item::k3DDirtyRebuildProbe, 2, workspace.chunk_mesh_cache.IsValid()),
+                Value(Item::k3DDirtyChunks, 2, workspace.chunk_mesh_cache.IsValid()),
+                Value(Item::k3DRebuiltChunks, 2, workspace.last_mesh_rebuild.attempted),
+                Value(Item::k3DRebuildSaved, 2, workspace.last_mesh_rebuild.attempted),
             };
         case WorkspaceTool::kSelection:
             return {
