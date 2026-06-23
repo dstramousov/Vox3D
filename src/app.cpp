@@ -180,6 +180,70 @@ void ToggleOverlayFlag(
     return RaylibChunkMeshColorMode::kMaterial;
 }
 
+[[nodiscard]] WorkspaceVisibilityMode NextVisibilityMode(WorkspaceVisibilityMode mode)
+{
+    switch (mode) {
+        case WorkspaceVisibilityMode::kAllChunks:
+            return WorkspaceVisibilityMode::kRadiusFade;
+        case WorkspaceVisibilityMode::kRadiusFade:
+            return WorkspaceVisibilityMode::kHardCull;
+        case WorkspaceVisibilityMode::kHardCull:
+            return WorkspaceVisibilityMode::kAllChunks;
+    }
+    return WorkspaceVisibilityMode::kAllChunks;
+}
+
+[[nodiscard]] RaylibChunkVisibilityMode ToRaylibVisibilityMode(WorkspaceVisibilityMode mode)
+{
+    switch (mode) {
+        case WorkspaceVisibilityMode::kAllChunks:
+            return RaylibChunkVisibilityMode::kAllChunks;
+        case WorkspaceVisibilityMode::kRadiusFade:
+            return RaylibChunkVisibilityMode::kRadiusFade;
+        case WorkspaceVisibilityMode::kHardCull:
+            return RaylibChunkVisibilityMode::kHardCull;
+    }
+    return RaylibChunkVisibilityMode::kAllChunks;
+}
+
+[[nodiscard]] RaylibChunkVisibilityOptions BuildRaylibVisibilityOptions(const WorkspaceState& workspace)
+{
+    return RaylibChunkVisibilityOptions{
+        ToRaylibVisibilityMode(workspace.visibility_mode),
+        workspace.visibility_radius_chunks,
+        workspace.visibility_fade_ring_chunks,
+        workspace.show_3d_hidden_chunk_bounds,
+    };
+}
+
+[[nodiscard]] WorkspaceVisibilityStats ToWorkspaceVisibilityStats(const RaylibChunkVisibilityStats& stats)
+{
+    WorkspaceVisibilityStats result;
+    switch (stats.mode) {
+        case RaylibChunkVisibilityMode::kAllChunks:
+            result.mode = WorkspaceVisibilityMode::kAllChunks;
+            break;
+        case RaylibChunkVisibilityMode::kRadiusFade:
+            result.mode = WorkspaceVisibilityMode::kRadiusFade;
+            break;
+        case RaylibChunkVisibilityMode::kHardCull:
+            result.mode = WorkspaceVisibilityMode::kHardCull;
+            break;
+    }
+    result.radius_chunks = stats.radius_chunks;
+    result.fade_ring_chunks = stats.fade_ring_chunks;
+    result.resident_chunks = stats.resident_chunks;
+    result.visible_chunks = stats.visible_chunks;
+    result.fade_chunks = stats.fade_chunks;
+    result.hidden_chunks = stats.hidden_chunks;
+    result.drawn_models = stats.drawn_models;
+    result.culled_models = stats.culled_models;
+    result.total_faces = stats.total_faces;
+    result.drawn_faces = stats.drawn_faces;
+    result.culled_faces = stats.culled_faces;
+    return result;
+}
+
 [[nodiscard]] bool IsSupportedChunkSize(int chunk_size)
 {
     return chunk_size == kChunkSize16 || chunk_size == kChunkSize32;
@@ -572,6 +636,9 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_F11)) {
             CycleColorMode("hotkey");
         }
+        if (IsKeyPressed(KEY_F12)) {
+            CycleVisibilityMode("hotkey");
+        }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
@@ -734,6 +801,8 @@ void App::Update(float dt)
         RefreshProcessMemoryInfo();
         process_memory_sample_timer_ = 0.0F;
     }
+
+    UpdateVisibilityStats();
 
     if (!config_.window_resizable || !IsWindowResized()) {
         return;
@@ -1004,6 +1073,7 @@ void App::UploadActiveChunkMesh(std::string_view reason)
 {
     const bool uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes, ToRaylibColorMode(workspace_.color_mode));
     RefreshMeshOptimizationStats();
+    UpdateVisibilityStats();
     logger_.Info(
         "render3d",
         "upload reason=" + std::string(reason) + " color=" + std::string(ToString(workspace_.color_mode)) + " "
@@ -1053,6 +1123,83 @@ void App::SetColorMode(WorkspaceColorMode mode, std::string_view reason)
 void App::CycleColorMode(std::string_view reason)
 {
     SetColorMode(NextColorMode(workspace_.color_mode), reason);
+}
+
+void App::SetVisibilityMode(WorkspaceVisibilityMode mode, std::string_view reason)
+{
+    if (workspace_.visibility_mode == mode) {
+        logger_.Debug("visibility", "mode unchanged mode=" + std::string(ToString(mode)));
+        return;
+    }
+
+    workspace_.visibility_mode = mode;
+    UpdateVisibilityStats();
+    layout_dirty_ = true;
+    logger_.Info("visibility", "reason=" + std::string(reason) + " " + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
+        workspace_.chunk_meshes,
+        preview_camera_.Camera(),
+        BuildRaylibVisibilityOptions(workspace_))));
+}
+
+void App::CycleVisibilityMode(std::string_view reason)
+{
+    SetVisibilityMode(NextVisibilityMode(workspace_.visibility_mode), reason);
+}
+
+void App::AdjustVisibilityRadius(int delta, std::string_view reason)
+{
+    constexpr int kMinRadius = 0;
+    constexpr int kMaxRadius = 12;
+    const int next_radius = std::clamp(workspace_.visibility_radius_chunks + delta, kMinRadius, kMaxRadius);
+    if (next_radius == workspace_.visibility_radius_chunks) {
+        logger_.Debug("visibility", "radius unchanged radius=" + std::to_string(workspace_.visibility_radius_chunks));
+        return;
+    }
+
+    workspace_.visibility_radius_chunks = next_radius;
+    UpdateVisibilityStats();
+    layout_dirty_ = true;
+    logger_.Info("visibility", "reason=" + std::string(reason) + " radius=" + std::to_string(next_radius) + " "
+        + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
+            workspace_.chunk_meshes,
+            preview_camera_.Camera(),
+            BuildRaylibVisibilityOptions(workspace_))));
+}
+
+void App::AdjustVisibilityFadeRing(int delta, std::string_view reason)
+{
+    constexpr int kMinFadeRing = 0;
+    constexpr int kMaxFadeRing = 4;
+    const int next_fade_ring = std::clamp(workspace_.visibility_fade_ring_chunks + delta, kMinFadeRing, kMaxFadeRing);
+    if (next_fade_ring == workspace_.visibility_fade_ring_chunks) {
+        logger_.Debug("visibility", "fade ring unchanged fade_ring=" + std::to_string(workspace_.visibility_fade_ring_chunks));
+        return;
+    }
+
+    workspace_.visibility_fade_ring_chunks = next_fade_ring;
+    UpdateVisibilityStats();
+    layout_dirty_ = true;
+    logger_.Info("visibility", "reason=" + std::string(reason) + " fade_ring=" + std::to_string(next_fade_ring) + " "
+        + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
+            workspace_.chunk_meshes,
+            preview_camera_.Camera(),
+            BuildRaylibVisibilityOptions(workspace_))));
+}
+
+void App::UpdateVisibilityStats()
+{
+    if (!chunk_mesh_preview_.IsUploaded() || !workspace_.chunk_meshes.IsValid()) {
+        workspace_.visibility_stats = WorkspaceVisibilityStats{};
+        workspace_.visibility_stats.mode = workspace_.visibility_mode;
+        workspace_.visibility_stats.radius_chunks = workspace_.visibility_radius_chunks;
+        workspace_.visibility_stats.fade_ring_chunks = workspace_.visibility_fade_ring_chunks;
+        return;
+    }
+
+    workspace_.visibility_stats = ToWorkspaceVisibilityStats(chunk_mesh_preview_.CalculateVisibilityStats(
+        workspace_.chunk_meshes,
+        preview_camera_.Camera(),
+        BuildRaylibVisibilityOptions(workspace_)));
 }
 
 void App::ActivateSelectedMenuItem()
@@ -1251,6 +1398,33 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DColorFaceType:
             SetColorMode(WorkspaceColorMode::kFaceType, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityAllChunks:
+            SetVisibilityMode(WorkspaceVisibilityMode::kAllChunks, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityRadiusFade:
+            SetVisibilityMode(WorkspaceVisibilityMode::kRadiusFade, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityHardCull:
+            SetVisibilityMode(WorkspaceVisibilityMode::kHardCull, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityRadiusMinus:
+            AdjustVisibilityRadius(-1, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityRadiusPlus:
+            AdjustVisibilityRadius(1, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityFadeMinus:
+            AdjustVisibilityFadeRing(-1, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityFadePlus:
+            AdjustVisibilityFadeRing(1, "panel");
+            break;
+        case WorkspacePanelItem::k3DShowHiddenBounds:
+            workspace_.show_3d_hidden_chunk_bounds = !workspace_.show_3d_hidden_chunk_bounds;
+            UpdateVisibilityStats();
+            logger_.Info("visibility", std::string("hidden_bounds=")
+                + (workspace_.show_3d_hidden_chunk_bounds ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DMeshSimple:
             SetMeshBuildMode(ChunkMeshBuildMode::kSimpleFaces, "panel");

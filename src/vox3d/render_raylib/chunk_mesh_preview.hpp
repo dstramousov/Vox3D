@@ -24,6 +24,15 @@ enum class RaylibChunkMeshColorMode : std::uint8_t {
 };
 
 /**
+ * @brief Chunk visibility mode used by the raylib debug preview.
+ */
+enum class RaylibChunkVisibilityMode : std::uint8_t {
+    kAllChunks,
+    kRadiusFade,
+    kHardCull,
+};
+
+/**
  * @brief Converts a raylib chunk-mesh color mode to a stable diagnostic name.
  *
  * @param mode Color mode identifier.
@@ -32,13 +41,70 @@ enum class RaylibChunkMeshColorMode : std::uint8_t {
 [[nodiscard]] std::string_view ToString(RaylibChunkMeshColorMode mode);
 
 /**
- * @brief Upload statistics for the raylib chunk-mesh preview renderer.
+ * @brief Converts a raylib chunk visibility mode to a stable diagnostic name.
+ *
+ * @param mode Visibility mode identifier.
+ * @return Stable lowercase string representation.
+ */
+[[nodiscard]] std::string_view ToString(RaylibChunkVisibilityMode mode);
+
+/**
+ * @brief 3D debug overlay visibility flags for the chunk-mesh preview.
  */
 struct RaylibChunkMeshDebugOverlayOptions {
     bool show_chunk_bounds = false;
     bool show_world_grid = false;
     bool show_collision = false;
     bool show_height = false;
+};
+
+/**
+ * @brief Chunk visibility options used by the 3D preview draw pass.
+ */
+struct RaylibChunkVisibilityOptions {
+    RaylibChunkVisibilityMode mode = RaylibChunkVisibilityMode::kAllChunks;
+    int radius_chunks = 2;
+    int fade_ring_chunks = 1;
+    bool show_hidden_bounds = false;
+};
+
+/**
+ * @brief Last measured visibility and draw-culling counters.
+ */
+struct RaylibChunkVisibilityStats {
+    RaylibChunkVisibilityMode mode = RaylibChunkVisibilityMode::kAllChunks;
+    int radius_chunks = 0;
+    int fade_ring_chunks = 0;
+    std::uint64_t resident_chunks = 0;
+    std::uint64_t visible_chunks = 0;
+    std::uint64_t fade_chunks = 0;
+    std::uint64_t hidden_chunks = 0;
+    std::uint64_t drawn_models = 0;
+    std::uint64_t culled_models = 0;
+    std::uint64_t total_faces = 0;
+    std::uint64_t drawn_faces = 0;
+    std::uint64_t culled_faces = 0;
+
+    /**
+     * @brief Returns true when visibility counters reference uploaded chunks.
+     *
+     * @return True if at least one resident chunk was counted.
+     */
+    [[nodiscard]] bool IsValid() const;
+
+    /**
+     * @brief Returns the share of renderer models skipped by visibility culling.
+     *
+     * @return Ratio in range [0, 1], or zero when no resident chunks exist.
+     */
+    [[nodiscard]] double DrawSavedRatio() const;
+
+    /**
+     * @brief Returns the share of mesh faces skipped by visibility culling.
+     *
+     * @return Ratio in range [0, 1], or zero when no faces exist.
+     */
+    [[nodiscard]] double FaceSavedRatio() const;
 };
 
 /**
@@ -58,6 +124,16 @@ struct RaylibChunkMeshPreviewStats {
      * @return True if GPU resources were uploaded successfully.
      */
     [[nodiscard]] bool IsValid() const;
+};
+
+/**
+ * @brief One uploaded raylib model plus the chunk metadata needed for culling.
+ */
+struct RaylibUploadedChunkModel {
+    Model model{};
+    ChunkCoord coord{};
+    TileBounds bounds{};
+    std::uint64_t faces = 0;
 };
 
 /**
@@ -102,6 +178,7 @@ public:
      * @param runtime_map Optional runtime map used by debug overlays.
      * @param chunk_grid Optional chunk grid used by debug overlays.
      * @param overlays 3D debug overlay visibility flags.
+     * @param visibility Chunk visibility and soft-fade options.
      */
     void Draw(
         Rectangle viewport,
@@ -109,7 +186,24 @@ public:
         const Camera3D& camera,
         const RuntimeMap* runtime_map = nullptr,
         const ChunkGrid* chunk_grid = nullptr,
-        RaylibChunkMeshDebugOverlayOptions overlays = {}) const;
+        RaylibChunkMeshDebugOverlayOptions overlays = {},
+        RaylibChunkVisibilityOptions visibility = {}) const;
+
+    /**
+     * @brief Calculates visibility counters for the current camera and options.
+     *
+     * The method does not draw and can be called before rendering to update UI
+     * and log diagnostics.
+     *
+     * @param build_result Original mesh build summary used for map dimensions.
+     * @param camera Camera used for the 3D preview draw pass.
+     * @param visibility Chunk visibility and soft-fade options.
+     * @return Visibility counters for uploaded chunks.
+     */
+    [[nodiscard]] RaylibChunkVisibilityStats CalculateVisibilityStats(
+        const ChunkMeshBuildResult& build_result,
+        const Camera3D& camera,
+        RaylibChunkVisibilityOptions visibility = {}) const;
 
     /**
      * @brief Releases uploaded raylib Model resources.
@@ -131,7 +225,7 @@ public:
     [[nodiscard]] const RaylibChunkMeshPreviewStats& Stats() const;
 
 private:
-    std::vector<Model> models_;
+    std::vector<RaylibUploadedChunkModel> chunks_;
     RaylibChunkMeshPreviewStats stats_;
 };
 
@@ -142,5 +236,13 @@ private:
  * @return Compact human-readable summary.
  */
 [[nodiscard]] std::string ToLogString(const RaylibChunkMeshPreviewStats& stats);
+
+/**
+ * @brief Builds a compact stable log string for visibility diagnostics.
+ *
+ * @param stats Visibility counters.
+ * @return Compact human-readable summary.
+ */
+[[nodiscard]] std::string ToLogString(const RaylibChunkVisibilityStats& stats);
 
 }  // namespace vox3d

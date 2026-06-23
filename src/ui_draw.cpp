@@ -180,6 +180,19 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "unknown";
 }
 
+[[nodiscard]] std::string VisibilityModeLabel(WorkspaceVisibilityMode mode)
+{
+    switch (mode) {
+        case WorkspaceVisibilityMode::kAllChunks:
+            return "all";
+        case WorkspaceVisibilityMode::kRadiusFade:
+            return "radius fade";
+        case WorkspaceVisibilityMode::kHardCull:
+            return "hard cull";
+    }
+    return "unknown";
+}
+
 [[nodiscard]] std::string CompactVector(Vector3 value)
 {
     return CompactFloat(value.x) + "," + CompactFloat(value.y) + "," + CompactFloat(value.z);
@@ -196,6 +209,16 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     if (!workspace_state.chunk_meshes.IsValid()) {
         return labels.workspace_status_ready + " | " + preview_mode + " | " + MapStatusLabel(workspace_state.map, labels);
     }
+    if (workspace_state.show_3d_preview && workspace_state.visibility_stats.resident_chunks > 0) {
+        return labels.workspace_status_ready + " | " + preview_mode + " | " + MeshModeLabel(workspace_state.mesh_mode)
+            + " | " + ColorModeLabel(workspace_state.color_mode)
+            + " | " + VisibilityModeLabel(workspace_state.visibility_mode)
+            + " | Visible " + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
+            + std::to_string(workspace_state.visibility_stats.resident_chunks)
+            + " | Drawn " + std::to_string(workspace_state.visibility_stats.drawn_models)
+            + " | Faces " + std::to_string(workspace_state.visibility_stats.drawn_faces);
+    }
+
     return labels.workspace_status_ready + " | " + preview_mode + " | " + MeshModeLabel(workspace_state.mesh_mode)
         + " | " + ColorModeLabel(workspace_state.color_mode)
         + " | Chunk " + std::to_string(workspace_state.chunk_size_tiles)
@@ -212,6 +235,31 @@ void PushMapStats(std::vector<std::string>& lines, const WorkspaceState& workspa
     lines.push_back("  Size: " + MapSizeText(workspace_state.map, labels));
     lines.push_back("  Tile: " + MapTileText(workspace_state.map, labels));
     lines.push_back("  Levels: " + MapLevelsText(workspace_state.map, labels));
+    lines.push_back("");
+}
+
+void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
+{
+    lines.push_back("Visibility");
+    lines.push_back("  Mode: " + VisibilityModeLabel(workspace_state.visibility_mode));
+    lines.push_back("  Radius/Fade: " + std::to_string(workspace_state.visibility_radius_chunks) + "/"
+        + std::to_string(workspace_state.visibility_fade_ring_chunks));
+    if (workspace_state.visibility_stats.resident_chunks == 0) {
+        lines.push_back("  unavailable");
+        lines.push_back("");
+        return;
+    }
+
+    lines.push_back("  Resident: " + std::to_string(workspace_state.visibility_stats.resident_chunks));
+    lines.push_back("  Visible/Fade: " + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
+        + std::to_string(workspace_state.visibility_stats.fade_chunks));
+    lines.push_back("  Hidden: " + std::to_string(workspace_state.visibility_stats.hidden_chunks));
+    lines.push_back("  Drawn: " + std::to_string(workspace_state.visibility_stats.drawn_models) + "/"
+        + std::to_string(workspace_state.visibility_stats.resident_chunks));
+    lines.push_back("  Faces: " + std::to_string(workspace_state.visibility_stats.drawn_faces) + "/"
+        + std::to_string(workspace_state.visibility_stats.total_faces));
+    lines.push_back("  Draw saved: " + CompactPercent(workspace_state.visibility_stats.DrawSavedRatio()));
+    lines.push_back("  Face saved: " + CompactPercent(workspace_state.visibility_stats.FaceSavedRatio()));
     lines.push_back("");
 }
 
@@ -287,6 +335,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     lines.push_back("  Legend: blue low, green mid");
     lines.push_back("          yellow/brown high, white peak");
     lines.push_back("");
+    PushVisibilityStats(lines, workspace_state);
     PushMeshStats(lines, workspace_state);
     PushDirtyStats(lines, workspace_state);
     if (workspace_state.show_3d_preview && camera_status.initialized) {
@@ -323,6 +372,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  F9   Chunk size",
         "  F10  Dirty rebuild probe",
         "  F11  Color mode",
+        "  F12  Visibility mode",
         "  F    Fit view",
         "  R    Reset camera",
         "  Esc  Release mouse first, then exit",
@@ -470,6 +520,24 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Chunk Id";
         case WorkspacePanelItem::k3DColorFaceType:
             return "Face Type";
+        case WorkspacePanelItem::k3DVisibilityGroup:
+            return "Visibility";
+        case WorkspacePanelItem::k3DVisibilityAllChunks:
+            return "All Chunks";
+        case WorkspacePanelItem::k3DVisibilityRadiusFade:
+            return "Radius Fade";
+        case WorkspacePanelItem::k3DVisibilityHardCull:
+            return "Hard Cull";
+        case WorkspacePanelItem::k3DVisibilityRadiusMinus:
+            return "Radius -";
+        case WorkspacePanelItem::k3DVisibilityRadiusPlus:
+            return "Radius +";
+        case WorkspacePanelItem::k3DVisibilityFadeMinus:
+            return "Fade Ring -";
+        case WorkspacePanelItem::k3DVisibilityFadePlus:
+            return "Fade Ring +";
+        case WorkspacePanelItem::k3DShowHiddenBounds:
+            return "Hidden Bounds";
         case WorkspacePanelItem::kRenderChunkBounds:
             return labels.workspace_subitem_chunk_bounds;
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -1271,13 +1339,24 @@ void DrawWorkspace(
             workspace_state.show_3d_collision_overlay,
             workspace_state.show_3d_height_overlay,
         };
+        const RaylibChunkVisibilityOptions visibility{
+            workspace_state.visibility_mode == WorkspaceVisibilityMode::kRadiusFade
+                ? RaylibChunkVisibilityMode::kRadiusFade
+                : (workspace_state.visibility_mode == WorkspaceVisibilityMode::kHardCull
+                    ? RaylibChunkVisibilityMode::kHardCull
+                    : RaylibChunkVisibilityMode::kAllChunks),
+            workspace_state.visibility_radius_chunks,
+            workspace_state.visibility_fade_ring_chunks,
+            workspace_state.show_3d_hidden_chunk_bounds,
+        };
         mesh_preview->Draw(
             workspace.map_overview,
             workspace_state.chunk_meshes,
             *preview_camera,
             &workspace_state.runtime_map,
             &workspace_state.chunk_grid,
-            overlays);
+            overlays,
+            visibility);
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {
         DrawWorkspaceOverview(workspace_state, workspace, metrics);

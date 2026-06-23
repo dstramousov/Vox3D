@@ -7,8 +7,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstddef>
 #include <cstdint>
+#include <iomanip>
 #include <limits>
 #include <string_view>
 #include <sstream>
@@ -30,7 +32,26 @@ std::string_view ToString(RaylibChunkMeshColorMode mode)
     return "unknown";
 }
 
+std::string_view ToString(RaylibChunkVisibilityMode mode)
+{
+    switch (mode) {
+        case RaylibChunkVisibilityMode::kAllChunks:
+            return "all_chunks";
+        case RaylibChunkVisibilityMode::kRadiusFade:
+            return "radius_fade";
+        case RaylibChunkVisibilityMode::kHardCull:
+            return "hard_cull";
+    }
+    return "unknown";
+}
+
 namespace {
+
+enum class ChunkVisibilityClass {
+    kVisible,
+    kFade,
+    kHidden,
+};
 
 struct RgbaColor {
     unsigned char r = 255;
@@ -169,6 +190,105 @@ struct RgbaColor {
         position.z,
         static_cast<float>(map_height) * 0.5F - position.y,
     };
+}
+
+[[nodiscard]] int ClampInt(int value, int minimum, int maximum)
+{
+    return std::max(minimum, std::min(maximum, value));
+}
+
+[[nodiscard]] ChunkCoord CameraChunkCoord(
+    const Camera3D& camera,
+    const ChunkMeshBuildInfo& info)
+{
+    const int chunk_size_x = std::max(1, info.chunk_size_x);
+    const int chunk_size_y = std::max(1, info.chunk_size_y);
+    const float tile_x = camera.position.x + static_cast<float>(info.map_width) * 0.5F;
+    const float tile_y = static_cast<float>(info.map_height) * 0.5F - camera.position.z;
+    const int chunk_x = ClampInt(
+        static_cast<int>(std::floor(tile_x / static_cast<float>(chunk_size_x))),
+        0,
+        std::max(0, info.chunks_x - 1));
+    const int chunk_y = ClampInt(
+        static_cast<int>(std::floor(tile_y / static_cast<float>(chunk_size_y))),
+        0,
+        std::max(0, info.chunks_y - 1));
+    return ChunkCoord{chunk_x, chunk_y};
+}
+
+[[nodiscard]] ChunkVisibilityClass ClassifyChunkVisibility(
+    ChunkCoord chunk,
+    ChunkCoord camera_chunk,
+    RaylibChunkVisibilityOptions visibility)
+{
+    if (visibility.mode == RaylibChunkVisibilityMode::kAllChunks) {
+        return ChunkVisibilityClass::kVisible;
+    }
+
+    const int radius = std::max(0, visibility.radius_chunks);
+    const int fade_ring = std::max(0, visibility.fade_ring_chunks);
+    const int distance = std::max(
+        std::abs(chunk.x - camera_chunk.x),
+        std::abs(chunk.y - camera_chunk.y));
+    if (distance <= radius) {
+        return ChunkVisibilityClass::kVisible;
+    }
+    if (visibility.mode == RaylibChunkVisibilityMode::kRadiusFade
+        && distance <= radius + fade_ring) {
+        return ChunkVisibilityClass::kFade;
+    }
+    return ChunkVisibilityClass::kHidden;
+}
+
+[[nodiscard]] Color VisibilityTint(ChunkVisibilityClass visibility)
+{
+    switch (visibility) {
+        case ChunkVisibilityClass::kVisible:
+            return Color{255, 255, 255, 255};
+        case ChunkVisibilityClass::kFade:
+            return Color{86, 94, 94, 255};
+        case ChunkVisibilityClass::kHidden:
+            return Color{0, 0, 0, 0};
+    }
+    return Color{255, 255, 255, 255};
+}
+
+[[nodiscard]] Vector3 TileCornerWorld(float tile_x, float tile_y, float level, int map_width, int map_height);
+
+[[nodiscard]] float HiddenBoundsLevel(const ChunkMeshBuildResult& build_result)
+{
+    if (build_result.info.levels.has_value()) {
+        return static_cast<float>(build_result.info.levels->max + 2);
+    }
+    return 1.0F;
+}
+
+void DrawHiddenChunkBounds(
+    const std::vector<RaylibUploadedChunkModel>& chunks,
+    const ChunkMeshBuildResult& build_result,
+    const Camera3D& camera,
+    RaylibChunkVisibilityOptions visibility)
+{
+    if (visibility.mode == RaylibChunkVisibilityMode::kAllChunks || !visibility.show_hidden_bounds) {
+        return;
+    }
+
+    const ChunkCoord camera_chunk = CameraChunkCoord(camera, build_result.info);
+    const float level = HiddenBoundsLevel(build_result);
+    constexpr Color kHiddenBounds{255, 105, 90, 150};
+    for (const auto& chunk : chunks) {
+        if (ClassifyChunkVisibility(chunk.coord, camera_chunk, visibility) != ChunkVisibilityClass::kHidden) {
+            continue;
+        }
+        const Vector3 nw = TileCornerWorld(static_cast<float>(chunk.bounds.min_x), static_cast<float>(chunk.bounds.min_y), level, build_result.info.map_width, build_result.info.map_height);
+        const Vector3 ne = TileCornerWorld(static_cast<float>(chunk.bounds.max_x), static_cast<float>(chunk.bounds.min_y), level, build_result.info.map_width, build_result.info.map_height);
+        const Vector3 se = TileCornerWorld(static_cast<float>(chunk.bounds.max_x), static_cast<float>(chunk.bounds.max_y), level, build_result.info.map_width, build_result.info.map_height);
+        const Vector3 sw = TileCornerWorld(static_cast<float>(chunk.bounds.min_x), static_cast<float>(chunk.bounds.max_y), level, build_result.info.map_width, build_result.info.map_height);
+        DrawLine3D(nw, ne, kHiddenBounds);
+        DrawLine3D(ne, se, kHiddenBounds);
+        DrawLine3D(se, sw, kHiddenBounds);
+        DrawLine3D(sw, nw, kHiddenBounds);
+    }
 }
 
 [[nodiscard]] Vector3 FaceNormal(FaceDirection direction)
@@ -426,6 +546,21 @@ void DrawDebugOverlays(
 
 }  // namespace
 
+bool RaylibChunkVisibilityStats::IsValid() const
+{
+    return resident_chunks > 0 && resident_chunks == drawn_models + culled_models;
+}
+
+double RaylibChunkVisibilityStats::DrawSavedRatio() const
+{
+    return resident_chunks == 0 ? 0.0 : static_cast<double>(culled_models) / static_cast<double>(resident_chunks);
+}
+
+double RaylibChunkVisibilityStats::FaceSavedRatio() const
+{
+    return total_faces == 0 ? 0.0 : static_cast<double>(culled_faces) / static_cast<double>(total_faces);
+}
+
 bool RaylibChunkMeshPreviewStats::IsValid() const
 {
     return uploaded && models > 0 && faces > 0 && vertices == faces * 4ULL && indices == faces * 6ULL;
@@ -444,7 +579,7 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
         return false;
     }
 
-    models_.reserve(build_result.chunks.size());
+    chunks_.reserve(build_result.chunks.size());
     for (const ChunkMeshData& chunk : build_result.chunks) {
         if (chunk.faces.empty()) {
             continue;
@@ -460,14 +595,14 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
             continue;
         }
 
-        models_.push_back(model);
+        chunks_.push_back(RaylibUploadedChunkModel{model, chunk.coord, chunk.bounds, static_cast<std::uint64_t>(chunk.faces.size())});
         ++stats_.models;
         stats_.faces += static_cast<std::uint64_t>(chunk.faces.size());
         stats_.vertices += static_cast<std::uint64_t>(chunk.vertices.size());
         stats_.indices += static_cast<std::uint64_t>(chunk.indices.size());
     }
 
-    stats_.uploaded = !models_.empty();
+    stats_.uploaded = !chunks_.empty();
     return stats_.uploaded;
 }
 
@@ -477,7 +612,8 @@ void RaylibChunkMeshPreview::Draw(
     const Camera3D& camera,
     const RuntimeMap* runtime_map,
     const ChunkGrid* chunk_grid,
-    RaylibChunkMeshDebugOverlayOptions overlays) const
+    RaylibChunkMeshDebugOverlayOptions overlays,
+    RaylibChunkVisibilityOptions visibility) const
 {
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
@@ -492,31 +628,72 @@ void RaylibChunkMeshPreview::Draw(
 
     constexpr Vector3 kOrigin{0.0F, 0.0F, 0.0F};
     constexpr float kScale = 1.0F;
-    constexpr Color kTint{255, 255, 255, 255};
-    for (const Model& model : models_) {
-        DrawModel(model, kOrigin, kScale, kTint);
+    const ChunkCoord camera_chunk = CameraChunkCoord(camera, build_result.info);
+    for (const RaylibUploadedChunkModel& chunk : chunks_) {
+        const ChunkVisibilityClass visibility_class = ClassifyChunkVisibility(chunk.coord, camera_chunk, visibility);
+        if (visibility_class == ChunkVisibilityClass::kHidden) {
+            continue;
+        }
+        DrawModel(chunk.model, kOrigin, kScale, VisibilityTint(visibility_class));
     }
 
+    DrawHiddenChunkBounds(chunks_, build_result, camera, visibility);
     DrawDebugOverlays(build_result, runtime_map, chunk_grid, overlays);
 
     EndMode3D();
     EndScissorMode();
 }
 
-void RaylibChunkMeshPreview::Unload()
+RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(
+    const ChunkMeshBuildResult& build_result,
+    const Camera3D& camera,
+    RaylibChunkVisibilityOptions visibility) const
 {
-    for (Model& model : models_) {
-        if (model.meshCount > 0 && model.meshes != nullptr) {
-            UnloadModel(model);
+    RaylibChunkVisibilityStats result;
+    result.mode = visibility.mode;
+    result.radius_chunks = std::max(0, visibility.radius_chunks);
+    result.fade_ring_chunks = std::max(0, visibility.fade_ring_chunks);
+    if (!IsUploaded() || !build_result.info.IsValid()) {
+        return result;
+    }
+
+    const ChunkCoord camera_chunk = CameraChunkCoord(camera, build_result.info);
+    result.resident_chunks = static_cast<std::uint64_t>(chunks_.size());
+    for (const RaylibUploadedChunkModel& chunk : chunks_) {
+        result.total_faces += chunk.faces;
+        const ChunkVisibilityClass visibility_class = ClassifyChunkVisibility(chunk.coord, camera_chunk, visibility);
+        if (visibility_class == ChunkVisibilityClass::kHidden) {
+            ++result.hidden_chunks;
+            ++result.culled_models;
+            result.culled_faces += chunk.faces;
+            continue;
+        }
+
+        ++result.drawn_models;
+        result.drawn_faces += chunk.faces;
+        if (visibility_class == ChunkVisibilityClass::kFade) {
+            ++result.fade_chunks;
+        } else {
+            ++result.visible_chunks;
         }
     }
-    models_.clear();
+    return result;
+}
+
+void RaylibChunkMeshPreview::Unload()
+{
+    for (RaylibUploadedChunkModel& chunk : chunks_) {
+        if (chunk.model.meshCount > 0 && chunk.model.meshes != nullptr) {
+            UnloadModel(chunk.model);
+        }
+    }
+    chunks_.clear();
     stats_ = RaylibChunkMeshPreviewStats{};
 }
 
 bool RaylibChunkMeshPreview::IsUploaded() const
 {
-    return stats_.uploaded && !models_.empty();
+    return stats_.uploaded && !chunks_.empty();
 }
 
 const RaylibChunkMeshPreviewStats& RaylibChunkMeshPreview::Stats() const
@@ -535,6 +712,23 @@ std::string ToLogString(const RaylibChunkMeshPreviewStats& stats)
     if (stats.skipped_chunks > 0) {
         out << " skipped_chunks=" << stats.skipped_chunks;
     }
+    return out.str();
+}
+
+std::string ToLogString(const RaylibChunkVisibilityStats& stats)
+{
+    std::ostringstream out;
+    out << "mode=" << ToString(stats.mode);
+    out << " radius=" << stats.radius_chunks;
+    out << " fade_ring=" << stats.fade_ring_chunks;
+    out << " resident=" << stats.resident_chunks;
+    out << " visible=" << stats.visible_chunks;
+    out << " fade=" << stats.fade_chunks;
+    out << " hidden=" << stats.hidden_chunks;
+    out << " drawn_models=" << stats.drawn_models << '/' << stats.resident_chunks;
+    out << " faces=" << stats.drawn_faces << '/' << stats.total_faces;
+    out << " draw_saved=" << std::fixed << std::setprecision(1) << stats.DrawSavedRatio() * 100.0 << '%';
+    out << " face_saved=" << std::fixed << std::setprecision(1) << stats.FaceSavedRatio() * 100.0 << '%';
     return out.str();
 }
 

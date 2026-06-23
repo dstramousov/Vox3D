@@ -206,3 +206,10 @@
 - Added 3D diagnostic color modes for material, geographic elevation, chunk id, and face type previews without changing mesh geometry.
 - Added deterministic geographic elevation colors for map levels and reuploads active chunk meshes when switching color mode.
 - Wired the workspace menu, F11 hotkey, status bar, Stats tab, and render logs to expose the active color visualization mode.
+
+
+## v0.4.4 -> v0.4.5
+
+- Added render visibility modes for all chunks, soft radius fade, and hard chunk culling in the 3D preview.
+- Added per-frame visibility diagnostics for resident, visible, fade, hidden, drawn, and culled chunks plus drawn/skipped faces.
+- Wired the workspace menu, F12 hotkey, Stats tab, status bar, and render logs to show measurable visibility/culling profit without changing mesh generation.

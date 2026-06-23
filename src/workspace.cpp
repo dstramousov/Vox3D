@@ -87,6 +87,29 @@ std::string_view ToString(WorkspaceColorMode mode)
     return "unknown";
 }
 
+std::string_view ToString(WorkspaceVisibilityMode mode)
+{
+    switch (mode) {
+        case WorkspaceVisibilityMode::kAllChunks:
+            return "all_chunks";
+        case WorkspaceVisibilityMode::kRadiusFade:
+            return "radius_fade";
+        case WorkspaceVisibilityMode::kHardCull:
+            return "hard_cull";
+    }
+    return "unknown";
+}
+
+double WorkspaceVisibilityStats::DrawSavedRatio() const
+{
+    return resident_chunks == 0 ? 0.0 : static_cast<double>(culled_models) / static_cast<double>(resident_chunks);
+}
+
+double WorkspaceVisibilityStats::FaceSavedRatio() const
+{
+    return total_faces == 0 ? 0.0 : static_cast<double>(culled_faces) / static_cast<double>(total_faces);
+}
+
 double WorkspaceChunkSizeComparison::DrawModelDeltaRatio() const
 {
     return available ? DeltaRatio(before_draw_models, after_draw_models) : 0.0;
@@ -172,6 +195,24 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_color_chunk_id";
         case WorkspacePanelItem::k3DColorFaceType:
             return "3d_color_face_type";
+        case WorkspacePanelItem::k3DVisibilityGroup:
+            return "3d_visibility";
+        case WorkspacePanelItem::k3DVisibilityAllChunks:
+            return "3d_visibility_all_chunks";
+        case WorkspacePanelItem::k3DVisibilityRadiusFade:
+            return "3d_visibility_radius_fade";
+        case WorkspacePanelItem::k3DVisibilityHardCull:
+            return "3d_visibility_hard_cull";
+        case WorkspacePanelItem::k3DVisibilityRadiusMinus:
+            return "3d_visibility_radius_minus";
+        case WorkspacePanelItem::k3DVisibilityRadiusPlus:
+            return "3d_visibility_radius_plus";
+        case WorkspacePanelItem::k3DVisibilityFadeMinus:
+            return "3d_visibility_fade_minus";
+        case WorkspacePanelItem::k3DVisibilityFadePlus:
+            return "3d_visibility_fade_plus";
+        case WorkspacePanelItem::k3DShowHiddenBounds:
+            return "3d_show_hidden_bounds";
         case WorkspacePanelItem::kRenderChunkBounds:
             return "render_chunk_bounds";
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -324,6 +365,16 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Radio(Item::k3DColorGeographic, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kGeographic));
         items.push_back(Radio(Item::k3DColorChunkId, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kChunkId));
         items.push_back(Radio(Item::k3DColorFaceType, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kFaceType));
+
+        items.push_back(Group(Item::k3DVisibilityGroup, 0));
+        items.push_back(Radio(Item::k3DVisibilityAllChunks, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kAllChunks));
+        items.push_back(Radio(Item::k3DVisibilityRadiusFade, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kRadiusFade));
+        items.push_back(Radio(Item::k3DVisibilityHardCull, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kHardCull));
+        items.push_back(Action(Item::k3DVisibilityRadiusMinus, 1, workspace.chunk_meshes.IsValid()));
+        items.push_back(Action(Item::k3DVisibilityRadiusPlus, 1, workspace.chunk_meshes.IsValid()));
+        items.push_back(Action(Item::k3DVisibilityFadeMinus, 1, workspace.chunk_meshes.IsValid()));
+        items.push_back(Action(Item::k3DVisibilityFadePlus, 1, workspace.chunk_meshes.IsValid()));
+        items.push_back(Checkbox(Item::k3DShowHiddenBounds, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_hidden_chunk_bounds));
 
         items.push_back(Group(Item::k3DMeshGroup, 0));
         items.push_back(Radio(Item::k3DMeshSimple, 1, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));

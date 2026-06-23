@@ -59,6 +59,15 @@ enum class WorkspaceColorMode {
 };
 
 /**
+ * @brief Chunk visibility presentation mode used by the 3D workspace preview.
+ */
+enum class WorkspaceVisibilityMode {
+    kAllChunks,
+    kRadiusFade,
+    kHardCull,
+};
+
+/**
  * @brief Clickable item shown inside an expanded workspace tree section.
  */
 enum class WorkspacePanelItem {
@@ -100,6 +109,15 @@ enum class WorkspacePanelItem {
     k3DColorGeographic,
     k3DColorChunkId,
     k3DColorFaceType,
+    k3DVisibilityGroup,
+    k3DVisibilityAllChunks,
+    k3DVisibilityRadiusFade,
+    k3DVisibilityHardCull,
+    k3DVisibilityRadiusMinus,
+    k3DVisibilityRadiusPlus,
+    k3DVisibilityFadeMinus,
+    k3DVisibilityFadePlus,
+    k3DShowHiddenBounds,
     kRenderChunkBounds,
     kRenderWorldGrid,
     kRenderCollision,
@@ -179,6 +197,38 @@ struct WorkspacePanelItemState {
 
 
 /**
+ * @brief Last measured visibility and draw-culling counters for the 3D preview.
+ */
+struct WorkspaceVisibilityStats {
+    WorkspaceVisibilityMode mode = WorkspaceVisibilityMode::kAllChunks;
+    int radius_chunks = 0;
+    int fade_ring_chunks = 0;
+    std::uint64_t resident_chunks = 0;
+    std::uint64_t visible_chunks = 0;
+    std::uint64_t fade_chunks = 0;
+    std::uint64_t hidden_chunks = 0;
+    std::uint64_t drawn_models = 0;
+    std::uint64_t culled_models = 0;
+    std::uint64_t total_faces = 0;
+    std::uint64_t drawn_faces = 0;
+    std::uint64_t culled_faces = 0;
+
+    /**
+     * @brief Returns the share of renderer models skipped by visibility culling.
+     *
+     * @return Ratio in range [0, 1], or zero when no resident chunks exist.
+     */
+    [[nodiscard]] double DrawSavedRatio() const;
+
+    /**
+     * @brief Returns the share of mesh faces skipped by visibility culling.
+     *
+     * @return Ratio in range [0, 1], or zero when no faces exist.
+     */
+    [[nodiscard]] double FaceSavedRatio() const;
+};
+
+/**
  * @brief Last measured comparison between two chunk-size builds.
  */
 struct WorkspaceChunkSizeComparison {
@@ -230,6 +280,11 @@ struct WorkspaceState {
     bool show_3d_collision_overlay = false;
     bool show_3d_height_overlay = false;
     WorkspaceColorMode color_mode = WorkspaceColorMode::kMaterial;
+    WorkspaceVisibilityMode visibility_mode = WorkspaceVisibilityMode::kAllChunks;
+    int visibility_radius_chunks = 2;
+    int visibility_fade_ring_chunks = 1;
+    bool show_3d_hidden_chunk_bounds = false;
+    WorkspaceVisibilityStats visibility_stats;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;
     MapPackageInfo map;
@@ -272,6 +327,14 @@ struct WorkspaceState {
  * @return String representation.
  */
 [[nodiscard]] std::string_view ToString(WorkspaceColorMode mode);
+
+/**
+ * @brief Converts a workspace visibility mode identifier to a stable lowercase name.
+ *
+ * @param mode Visibility mode identifier.
+ * @return String representation.
+ */
+[[nodiscard]] std::string_view ToString(WorkspaceVisibilityMode mode);
 
 /**
  * @brief Converts a workspace panel item identifier to a stable lowercase name.

@@ -82,6 +82,11 @@ private:
     void SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason);
     void SetColorMode(WorkspaceColorMode mode, std::string_view reason);
     void CycleColorMode(std::string_view reason);
+    void SetVisibilityMode(WorkspaceVisibilityMode mode, std::string_view reason);
+    void CycleVisibilityMode(std::string_view reason);
+    void AdjustVisibilityRadius(int delta, std::string_view reason);
+    void AdjustVisibilityFadeRing(int delta, std::string_view reason);
+    void UpdateVisibilityStats();
     void SetChunkSize(int chunk_size, std::string_view reason);
     void RebuildChunkPipeline(int chunk_size, std::string_view reason);
     void UploadActiveChunkMesh(std::string_view reason);
