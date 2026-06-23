@@ -119,6 +119,15 @@ struct WorkspaceToolBounds {
 };
 
 /**
+ * @brief Hit box and text position for a workspace right-panel tab.
+ */
+struct WorkspacePanelTabBounds {
+    WorkspacePanelTab tab = WorkspacePanelTab::kMenu;
+    Rectangle bounds{};
+    Vector2 text_position{};
+};
+
+/**
  * @brief Hit box and text position for a workspace accordion subitem.
  */
 struct WorkspacePanelItemBounds {
@@ -144,6 +153,7 @@ struct WorkspaceLayout {
     Rectangle map_summary{};
     Rectangle map_overview{};
     std::vector<WorkspaceToolBounds> tools;
+    std::vector<WorkspacePanelTabBounds> panel_tabs;
     std::vector<WorkspacePanelItemBounds> panel_items;
 };
 

@@ -28,6 +28,16 @@ enum class WorkspaceTool {
 };
 
 /**
+ * @brief High-level right panel tab shown above workspace controls.
+ */
+enum class WorkspacePanelTab {
+    kMenu,
+    kStats,
+    kInspect,
+    kHelp,
+};
+
+/**
  * @brief Semantic kind of a workspace tree row.
  */
 enum class WorkspacePanelItemKind {
@@ -42,6 +52,7 @@ enum class WorkspacePanelItemKind {
  * @brief Clickable item shown inside an expanded workspace tree section.
  */
 enum class WorkspacePanelItem {
+    kMenuModeGroup,
     kMode2DMap,
     kMode3DWorld,
 
@@ -191,6 +202,7 @@ struct WorkspaceChunkSizeComparison {
  * @brief Runtime state for the main workspace screen.
  */
 struct WorkspaceState {
+    WorkspacePanelTab selected_panel_tab = WorkspacePanelTab::kMenu;
     WorkspaceTool selected_tool = WorkspaceTool::kMode;
     bool selected_tool_expanded = true;
     bool show_terrain_layer = true;
@@ -228,6 +240,14 @@ struct WorkspaceState {
  * @return String representation.
  */
 [[nodiscard]] std::string_view ToString(WorkspaceTool tool);
+
+/**
+ * @brief Converts a workspace panel tab identifier to a stable lowercase name.
+ *
+ * @param tab Workspace panel tab identifier.
+ * @return String representation.
+ */
+[[nodiscard]] std::string_view ToString(WorkspacePanelTab tab);
 
 /**
  * @brief Converts a workspace panel item identifier to a stable lowercase name.

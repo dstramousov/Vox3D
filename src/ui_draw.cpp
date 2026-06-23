@@ -165,38 +165,159 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "unknown";
 }
 
-[[nodiscard]] std::string CompactMeshStats(const WorkspaceState& workspace_state)
-{
-    const MeshOptimizationStats& stats = workspace_state.mesh_stats;
-    return "mesh=" + MeshModeLabel(stats.active_mode) + " chunk=" + std::to_string(workspace_state.chunk_size_tiles)
-        + " faces=" + std::to_string(stats.active_faces) + " models=" + std::to_string(stats.draw_models)
-        + " saved=" + CompactPercent(stats.ActiveReductionRatio());
-}
-
 [[nodiscard]] std::string CompactVector(Vector3 value)
 {
     return CompactFloat(value.x) + "," + CompactFloat(value.y) + "," + CompactFloat(value.z);
 }
 
-[[nodiscard]] std::string WorkspaceToolLabel(WorkspaceTool tool, const UiLabels& labels)
+[[nodiscard]] std::string MapStatusLabel(const MapPackageInfo& map, const UiLabels& labels);
+[[nodiscard]] std::string MapSizeText(const MapPackageInfo& map, const UiLabels& labels);
+[[nodiscard]] std::string MapLevelsText(const MapPackageInfo& map, const UiLabels& labels);
+[[nodiscard]] std::string MapTileText(const MapPackageInfo& map, const UiLabels& labels);
+
+[[nodiscard]] std::string CompactStatusText(const WorkspaceState& workspace_state, const UiLabels& labels)
 {
-    switch (tool) {
-        case WorkspaceTool::kMode:
-            return "Mode";
-        case WorkspaceTool::kMap2D:
-            return "2D Map";
-        case WorkspaceTool::kWorld3D:
-            return "3D World";
-        case WorkspaceTool::kSelection:
-            return "Selection";
-        case WorkspaceTool::kPackageData:
-            return "Package Data";
-        case WorkspaceTool::kDebug:
-            return labels.workspace_tool_debug;
-        case WorkspaceTool::kSettings:
-            return labels.workspace_tool_settings;
+    const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
+    if (!workspace_state.chunk_meshes.IsValid()) {
+        return labels.workspace_status_ready + " | " + preview_mode + " | " + MapStatusLabel(workspace_state.map, labels);
     }
-    return labels.debug_none;
+    return labels.workspace_status_ready + " | " + preview_mode + " | " + MeshModeLabel(workspace_state.mesh_mode)
+        + " | Chunk " + std::to_string(workspace_state.chunk_size_tiles)
+        + " | Faces " + std::to_string(workspace_state.mesh_stats.active_faces)
+        + " | Models " + std::to_string(workspace_state.mesh_stats.draw_models)
+        + " | Saved " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio());
+}
+
+void PushMapStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state, const UiLabels& labels)
+{
+    lines.push_back("Map");
+    lines.push_back("  Status: " + MapStatusLabel(workspace_state.map, labels));
+    lines.push_back("  Package: " + (workspace_state.map.configured ? workspace_state.map.path.filename().string() : labels.debug_none));
+    lines.push_back("  Size: " + MapSizeText(workspace_state.map, labels));
+    lines.push_back("  Tile: " + MapTileText(workspace_state.map, labels));
+    lines.push_back("  Levels: " + MapLevelsText(workspace_state.map, labels));
+    lines.push_back("");
+}
+
+void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
+{
+    lines.push_back("Mesh");
+    if (!workspace_state.chunk_meshes.IsValid()) {
+        lines.push_back("  unavailable");
+        lines.push_back("");
+        return;
+    }
+
+    lines.push_back("  Mode: " + MeshModeLabel(workspace_state.mesh_mode));
+    lines.push_back("  Chunk: " + std::to_string(workspace_state.chunk_size_tiles));
+    lines.push_back("  Chunks: " + std::to_string(workspace_state.chunk_grid.info.chunks_x) + "x"
+        + std::to_string(workspace_state.chunk_grid.info.chunks_y) + " = "
+        + std::to_string(workspace_state.chunk_grid.info.total_chunks));
+    lines.push_back("  Faces: " + std::to_string(workspace_state.mesh_stats.active_faces));
+    lines.push_back("  Models: " + std::to_string(workspace_state.mesh_stats.draw_models));
+    lines.push_back("  Saved: " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio()));
+    lines.push_back("");
+
+    lines.push_back("Comparison");
+    lines.push_back("  Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
+    lines.push_back("  Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
+    lines.push_back("  Terrain: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
+    lines.push_back("  Terrain T/W: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.terrain_wall_faces));
+    lines.push_back("  Terrain vs greedy: " + CompactSignedPercent(workspace_state.mesh_stats.TerrainVsGreedyDeltaRatio()));
+    if (workspace_state.chunk_size_comparison.available) {
+        lines.push_back("");
+        lines.push_back("Chunk Profit");
+        lines.push_back("  Models: " + CompactSignedPercent(workspace_state.chunk_size_comparison.DrawModelDeltaRatio()));
+        lines.push_back("  Faces: " + CompactSignedPercent(workspace_state.chunk_size_comparison.FaceDeltaRatio()));
+    }
+    lines.push_back("");
+}
+
+void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
+{
+    lines.push_back("Dirty Cache");
+    if (!workspace_state.chunk_mesh_cache.IsValid() && !workspace_state.last_mesh_rebuild.attempted) {
+        lines.push_back("  unavailable for terrain mode");
+        return;
+    }
+    if (workspace_state.chunk_mesh_cache.IsValid()) {
+        lines.push_back("  Dirty: " + std::to_string(workspace_state.chunk_mesh_cache.info.dirty_chunks));
+    }
+    if (workspace_state.last_mesh_rebuild.attempted) {
+        lines.push_back("  Rebuilt: " + std::to_string(workspace_state.last_mesh_rebuild.rebuilt_chunks) + "/"
+            + std::to_string(workspace_state.last_mesh_rebuild.total_chunks));
+        lines.push_back("  Reused: " + std::to_string(workspace_state.last_mesh_rebuild.reused_chunks));
+        lines.push_back("  Saved work: " + CompactPercent(workspace_state.last_mesh_rebuild.SavedRebuildWorkRatio()));
+    }
+}
+
+[[nodiscard]] std::vector<std::string> BuildStatsPanelLines(
+    const WorkspaceState& workspace_state,
+    FreeFlyCameraStatus camera_status,
+    const UiLabels& labels)
+{
+    std::vector<std::string> lines;
+    PushMapStats(lines, workspace_state, labels);
+    PushMeshStats(lines, workspace_state);
+    PushDirtyStats(lines, workspace_state);
+    if (workspace_state.show_3d_preview && camera_status.initialized) {
+        lines.push_back("");
+        lines.push_back("Camera");
+        lines.push_back(std::string("  State: ") + (camera_status.cursor_captured ? "captured" : "free"));
+        lines.push_back("  Yaw/Pitch: " + CompactFloat(camera_status.yaw_degrees) + "/" + CompactFloat(camera_status.pitch_degrees));
+        lines.push_back("  Pos: " + CompactVector(camera_status.position));
+    }
+    return lines;
+}
+
+[[nodiscard]] std::vector<std::string> BuildInspectPanelLines()
+{
+    return {
+        "Selection",
+        "  Tile: none",
+        "  Chunk: none",
+        "  Face: none",
+        "",
+        "Picking is not implemented yet.",
+        "This tab is reserved for ray hit,",
+        "tile, terrain and chunk inspection.",
+    };
+}
+
+[[nodiscard]] std::vector<std::string> BuildHelpPanelLines()
+{
+    return {
+        "Hotkeys",
+        "  F3   2D / 3D",
+        "  F8   Mesh mode",
+        "  F9   Chunk size",
+        "  F10  Dirty rebuild probe",
+        "  F    Fit view",
+        "  R    Reset camera",
+        "  Esc  Release mouse / exit",
+        "",
+        "3D Camera",
+        "  Click viewport to capture mouse",
+        "  WASD move, Q/E down/up",
+        "  Shift fast, Ctrl slow",
+        "  Wheel dolly",
+    };
+}
+
+[[nodiscard]] std::string WorkspacePanelTabLabel(WorkspacePanelTab tab)
+{
+    switch (tab) {
+        case WorkspacePanelTab::kMenu:
+            return "Menu";
+        case WorkspacePanelTab::kStats:
+            return "Stats";
+        case WorkspacePanelTab::kInspect:
+            return "Inspect";
+        case WorkspacePanelTab::kHelp:
+            return "Help";
+    }
+    return "Unknown";
 }
 
 [[nodiscard]] std::string MapStatusLabel(const MapPackageInfo& map, const UiLabels& labels)
@@ -247,6 +368,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 [[nodiscard]] std::string WorkspacePanelItemLabel(WorkspacePanelItem item, const UiLabels& labels)
 {
     switch (item) {
+        case WorkspacePanelItem::kMenuModeGroup:
+            return "Mode";
         case WorkspacePanelItem::kMode2DMap:
             return labels.workspace_subitem_2d_map;
         case WorkspacePanelItem::kMode3DWorld:
@@ -689,7 +812,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 [[nodiscard]] WorkspaceLayout BuildWorkspaceLayout(const UiMetrics& metrics, const WorkspaceState& workspace_state)
 {
     WorkspaceLayout layout;
-    layout.tools.reserve(7);
+    layout.panel_tabs.reserve(4);
 
     const float status_height = metrics.workspace_status_height;
     const float panel_width = metrics.workspace_panel_width;
@@ -725,88 +848,75 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         std::max(1.0F, layout.viewport.height - viewport_padding * 2.0F),
     };
 
-    layout.tool_header = Rectangle{
-        layout.tool_panel.x + border,
-        layout.tool_panel.y + border,
-        std::max(1.0F, layout.tool_panel.width - border * 2.0F),
-        0.0F,
-    };
-
-    constexpr std::array<WorkspaceTool, 7> tools{
-        WorkspaceTool::kMode,
-        WorkspaceTool::kMap2D,
-        WorkspaceTool::kWorld3D,
-        WorkspaceTool::kSelection,
-        WorkspaceTool::kPackageData,
-        WorkspaceTool::kDebug,
-        WorkspaceTool::kSettings,
-    };
-
-    const float tool_height = metrics.workspace_tool_font_size + gap * 1.35F;
-    const float item_height = metrics.workspace_tool_font_size + gap * 1.05F;
     const float tool_x = layout.tool_panel.x + padding;
-    float row_y = layout.tool_panel.y + padding;
     const float tool_width = std::max(1.0F, layout.tool_panel.width - padding * 2.0F);
     const float row_bottom = layout.tool_panel.y + layout.tool_panel.height - padding;
+    const float tab_height = metrics.workspace_tool_font_size + gap * 1.45F;
+    const float item_height = metrics.workspace_tool_font_size + gap * 1.05F;
     const float subitem_indent = gap * 2.4F;
 
-    const auto selected_items = BuildWorkspacePanelItems(workspace_state);
-    for (WorkspaceTool tool : tools) {
-        if (row_y + tool_height > row_bottom) {
-            break;
-        }
-
-        const Rectangle bounds{tool_x, row_y, tool_width, tool_height};
-        layout.tools.push_back(WorkspaceToolBounds{
-            tool,
-            bounds,
-            Vector2{bounds.x + gap, bounds.y + (bounds.height - metrics.workspace_tool_font_size) * 0.5F},
-        });
-        row_y += tool_height;
-
-        if (tool != workspace_state.selected_tool || !workspace_state.selected_tool_expanded) {
-            continue;
-        }
-
-        layout.panel_items.reserve(selected_items.size());
-        for (const WorkspacePanelItemState& item : selected_items) {
-            if (row_y + item_height > row_bottom) {
-                break;
-            }
-            const float indent = subitem_indent * static_cast<float>(std::max(0, item.depth));
-            const Rectangle item_bounds{
-                tool_x + indent,
-                row_y,
-                std::max(1.0F, tool_width - indent),
-                item_height,
-            };
-            layout.panel_items.push_back(WorkspacePanelItemBounds{
-                item.item,
-                item.kind,
-                item.depth,
-                item_bounds,
-                Vector2{item_bounds.x + gap, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
-                item.enabled,
-                item.checked,
-            });
-            row_y += item_height;
-        }
-    }
-
-    layout.tool_menu = Rectangle{
+    layout.tool_header = Rectangle{
         tool_x,
         layout.tool_panel.y + padding,
         tool_width,
-        std::max(1.0F, row_y - (layout.tool_panel.y + padding)),
+        tab_height,
     };
 
-    const float info_y = row_y + gap * 2.0F;
-    layout.tool_info = Rectangle{
-        layout.tool_panel.x + padding,
-        info_y,
-        tool_width,
-        std::max(1.0F, row_bottom - info_y),
+    constexpr std::array<WorkspacePanelTab, 4> tabs{
+        WorkspacePanelTab::kMenu,
+        WorkspacePanelTab::kStats,
+        WorkspacePanelTab::kInspect,
+        WorkspacePanelTab::kHelp,
     };
+    const float tab_width = tool_width / static_cast<float>(tabs.size());
+    for (std::size_t index = 0; index < tabs.size(); ++index) {
+        const Rectangle bounds{
+            tool_x + static_cast<float>(index) * tab_width,
+            layout.tool_header.y,
+            tab_width,
+            tab_height,
+        };
+        layout.panel_tabs.push_back(WorkspacePanelTabBounds{
+            tabs[index],
+            bounds,
+            Vector2{bounds.x + gap * 0.55F, bounds.y + (bounds.height - metrics.workspace_tool_font_size) * 0.5F},
+        });
+    }
+
+    const float content_y = layout.tool_header.y + layout.tool_header.height + gap;
+    layout.tool_menu = Rectangle{
+        tool_x,
+        content_y,
+        tool_width,
+        std::max(1.0F, row_bottom - content_y),
+    };
+    layout.tool_info = layout.tool_menu;
+
+    const auto selected_items = BuildWorkspacePanelItems(workspace_state);
+    float row_y = content_y;
+    layout.panel_items.reserve(selected_items.size());
+    for (const WorkspacePanelItemState& item : selected_items) {
+        if (row_y + item_height > row_bottom) {
+            break;
+        }
+        const float indent = subitem_indent * static_cast<float>(std::max(0, item.depth));
+        const Rectangle item_bounds{
+            tool_x + indent,
+            row_y,
+            std::max(1.0F, tool_width - indent),
+            item_height,
+        };
+        layout.panel_items.push_back(WorkspacePanelItemBounds{
+            item.item,
+            item.kind,
+            item.depth,
+            item_bounds,
+            Vector2{item_bounds.x + gap, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
+            item.enabled,
+            item.checked,
+        });
+        row_y += item_height;
+    }
 
     return layout;
 }
@@ -1039,99 +1149,78 @@ void DrawWorkspace(
     DrawRectangleLinesEx(workspace.status_bar, metrics.workspace_border_width, kEditorBorder);
 
     const float spacing = FontSpacing(metrics.workspace_tool_font_size);
-    for (const auto& tool_bounds : workspace.tools) {
-        const bool selected = workspace_state.selected_tool == tool_bounds.tool;
-        const std::string label = WorkspaceToolLabel(tool_bounds.tool, labels);
-        const std::string marker = selected && workspace_state.selected_tool_expanded ? "- " : "+ ";
+    for (const auto& tab_bounds : workspace.panel_tabs) {
+        const bool selected = workspace_state.selected_panel_tab == tab_bounds.tab;
         if (selected) {
-            DrawRectangleRec(tool_bounds.bounds, Color{4, 92, 120, 255});
+            DrawRectangleRec(tab_bounds.bounds, Color{4, 92, 120, 255});
         }
+        DrawRectangleLinesEx(tab_bounds.bounds, 1.0F, Color{7, 88, 112, 255});
+        const std::string tab_label = WorkspacePanelTabLabel(tab_bounds.tab);
+        const float tab_font_size = FitTextToWidth(
+            fonts.text,
+            tab_label,
+            metrics.workspace_tool_font_size,
+            10.0F,
+            std::max(1.0F, tab_bounds.bounds.width - metrics.workspace_tool_gap));
         DrawTextEx(
             fonts.text,
-            (marker + label).c_str(),
-            tool_bounds.text_position,
-            metrics.workspace_tool_font_size,
-            spacing,
+            tab_label.c_str(),
+            Vector2{tab_bounds.text_position.x, tab_bounds.bounds.y + (tab_bounds.bounds.height - tab_font_size) * 0.5F},
+            tab_font_size,
+            FontSpacing(tab_font_size),
             selected ? kAccent : kEditorPanelText);
     }
 
-    for (const auto& item_bounds : workspace.panel_items) {
-        const WorkspacePanelItemState item{
-            item_bounds.item,
-            item_bounds.kind,
-            item_bounds.depth,
-            item_bounds.enabled,
-            item_bounds.checked,
-        };
-        const std::string text = WorkspacePanelItemText(item, labels);
-        const bool is_group = item_bounds.kind == WorkspacePanelItemKind::kGroup;
-        const Color color = is_group
-            ? kEditorViewportText
-            : (!item_bounds.enabled ? Color{74, 138, 154, 255} : (item_bounds.checked ? kAccent : kEditorPanelText));
-        DrawTextEx(
-            fonts.text,
-            text.c_str(),
-            item_bounds.text_position,
-            metrics.workspace_tool_font_size,
-            spacing,
-            color);
-    }
-
-    const float compact_size = std::max(10.0F, metrics.workspace_status_font_size - 1.0F);
-    const float compact_spacing = FontSpacing(compact_size);
-    const float info_bottom = workspace.tool_info.y + workspace.tool_info.height;
-    std::vector<std::string> tool_info_lines{
-        labels.workspace_status_ready + ": " + MapStatusLabel(workspace_state.map, labels),
-        labels.workspace_map_label + ": " + (workspace_state.map.configured ? workspace_state.map.path.filename().string() : labels.debug_none),
-        labels.workspace_size_label + ": " + MapSizeText(workspace_state.map, labels),
-        labels.workspace_tile_label + ": " + MapTileText(workspace_state.map, labels),
-        labels.workspace_levels_label + ": " + MapLevelsText(workspace_state.map, labels),
-        labels.workspace_terrain_label + ": " + BoolText(workspace_state.runtime_map.info.terrain_loaded, labels),
-        labels.workspace_elevation_label + ": " + BoolText(workspace_state.runtime_map.info.elevation_loaded, labels),
-        labels.workspace_collision_label + ": " + BoolText(workspace_state.runtime_map.info.collision_loaded, labels),
-    };
-    if (workspace_state.chunk_grid.IsValid()) {
-        tool_info_lines.push_back("Chunk Size: " + std::to_string(workspace_state.chunk_size_tiles));
-        tool_info_lines.push_back("Chunks: " + std::to_string(workspace_state.chunk_grid.info.chunks_x) + "x"
-            + std::to_string(workspace_state.chunk_grid.info.chunks_y) + "="
-            + std::to_string(workspace_state.chunk_grid.info.total_chunks));
-    }
-    if (workspace_state.chunk_meshes.IsValid()) {
-        tool_info_lines.push_back("Mesh: " + MeshModeLabel(workspace_state.mesh_mode));
-        tool_info_lines.push_back("Faces: " + std::to_string(workspace_state.mesh_stats.active_faces));
-        tool_info_lines.push_back("Models: " + std::to_string(workspace_state.mesh_stats.draw_models));
-        tool_info_lines.push_back("Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
-        tool_info_lines.push_back("Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
-        tool_info_lines.push_back("Terrain: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
-        tool_info_lines.push_back("Terrain T/W: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
-            + std::to_string(workspace_state.mesh_stats.terrain_wall_faces));
-        tool_info_lines.push_back("Terrain Δ greedy: " + CompactSignedPercent(workspace_state.mesh_stats.TerrainVsGreedyDeltaRatio()));
-        tool_info_lines.push_back("Saved: " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio()));
-    }
-    if (workspace_state.chunk_size_comparison.available) {
-        tool_info_lines.push_back("Chunk Δ models: " + CompactSignedPercent(workspace_state.chunk_size_comparison.DrawModelDeltaRatio()));
-        tool_info_lines.push_back("Chunk Δ faces: " + CompactSignedPercent(workspace_state.chunk_size_comparison.FaceDeltaRatio()));
-    }
-    if (workspace_state.chunk_mesh_cache.IsValid()) {
-        tool_info_lines.push_back("Dirty: " + std::to_string(workspace_state.chunk_mesh_cache.info.dirty_chunks));
-    }
-    if (workspace_state.last_mesh_rebuild.attempted) {
-        tool_info_lines.push_back("Rebuilt: " + std::to_string(workspace_state.last_mesh_rebuild.rebuilt_chunks) + "/"
-            + std::to_string(workspace_state.last_mesh_rebuild.total_chunks));
-        tool_info_lines.push_back("Rebuild saved: " + CompactPercent(workspace_state.last_mesh_rebuild.SavedRebuildWorkRatio()));
-    }
-    if (workspace_state.show_3d_preview && camera_status.initialized) {
-        tool_info_lines.push_back(std::string("Cam: ") + (camera_status.cursor_captured ? "captured" : "free"));
-        tool_info_lines.push_back("Yaw/Pitch: " + CompactFloat(camera_status.yaw_degrees) + "/" + CompactFloat(camera_status.pitch_degrees));
-        tool_info_lines.push_back("Pos: " + CompactVector(camera_status.position));
-    }
-    float info_y = workspace.tool_info.y;
-    for (const auto& line : tool_info_lines) {
-        if (info_y + compact_size > info_bottom) {
-            break;
+    if (workspace_state.selected_panel_tab == WorkspacePanelTab::kMenu) {
+        for (const auto& item_bounds : workspace.panel_items) {
+            const WorkspacePanelItemState item{
+                item_bounds.item,
+                item_bounds.kind,
+                item_bounds.depth,
+                item_bounds.enabled,
+                item_bounds.checked,
+            };
+            const std::string text = WorkspacePanelItemText(item, labels);
+            const bool is_group = item_bounds.kind == WorkspacePanelItemKind::kGroup;
+            const Color color = is_group
+                ? kEditorViewportText
+                : (!item_bounds.enabled ? Color{74, 138, 154, 255} : (item_bounds.checked ? kAccent : kEditorPanelText));
+            DrawTextEx(
+                fonts.text,
+                text.c_str(),
+                item_bounds.text_position,
+                metrics.workspace_tool_font_size,
+                spacing,
+                color);
         }
-        DrawTextEx(fonts.text, line.c_str(), Vector2{workspace.tool_info.x, info_y}, compact_size, compact_spacing, kEditorPanelText);
-        info_y += compact_size + metrics.workspace_tool_gap * 0.4F;
+    } else {
+        std::vector<std::string> lines;
+        if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
+            lines = BuildStatsPanelLines(workspace_state, camera_status, labels);
+        } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
+            lines = BuildInspectPanelLines();
+        } else {
+            lines = BuildHelpPanelLines();
+        }
+
+        const float compact_size = std::max(10.0F, metrics.workspace_status_font_size - 1.0F);
+        const float compact_spacing = FontSpacing(compact_size);
+        const float bottom = workspace.tool_menu.y + workspace.tool_menu.height;
+        float line_y = workspace.tool_menu.y;
+        for (const auto& line : lines) {
+            if (line_y + compact_size > bottom) {
+                break;
+            }
+            const bool section_header = !line.empty() && line.find("  ") != 0;
+            DrawTextEx(
+                fonts.text,
+                line.c_str(),
+                Vector2{workspace.tool_menu.x + (line.empty() ? 0.0F : metrics.workspace_tool_gap), line_y},
+                compact_size,
+                compact_spacing,
+                section_header ? kEditorViewportText : kEditorPanelText);
+            line_y += compact_size + metrics.workspace_tool_gap * (line.empty() ? 0.75F : 0.35F);
+        }
     }
 
     if (workspace_state.show_3d_preview && mesh_preview != nullptr && preview_camera != nullptr && mesh_preview->IsUploaded()) {
@@ -1165,15 +1254,7 @@ void DrawWorkspace(
         }
     }
 
-    const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
-    const std::string controls = workspace_state.show_3d_preview
-        ? " | click: capture | Esc: release | WASD | Q/E | wheel | F fit | F4-F10 | F3 | "
-        : " | F3 2D/3D | ";
-    const std::string mesh_status = workspace_state.chunk_meshes.IsValid()
-        ? " | " + CompactMeshStats(workspace_state)
-        : "";
-    const std::string status = labels.workspace_status_ready + " | " + MapStatusLabel(workspace_state.map, labels) + " | view="
-        + preview_mode + mesh_status + controls + labels.workspace_status_escape_hint;
+    const std::string status = CompactStatusText(workspace_state, labels);
     DrawTextEx(
         fonts.text,
         status.c_str(),
@@ -1253,7 +1334,7 @@ void DrawDebugOverlay(
     lines[4] = labels.debug_modal + ": " + std::string(ToString(dialog));
     lines[5] = labels.debug_selected + ": " + labels.debug_none;
     lines[6] = labels.debug_hovered + ": " + (hovered_item.empty() ? labels.debug_none : std::string(hovered_item));
-    lines[7] = labels.debug_workspace_tool + ": " + std::string(ToString(workspace.selected_tool));
+    lines[7] = labels.debug_workspace_tool + ": " + std::string(ToString(workspace.selected_panel_tab));
     lines[8] = labels.debug_map_path + ": " + (workspace.map.configured ? workspace.map.path.filename().string() : labels.debug_none);
     lines[9] = labels.debug_map_loaded + ": " + (workspace.map.loaded ? labels.dialog_yes : labels.dialog_no);
     if (menu.selected_index >= 0 && menu.selected_index < static_cast<int>(menu.items.size())) {

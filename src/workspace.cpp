@@ -26,11 +26,6 @@ using Kind = WorkspacePanelItemKind;
     return {item, Kind::kRadio, depth, enabled, checked};
 }
 
-[[nodiscard]] WorkspacePanelItemState Value(Item item, int depth, bool enabled)
-{
-    return {item, Kind::kValue, depth, enabled, enabled};
-}
-
 [[nodiscard]] double DeltaRatio(std::uint64_t before, std::uint64_t after)
 {
     if (before == 0) {
@@ -62,6 +57,21 @@ std::string_view ToString(WorkspaceTool tool)
     return "unknown";
 }
 
+std::string_view ToString(WorkspacePanelTab tab)
+{
+    switch (tab) {
+        case WorkspacePanelTab::kMenu:
+            return "menu";
+        case WorkspacePanelTab::kStats:
+            return "stats";
+        case WorkspacePanelTab::kInspect:
+            return "inspect";
+        case WorkspacePanelTab::kHelp:
+            return "help";
+    }
+    return "unknown";
+}
+
 double WorkspaceChunkSizeComparison::DrawModelDeltaRatio() const
 {
     return available ? DeltaRatio(before_draw_models, after_draw_models) : 0.0;
@@ -75,6 +85,8 @@ double WorkspaceChunkSizeComparison::FaceDeltaRatio() const
 std::string_view ToString(WorkspacePanelItem item)
 {
     switch (item) {
+        case WorkspacePanelItem::kMenuModeGroup:
+            return "menu_mode";
         case WorkspacePanelItem::kMode2DMap:
             return "mode_2d_map";
         case WorkspacePanelItem::kMode3DWorld:
@@ -261,120 +273,59 @@ std::string_view ToString(WorkspacePanelItem item)
 
 std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceState& workspace)
 {
-    switch (workspace.selected_tool) {
-        case WorkspaceTool::kMode:
-            return {
-                Radio(Item::kMode2DMap, 1, true, !workspace.show_3d_preview),
-                Radio(Item::kMode3DWorld, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_preview),
-            };
-        case WorkspaceTool::kMap2D:
-            return {
-                Group(Item::k2DNavigationGroup, 1),
-                Action(Item::k2DFitView, 2, false),
-                Action(Item::k2DResetView, 2, false),
-                Action(Item::k2DZoomIn, 2, false),
-                Action(Item::k2DZoomOut, 2, false),
-                Group(Item::k2DBaseLayerGroup, 1),
-                Checkbox(Item::kLayerTerrain, 2, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer),
-                Checkbox(Item::kLayerElevation, 2, workspace.runtime_map.info.elevation_loaded, workspace.show_elevation_layer),
-                Checkbox(Item::kLayerCollision, 2, workspace.runtime_map.info.collision_loaded, workspace.show_collision_layer),
-                Group(Item::k2DOverlayGroup, 1),
-                Checkbox(Item::kLayerGrid, 2, true, workspace.show_grid_layer),
-                Checkbox(Item::k2DChunks, 2, false, false),
-                Checkbox(Item::k2DStartGoal, 2, false, false),
-                Checkbox(Item::k2DObjects, 2, false, false),
-                Checkbox(Item::k2DPlaces, 2, false, false),
-                Checkbox(Item::k2DMarkers, 2, false, false),
-                Checkbox(Item::k2DRoutes, 2, false, false),
-                Checkbox(Item::k2DWorldGraph, 2, false, false),
-                Checkbox(Item::k2DGameplayZones, 2, false, false),
-                Checkbox(Item::k2DElevationFeatures, 2, false, false),
-                Checkbox(Item::k2DElevationTransitions, 2, false, false),
-            };
-        case WorkspaceTool::kWorld3D:
-            return {
-                Group(Item::k3DCameraGroup, 1),
-                Action(Item::kViewFitMap, 2, workspace.show_3d_preview && workspace.chunk_meshes.IsValid()),
-                Action(Item::kViewResetView, 2, workspace.show_3d_preview && workspace.chunk_meshes.IsValid()),
-                Action(Item::k3DCaptureMouse, 2, false),
-                Action(Item::k3DReleaseMouse, 2, false),
-                Group(Item::k3DRenderGroup, 1),
-                Checkbox(Item::kRenderTerrainMesh, 2, workspace.chunk_meshes.IsValid(), workspace.show_3d_preview),
-                Checkbox(Item::kRenderChunkBounds, 2, workspace.show_3d_preview && workspace.chunk_grid.IsValid(), workspace.show_3d_chunk_bounds),
-                Checkbox(Item::kRenderWorldGrid, 2, workspace.show_3d_preview && workspace.chunk_meshes.IsValid(), workspace.show_3d_world_grid),
-                Checkbox(Item::kRenderCollision, 2, workspace.show_3d_preview && workspace.runtime_map.info.collision_loaded, workspace.show_3d_collision_overlay),
-                Checkbox(Item::kRenderHeight, 2, workspace.show_3d_preview && workspace.runtime_map.info.elevation_loaded, workspace.show_3d_height_overlay),
-                Group(Item::k3DMeshGroup, 1),
-                Group(Item::k3DChunkSizeGroup, 2),
-                Radio(Item::k3DChunkSize16, 3, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 16),
-                Radio(Item::k3DChunkSize32, 3, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 32),
-                Value(Item::k3DChunkSizeProfit, 3, workspace.chunk_size_comparison.available),
-                Radio(Item::k3DMeshSimple, 2, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces),
-                Radio(Item::k3DMeshGreedy, 2, workspace.greedy_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces),
-                Radio(Item::k3DMeshTerrainSurface, 2, workspace.terrain_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface),
-                Value(Item::k3DDrawModels, 2, workspace.mesh_stats.draw_models > 0),
-                Value(Item::k3DVisibleFaces, 2, workspace.face_visibility.IsValid()),
-                Value(Item::k3DCulledFaces, 2, workspace.face_visibility.IsValid()),
-                Value(Item::k3DGreedySaved, 2, workspace.greedy_chunk_meshes.IsValid()),
-                Value(Item::k3DTerrainFaces, 2, workspace.terrain_chunk_meshes.IsValid()),
-                Value(Item::k3DTerrainTopFaces, 2, workspace.terrain_chunk_meshes.IsValid()),
-                Value(Item::k3DTerrainWallFaces, 2, workspace.terrain_chunk_meshes.IsValid()),
-                Value(Item::k3DTerrainVsGreedy, 2, workspace.terrain_chunk_meshes.IsValid() && workspace.greedy_chunk_meshes.IsValid()),
-                Value(Item::k3DTotalSaved, 2, workspace.chunk_meshes.IsValid()),
-                Value(Item::k3DChunkMeshes, 2, workspace.chunk_meshes.IsValid()),
-                Action(Item::k3DDirtyRebuildProbe, 2, workspace.chunk_mesh_cache.IsValid() && workspace.mesh_mode != ChunkMeshBuildMode::kTerrainSurface),
-                Value(Item::k3DDirtyChunks, 2, workspace.chunk_mesh_cache.IsValid()),
-                Value(Item::k3DRebuiltChunks, 2, workspace.last_mesh_rebuild.attempted),
-                Value(Item::k3DRebuildSaved, 2, workspace.last_mesh_rebuild.attempted),
-            };
-        case WorkspaceTool::kSelection:
-            return {
-                Group(Item::kSelectionTileGroup, 1),
-                Value(Item::kSelectionTileInfo, 2, false),
-                Group(Item::kSelectionVoxelGroup, 1),
-                Value(Item::kSelectionVoxelInfo, 2, false),
-                Group(Item::kSelectionChunkGroup, 1),
-                Value(Item::kSelectionChunkInfo, 2, false),
-                Group(Item::kSelectionActionsGroup, 1),
-                Action(Item::kSelectionInspect, 2, false),
-                Action(Item::kSelectionFocus, 2, false),
-                Action(Item::kSelectionCopyInfo, 2, false),
-            };
-        case WorkspaceTool::kPackageData:
-            return {
-                Group(Item::kPackageMetadataGroup, 1),
-                Value(Item::kMapPackage, 2, workspace.map.loaded),
-                Value(Item::kMapValidate, 2, workspace.runtime_map.HasCoreGrids()),
-                Group(Item::kPackageRuntimeGridsGroup, 1),
-                Value(Item::kPackageHeightGrid, 2, workspace.runtime_map.info.elevation_loaded),
-                Value(Item::kPackageCollisionGrid, 2, workspace.runtime_map.info.collision_loaded),
-                Value(Item::kPackageMovementCostGrid, 2, false),
-                Group(Item::kPackageWorldDataGroup, 1),
-                Value(Item::kPackageObjects, 2, workspace.map.object_count.value_or(0) > 0),
-                Value(Item::kPackageMarkers, 2, workspace.map.marker_count.value_or(0) > 0),
-                Value(Item::kPackageRoutes, 2, false),
-                Value(Item::kPackageGameplayZones, 2, false),
-            };
-        case WorkspaceTool::kDebug:
-            return {
-                Value(Item::kDebugRuntimeMap, 1, workspace.runtime_map.IsValid()),
-                Value(Item::kDebugChunkGrid, 1, workspace.chunk_grid.IsValid()),
-                Value(Item::kDebugVoxelWorld, 1, workspace.voxel_world.IsValid()),
-                Value(Item::kDebugFaceVisibility, 1, workspace.face_visibility.IsValid()),
-                Value(Item::kDebugChunkMesh, 1, workspace.chunk_meshes.IsValid()),
-                Value(Item::kDebugCamera, 1, workspace.show_3d_preview),
-                Value(Item::kDebugMemory, 1, true),
-                Value(Item::kDebugFps, 1, true),
-                Value(Item::kDebugLogs, 1, false),
-            };
-        case WorkspaceTool::kSettings:
-            return {
-                Action(Item::kSettingsLanguage, 1, false),
-                Action(Item::kSettingsCamera, 1, false),
-                Action(Item::kSettingsRender, 1, false),
-            };
+    if (workspace.selected_panel_tab != WorkspacePanelTab::kMenu) {
+        return {};
     }
-    return {};
+
+    std::vector<WorkspacePanelItemState> items{
+        Group(Item::kMenuModeGroup, 0),
+        Radio(Item::kMode2DMap, 1, true, !workspace.show_3d_preview),
+        Radio(Item::kMode3DWorld, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_preview),
+    };
+
+    if (workspace.show_3d_preview) {
+        items.push_back(Group(Item::k3DCameraGroup, 0));
+        items.push_back(Action(Item::kViewFitMap, 1, workspace.chunk_meshes.IsValid()));
+        items.push_back(Action(Item::kViewResetView, 1, workspace.chunk_meshes.IsValid()));
+
+        items.push_back(Group(Item::k3DRenderGroup, 0));
+        items.push_back(Checkbox(Item::kRenderChunkBounds, 1, workspace.chunk_grid.IsValid(), workspace.show_3d_chunk_bounds));
+        items.push_back(Checkbox(Item::kRenderWorldGrid, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_world_grid));
+        items.push_back(Checkbox(Item::kRenderCollision, 1, workspace.runtime_map.info.collision_loaded, workspace.show_3d_collision_overlay));
+        items.push_back(Checkbox(Item::kRenderHeight, 1, workspace.runtime_map.info.elevation_loaded, workspace.show_3d_height_overlay));
+
+        items.push_back(Group(Item::k3DMeshGroup, 0));
+        items.push_back(Radio(Item::k3DMeshSimple, 1, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));
+        items.push_back(Radio(Item::k3DMeshGreedy, 1, workspace.greedy_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces));
+        items.push_back(Radio(Item::k3DMeshTerrainSurface, 1, workspace.terrain_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface));
+
+        items.push_back(Group(Item::k3DChunkSizeGroup, 0));
+        items.push_back(Radio(Item::k3DChunkSize16, 1, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 16));
+        items.push_back(Radio(Item::k3DChunkSize32, 1, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 32));
+        items.push_back(Action(Item::k3DDirtyRebuildProbe, 1, workspace.chunk_mesh_cache.IsValid() && workspace.mesh_mode != ChunkMeshBuildMode::kTerrainSurface));
+        return items;
+    }
+
+    items.push_back(Group(Item::k2DNavigationGroup, 0));
+    items.push_back(Action(Item::k2DFitView, 1, false));
+    items.push_back(Action(Item::k2DResetView, 1, false));
+    items.push_back(Action(Item::k2DZoomIn, 1, false));
+    items.push_back(Action(Item::k2DZoomOut, 1, false));
+
+    items.push_back(Group(Item::k2DBaseLayerGroup, 0));
+    items.push_back(Checkbox(Item::kLayerTerrain, 1, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer));
+    items.push_back(Checkbox(Item::kLayerElevation, 1, workspace.runtime_map.info.elevation_loaded, workspace.show_elevation_layer));
+    items.push_back(Checkbox(Item::kLayerCollision, 1, workspace.runtime_map.info.collision_loaded, workspace.show_collision_layer));
+
+    items.push_back(Group(Item::k2DOverlayGroup, 0));
+    items.push_back(Checkbox(Item::kLayerGrid, 1, true, workspace.show_grid_layer));
+    items.push_back(Checkbox(Item::k2DChunks, 1, false, false));
+    items.push_back(Checkbox(Item::k2DStartGoal, 1, false, false));
+    items.push_back(Checkbox(Item::k2DObjects, 1, false, false));
+    items.push_back(Checkbox(Item::k2DPlaces, 1, false, false));
+    items.push_back(Checkbox(Item::k2DMarkers, 1, false, false));
+    items.push_back(Checkbox(Item::k2DRoutes, 1, false, false));
+    return items;
 }
 
 }  // namespace vox3d

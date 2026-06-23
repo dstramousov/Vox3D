@@ -182,3 +182,9 @@
 - Added a renderer-independent stepped terrain mesh builder in `vox3d_core` that emits tile top surfaces and only the required cliff/wall faces instead of full voxel columns.
 - Added `Terrain Surface` as a selectable 3D mesh mode alongside the existing simple and greedy voxel mesh baselines.
 - Added terrain mesh diagnostics for top faces, wall faces, total terrain faces, and terrain-vs-greedy deltas in the workspace panel, status/info output, and logs.
+
+## v0.4.0 -> v0.4.1
+
+- Replaced the overloaded right-side workspace panel with explicit `Menu`, `Stats`, `Inspect`, and `Help` tabs.
+- Moved noisy map, mesh, dirty-cache, and camera diagnostics out of the main menu into the dedicated `Stats` tab.
+- Shortened the bottom status bar and preserved the 3D camera view when switching mesh mode, chunk size, overlays, or 2D/3D mode.

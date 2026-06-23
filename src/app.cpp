@@ -454,7 +454,9 @@ void App::HandleWorkspaceInput(float dt)
     if (IsKeyPressed(KEY_F3) && chunk_mesh_preview_.IsUploaded()) {
         workspace_.show_3d_preview = !workspace_.show_3d_preview;
         if (workspace_.show_3d_preview) {
-            FitPreviewCameraToViewport("hotkey");
+            if (!preview_camera_.IsInitialized()) {
+                FitPreviewCameraToViewport("hotkey");
+            }
         } else {
             preview_camera_.ReleaseMouse();
         }
@@ -542,8 +544,10 @@ void App::HandleWorkspaceInput(float dt)
             SelectNextWorkspaceTool();
         }
     }
-    if (IsKeyPressed(KEY_ENTER)) {
-        ToggleWorkspaceTool(workspace_.selected_tool);
+    if (IsKeyPressed(KEY_ENTER) && workspace_.selected_panel_tab != WorkspacePanelTab::kMenu) {
+        workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
+        layout_dirty_ = true;
+        logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
     }
 
     if (layout_dirty_) {
@@ -551,14 +555,16 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     const Vector2 mouse = GetMousePosition();
-    for (const auto& tool_bounds : layout_cache_.workspace.tools) {
-        if (!PointInRect(mouse, tool_bounds.bounds)) {
+    for (const auto& tab_bounds : layout_cache_.workspace.panel_tabs) {
+        if (!PointInRect(mouse, tab_bounds.bounds)) {
             continue;
         }
 
-        hovered_item_ = "workspace_" + std::string(ToString(tool_bounds.tool));
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            ToggleWorkspaceTool(tool_bounds.tool);
+        hovered_item_ = "workspace_tab_" + std::string(ToString(tab_bounds.tab));
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && workspace_.selected_panel_tab != tab_bounds.tab) {
+            workspace_.selected_panel_tab = tab_bounds.tab;
+            layout_dirty_ = true;
+            logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
         }
         return;
     }
@@ -870,9 +876,6 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     }
 
     layout_dirty_ = true;
-    if (workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded()) {
-        FitPreviewCameraToViewport("chunk_size");
-    }
 }
 
 void App::SetChunkSize(int chunk_size, std::string_view reason)
@@ -977,10 +980,6 @@ void App::SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason)
     SetActiveMeshCacheFromMode();
     UploadActiveChunkMesh(reason);
     layout_dirty_ = true;
-
-    if (workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded()) {
-        FitPreviewCameraToViewport("mesh_mode");
-    }
 }
 
 void App::ActivateSelectedMenuItem()
@@ -1031,62 +1030,42 @@ void App::ActivatePlaceholderAction()
 
 void App::SelectPreviousWorkspaceTool()
 {
-    switch (workspace_.selected_tool) {
-        case WorkspaceTool::kMode:
-            workspace_.selected_tool = WorkspaceTool::kSettings;
+    switch (workspace_.selected_panel_tab) {
+        case WorkspacePanelTab::kMenu:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kHelp;
             break;
-        case WorkspaceTool::kMap2D:
-            workspace_.selected_tool = WorkspaceTool::kMode;
+        case WorkspacePanelTab::kStats:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
             break;
-        case WorkspaceTool::kWorld3D:
-            workspace_.selected_tool = WorkspaceTool::kMap2D;
+        case WorkspacePanelTab::kInspect:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
             break;
-        case WorkspaceTool::kSelection:
-            workspace_.selected_tool = WorkspaceTool::kWorld3D;
-            break;
-        case WorkspaceTool::kPackageData:
-            workspace_.selected_tool = WorkspaceTool::kSelection;
-            break;
-        case WorkspaceTool::kDebug:
-            workspace_.selected_tool = WorkspaceTool::kPackageData;
-            break;
-        case WorkspaceTool::kSettings:
-            workspace_.selected_tool = WorkspaceTool::kDebug;
+        case WorkspacePanelTab::kHelp:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
             break;
     }
-    workspace_.selected_tool_expanded = true;
     layout_dirty_ = true;
-    logger_.Debug("workspace", "selected tool=" + std::string(ToString(workspace_.selected_tool)));
+    logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
 }
 
 void App::SelectNextWorkspaceTool()
 {
-    switch (workspace_.selected_tool) {
-        case WorkspaceTool::kMode:
-            workspace_.selected_tool = WorkspaceTool::kMap2D;
+    switch (workspace_.selected_panel_tab) {
+        case WorkspacePanelTab::kMenu:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
             break;
-        case WorkspaceTool::kMap2D:
-            workspace_.selected_tool = WorkspaceTool::kWorld3D;
+        case WorkspacePanelTab::kStats:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
             break;
-        case WorkspaceTool::kWorld3D:
-            workspace_.selected_tool = WorkspaceTool::kSelection;
+        case WorkspacePanelTab::kInspect:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kHelp;
             break;
-        case WorkspaceTool::kSelection:
-            workspace_.selected_tool = WorkspaceTool::kPackageData;
-            break;
-        case WorkspaceTool::kPackageData:
-            workspace_.selected_tool = WorkspaceTool::kDebug;
-            break;
-        case WorkspaceTool::kDebug:
-            workspace_.selected_tool = WorkspaceTool::kSettings;
-            break;
-        case WorkspaceTool::kSettings:
-            workspace_.selected_tool = WorkspaceTool::kMode;
+        case WorkspacePanelTab::kHelp:
+            workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
             break;
     }
-    workspace_.selected_tool_expanded = true;
     layout_dirty_ = true;
-    logger_.Debug("workspace", "selected tool=" + std::string(ToString(workspace_.selected_tool)));
+    logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
 }
 
 void App::ToggleWorkspaceTool(WorkspaceTool tool)
@@ -1144,7 +1123,7 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         case WorkspacePanelItem::kMode3DWorld:
         case WorkspacePanelItem::kRenderTerrainMesh:
             workspace_.show_3d_preview = chunk_mesh_preview_.IsUploaded();
-            if (workspace_.show_3d_preview) {
+            if (workspace_.show_3d_preview && !preview_camera_.IsInitialized()) {
                 FitPreviewCameraToViewport("panel");
             }
             logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "3d_unavailable"));
