@@ -20,6 +20,7 @@ namespace vox3d {
 enum class ChunkMeshBuildMode : std::uint8_t {
     kSimpleFaces,
     kGreedyFaces,
+    kTerrainSurface,
 };
 
 /**
@@ -99,6 +100,8 @@ struct ChunkMeshBuildInfo {
     std::optional<LevelRange> levels;
     std::uint64_t solid_blocks = 0;
     std::uint64_t visible_faces = 0;
+    std::uint64_t terrain_top_faces = 0;
+    std::uint64_t terrain_wall_faces = 0;
     std::uint64_t vertices = 0;
     std::uint64_t indices = 0;
     std::uint64_t non_empty_chunks = 0;
@@ -137,6 +140,9 @@ struct MeshOptimizationStats {
     std::uint64_t culled_faces = 0;
     std::uint64_t simple_faces = 0;
     std::uint64_t greedy_faces = 0;
+    std::uint64_t terrain_top_faces = 0;
+    std::uint64_t terrain_wall_faces = 0;
+    std::uint64_t terrain_faces = 0;
     std::uint64_t active_faces = 0;
     std::uint64_t active_vertices = 0;
     std::uint64_t active_indices = 0;
@@ -157,6 +163,17 @@ struct MeshOptimizationStats {
      * @return Ratio in range [0, 1], or 0 when simple face count is zero.
      */
     [[nodiscard]] double GreedyReductionRatio() const;
+
+    /**
+     * @brief Returns the relative face-count change from greedy to terrain mesh.
+     *
+     * Negative values mean the terrain surface mesh emits fewer faces than
+     * greedy voxel meshing. Positive values mean it emits more faces. Zero is
+     * returned when greedy face count is unavailable.
+     *
+     * @return Relative change from greedy_faces to terrain_faces.
+     */
+    [[nodiscard]] double TerrainVsGreedyDeltaRatio() const;
 
     /**
      * @brief Returns the saved-face ratio from naive to active mesh faces.

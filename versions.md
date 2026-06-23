@@ -176,3 +176,9 @@
 - Added renderer-independent chunk mesh cache data in `vox3d_core` with per-chunk dirty flags.
 - Added dirty chunk rebuild reports for rebuilt/reused chunks, saved rebuild work, and face/vertex/index deltas.
 - Wired the editor to keep simple/greedy mesh caches, expose a dirty rebuild probe, and log measurable cache rebuild profit.
+
+## v0.3.9 -> v0.4.0
+
+- Added a renderer-independent stepped terrain mesh builder in `vox3d_core` that emits tile top surfaces and only the required cliff/wall faces instead of full voxel columns.
+- Added `Terrain Surface` as a selectable 3D mesh mode alongside the existing simple and greedy voxel mesh baselines.
+- Added terrain mesh diagnostics for top faces, wall faces, total terrain faces, and terrain-vs-greedy deltas in the workspace panel, status/info output, and logs.

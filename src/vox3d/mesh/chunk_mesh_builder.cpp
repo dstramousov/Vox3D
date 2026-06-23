@@ -468,6 +468,9 @@ void BuildChunkMesh(
         case ChunkMeshBuildMode::kGreedyFaces:
             BuildGreedyChunkMesh(world, chunk, mesh, diagnostics);
             break;
+        case ChunkMeshBuildMode::kTerrainSurface:
+            diagnostics.AddWarning("terrain-surface mesh mode must be built from RuntimeMap, not VoxelWorld");
+            break;
     }
 }
 
@@ -519,6 +522,8 @@ std::string_view ToString(ChunkMeshBuildMode mode)
             return "simple";
         case ChunkMeshBuildMode::kGreedyFaces:
             return "greedy";
+        case ChunkMeshBuildMode::kTerrainSurface:
+            return "terrain";
     }
     return "unknown";
 }
@@ -540,10 +545,12 @@ std::uint64_t ChunkMeshData::FaceCount() const
 
 bool ChunkMeshBuildInfo::IsValid() const
 {
+    const bool terrain_counts_valid = mode != ChunkMeshBuildMode::kTerrainSurface
+        || terrain_top_faces + terrain_wall_faces == visible_faces;
     return map_width > 0 && map_height > 0 && chunks_x > 0 && chunks_y > 0
         && static_cast<std::uint64_t>(total_chunks) == ExpectedChunkCount(chunks_x, chunks_y) && levels.has_value()
         && levels->max >= levels->min && vertices == visible_faces * 4ULL && indices == visible_faces * 6ULL
-        && non_empty_chunks <= static_cast<std::uint64_t>(total_chunks);
+        && non_empty_chunks <= static_cast<std::uint64_t>(total_chunks) && terrain_counts_valid;
 }
 
 bool ChunkMeshBuildResult::IsValid() const
@@ -562,6 +569,14 @@ double MeshOptimizationStats::FaceCullingReductionRatio() const
 double MeshOptimizationStats::GreedyReductionRatio() const
 {
     return ReductionRatio(simple_faces, greedy_faces);
+}
+
+double MeshOptimizationStats::TerrainVsGreedyDeltaRatio() const
+{
+    if (greedy_faces == 0) {
+        return 0.0;
+    }
+    return (static_cast<double>(terrain_faces) - static_cast<double>(greedy_faces)) / static_cast<double>(greedy_faces);
 }
 
 double MeshOptimizationStats::ActiveReductionRatio() const
@@ -645,6 +660,10 @@ std::string ToLogString(const ChunkMeshBuildResult& result)
     out << " mesh_chunks=" << result.chunks.size();
     out << " non_empty=" << result.info.non_empty_chunks;
     out << " faces=" << result.info.visible_faces;
+    if (result.info.mode == ChunkMeshBuildMode::kTerrainSurface) {
+        out << " top=" << result.info.terrain_top_faces;
+        out << " walls=" << result.info.terrain_wall_faces;
+    }
     out << " vertices=" << result.info.vertices;
     out << " indices=" << result.info.indices;
     out << " solid=" << result.info.solid_blocks;
@@ -663,6 +682,9 @@ std::string ToLogString(const MeshOptimizationStats& stats)
     out << " culled_faces=" << stats.culled_faces;
     out << " simple_faces=" << stats.simple_faces;
     out << " greedy_faces=" << stats.greedy_faces;
+    out << " terrain_faces=" << stats.terrain_faces;
+    out << " terrain_top=" << stats.terrain_top_faces;
+    out << " terrain_walls=" << stats.terrain_wall_faces;
     out << " active_faces=" << stats.active_faces;
     out << " vertices=" << stats.active_vertices;
     out << " indices=" << stats.active_indices;
@@ -675,6 +697,8 @@ std::string ToLogString(const MeshOptimizationStats& stats)
     AppendPercent(out, stats.FaceCullingReductionRatio());
     out << " greedy_saved=";
     AppendPercent(out, stats.GreedyReductionRatio());
+    out << " terrain_vs_greedy=";
+    AppendPercent(out, stats.TerrainVsGreedyDeltaRatio());
     out << " total_saved=";
     AppendPercent(out, stats.ActiveReductionRatio());
     return out.str();

@@ -157,6 +157,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_mesh_simple";
         case WorkspacePanelItem::k3DMeshGreedy:
             return "3d_mesh_greedy";
+        case WorkspacePanelItem::k3DMeshTerrainSurface:
+            return "3d_mesh_terrain_surface";
         case WorkspacePanelItem::k3DDrawModels:
             return "3d_draw_models";
         case WorkspacePanelItem::k3DVisibleFaces:
@@ -165,6 +167,14 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_culled_faces";
         case WorkspacePanelItem::k3DGreedySaved:
             return "3d_greedy_saved";
+        case WorkspacePanelItem::k3DTerrainFaces:
+            return "3d_terrain_faces";
+        case WorkspacePanelItem::k3DTerrainTopFaces:
+            return "3d_terrain_top_faces";
+        case WorkspacePanelItem::k3DTerrainWallFaces:
+            return "3d_terrain_wall_faces";
+        case WorkspacePanelItem::k3DTerrainVsGreedy:
+            return "3d_terrain_vs_greedy";
         case WorkspacePanelItem::k3DTotalSaved:
             return "3d_total_saved";
         case WorkspacePanelItem::k3DChunkMeshes:
@@ -301,13 +311,18 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 Value(Item::k3DChunkSizeProfit, 3, workspace.chunk_size_comparison.available),
                 Radio(Item::k3DMeshSimple, 2, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces),
                 Radio(Item::k3DMeshGreedy, 2, workspace.greedy_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces),
+                Radio(Item::k3DMeshTerrainSurface, 2, workspace.terrain_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface),
                 Value(Item::k3DDrawModels, 2, workspace.mesh_stats.draw_models > 0),
                 Value(Item::k3DVisibleFaces, 2, workspace.face_visibility.IsValid()),
                 Value(Item::k3DCulledFaces, 2, workspace.face_visibility.IsValid()),
                 Value(Item::k3DGreedySaved, 2, workspace.greedy_chunk_meshes.IsValid()),
+                Value(Item::k3DTerrainFaces, 2, workspace.terrain_chunk_meshes.IsValid()),
+                Value(Item::k3DTerrainTopFaces, 2, workspace.terrain_chunk_meshes.IsValid()),
+                Value(Item::k3DTerrainWallFaces, 2, workspace.terrain_chunk_meshes.IsValid()),
+                Value(Item::k3DTerrainVsGreedy, 2, workspace.terrain_chunk_meshes.IsValid() && workspace.greedy_chunk_meshes.IsValid()),
                 Value(Item::k3DTotalSaved, 2, workspace.chunk_meshes.IsValid()),
                 Value(Item::k3DChunkMeshes, 2, workspace.chunk_meshes.IsValid()),
-                Action(Item::k3DDirtyRebuildProbe, 2, workspace.chunk_mesh_cache.IsValid()),
+                Action(Item::k3DDirtyRebuildProbe, 2, workspace.chunk_mesh_cache.IsValid() && workspace.mesh_mode != ChunkMeshBuildMode::kTerrainSurface),
                 Value(Item::k3DDirtyChunks, 2, workspace.chunk_mesh_cache.IsValid()),
                 Value(Item::k3DRebuiltChunks, 2, workspace.last_mesh_rebuild.attempted),
                 Value(Item::k3DRebuildSaved, 2, workspace.last_mesh_rebuild.attempted),

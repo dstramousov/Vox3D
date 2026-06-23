@@ -85,10 +85,15 @@ enum class WorkspacePanelItem {
     k3DChunkSizeProfit,
     k3DMeshSimple,
     k3DMeshGreedy,
+    k3DMeshTerrainSurface,
     k3DDrawModels,
     k3DVisibleFaces,
     k3DCulledFaces,
     k3DGreedySaved,
+    k3DTerrainFaces,
+    k3DTerrainTopFaces,
+    k3DTerrainWallFaces,
+    k3DTerrainVsGreedy,
     k3DTotalSaved,
     k3DChunkMeshes,
     k3DDirtyRebuildProbe,
@@ -210,6 +215,7 @@ struct WorkspaceState {
     ChunkMeshCache chunk_mesh_cache;
     ChunkMeshBuildResult simple_chunk_meshes;
     ChunkMeshBuildResult greedy_chunk_meshes;
+    ChunkMeshBuildResult terrain_chunk_meshes;
     ChunkMeshBuildResult chunk_meshes;
     MeshOptimizationStats mesh_stats;
     ChunkMeshRebuildReport last_mesh_rebuild;

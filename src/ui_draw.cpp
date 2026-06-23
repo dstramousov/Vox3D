@@ -159,6 +159,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "simple";
         case ChunkMeshBuildMode::kGreedyFaces:
             return "greedy";
+        case ChunkMeshBuildMode::kTerrainSurface:
+            return "terrain";
     }
     return "unknown";
 }
@@ -327,6 +329,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "Simple Faces";
         case WorkspacePanelItem::k3DMeshGreedy:
             return "Greedy Faces";
+        case WorkspacePanelItem::k3DMeshTerrainSurface:
+            return "Terrain Surface";
         case WorkspacePanelItem::k3DDrawModels:
             return "Draw Models";
         case WorkspacePanelItem::k3DVisibleFaces:
@@ -335,6 +339,14 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "Culled Faces";
         case WorkspacePanelItem::k3DGreedySaved:
             return "Greedy Saved";
+        case WorkspacePanelItem::k3DTerrainFaces:
+            return "Terrain Faces";
+        case WorkspacePanelItem::k3DTerrainTopFaces:
+            return "Terrain Tops";
+        case WorkspacePanelItem::k3DTerrainWallFaces:
+            return "Terrain Walls";
+        case WorkspacePanelItem::k3DTerrainVsGreedy:
+            return "Terrain Δ Greedy";
         case WorkspacePanelItem::k3DTotalSaved:
             return "Total Saved";
         case WorkspacePanelItem::k3DChunkMeshes:
@@ -1090,6 +1102,10 @@ void DrawWorkspace(
         tool_info_lines.push_back("Models: " + std::to_string(workspace_state.mesh_stats.draw_models));
         tool_info_lines.push_back("Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
         tool_info_lines.push_back("Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
+        tool_info_lines.push_back("Terrain: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
+        tool_info_lines.push_back("Terrain T/W: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
+            + std::to_string(workspace_state.mesh_stats.terrain_wall_faces));
+        tool_info_lines.push_back("Terrain Δ greedy: " + CompactSignedPercent(workspace_state.mesh_stats.TerrainVsGreedyDeltaRatio()));
         tool_info_lines.push_back("Saved: " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio()));
     }
     if (workspace_state.chunk_size_comparison.available) {

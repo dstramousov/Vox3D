@@ -7,6 +7,7 @@
 #include "vox3d/mesh/chunk_mesh_builder.hpp"
 #include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/face_visibility.hpp"
+#include "vox3d/mesh/terrain_mesh_builder.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
 #include <raylib.h>
@@ -507,9 +508,12 @@ void App::HandleWorkspaceInput(float dt)
                 layout_dirty_);
         }
         if (IsKeyPressed(KEY_F8)) {
-            const ChunkMeshBuildMode next_mode = workspace_.mesh_mode == ChunkMeshBuildMode::kSimpleFaces
-                ? ChunkMeshBuildMode::kGreedyFaces
-                : ChunkMeshBuildMode::kSimpleFaces;
+            ChunkMeshBuildMode next_mode = ChunkMeshBuildMode::kSimpleFaces;
+            if (workspace_.mesh_mode == ChunkMeshBuildMode::kSimpleFaces) {
+                next_mode = ChunkMeshBuildMode::kGreedyFaces;
+            } else if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
+                next_mode = ChunkMeshBuildMode::kTerrainSurface;
+            }
             SetMeshBuildMode(next_mode, "hotkey");
         }
         if (IsKeyPressed(KEY_F9)) {
@@ -752,6 +756,11 @@ void App::RefreshMeshOptimizationStats()
     if (workspace_.greedy_chunk_meshes.IsValid()) {
         workspace_.mesh_stats.greedy_faces = workspace_.greedy_chunk_meshes.info.visible_faces;
     }
+    if (workspace_.terrain_chunk_meshes.IsValid()) {
+        workspace_.mesh_stats.terrain_faces = workspace_.terrain_chunk_meshes.info.visible_faces;
+        workspace_.mesh_stats.terrain_top_faces = workspace_.terrain_chunk_meshes.info.terrain_top_faces;
+        workspace_.mesh_stats.terrain_wall_faces = workspace_.terrain_chunk_meshes.info.terrain_wall_faces;
+    }
     if (workspace_.chunk_meshes.IsValid()) {
         workspace_.mesh_stats.active_faces = workspace_.chunk_meshes.info.visible_faces;
         workspace_.mesh_stats.active_vertices = workspace_.chunk_meshes.info.vertices;
@@ -834,16 +843,25 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         logger_.Warn("chunk_mesh_cache", warning);
     }
 
+    ChunkMeshBuildResult next_terrain_meshes = BuildTerrainChunkMeshes(workspace_.runtime_map, next_chunk_grid);
+    logger_.Info("terrain_mesh", "reason=" + std::string(reason) + " " + ToLogString(next_terrain_meshes));
+    for (const auto& warning : next_terrain_meshes.diagnostics.warnings) {
+        logger_.Warn("terrain_mesh", warning);
+    }
+
     workspace_.chunk_size_tiles = chunk_size;
     workspace_.chunk_grid = std::move(next_chunk_grid);
     workspace_.voxel_world = std::move(next_voxel_world);
     workspace_.face_visibility = std::move(next_face_visibility);
     workspace_.simple_chunk_mesh_cache = std::move(next_simple_cache);
     workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
+    workspace_.terrain_chunk_meshes = std::move(next_terrain_meshes);
     workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
     workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
     SetActiveMeshCacheFromMode();
-    workspace_.last_mesh_rebuild = FullCacheBuildReport(workspace_.chunk_mesh_cache);
+    workspace_.last_mesh_rebuild = workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
+        ? ChunkMeshRebuildReport{}
+        : FullCacheBuildReport(workspace_.chunk_mesh_cache);
 
     UploadActiveChunkMesh(reason);
     RefreshChunkSizeComparison(before_chunk_size, before_grid_info, before_stats, had_before_stats);
@@ -873,7 +891,10 @@ void App::SetChunkSize(int chunk_size, std::string_view reason)
 
 void App::SetActiveMeshCacheFromMode()
 {
-    if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
+    if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
+        workspace_.chunk_mesh_cache = ChunkMeshCache{};
+        workspace_.chunk_meshes = workspace_.terrain_chunk_meshes;
+    } else if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
         workspace_.chunk_mesh_cache = workspace_.greedy_chunk_mesh_cache;
         workspace_.chunk_meshes = workspace_.greedy_chunk_meshes;
     } else {
@@ -886,6 +907,10 @@ void App::RunDirtyRebuildProbe(std::string_view reason)
 {
     if (!workspace_.runtime_map.IsValid() || !workspace_.chunk_grid.IsValid()) {
         logger_.Warn("dirty_rebuild", "probe ignored because runtime map or chunk grid is invalid");
+        return;
+    }
+    if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
+        logger_.Warn("dirty_rebuild", "probe ignored because terrain surface meshes do not use voxel chunk cache yet");
         return;
     }
 
@@ -940,9 +965,9 @@ void App::SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason)
         return;
     }
 
-    const ChunkMeshBuildResult& selected = mode == ChunkMeshBuildMode::kGreedyFaces
-        ? workspace_.greedy_chunk_meshes
-        : workspace_.simple_chunk_meshes;
+    const ChunkMeshBuildResult& selected = mode == ChunkMeshBuildMode::kTerrainSurface
+        ? workspace_.terrain_chunk_meshes
+        : (mode == ChunkMeshBuildMode::kGreedyFaces ? workspace_.greedy_chunk_meshes : workspace_.simple_chunk_meshes);
     if (!selected.IsValid()) {
         logger_.Warn("mesh_stats", "mesh mode switch ignored invalid mode=" + std::string(ToString(mode)));
         return;
@@ -1174,6 +1199,9 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DMeshGreedy:
             SetMeshBuildMode(ChunkMeshBuildMode::kGreedyFaces, "panel");
+            break;
+        case WorkspacePanelItem::k3DMeshTerrainSurface:
+            SetMeshBuildMode(ChunkMeshBuildMode::kTerrainSurface, "panel");
             break;
         case WorkspacePanelItem::k3DDirtyRebuildProbe:
             RunDirtyRebuildProbe("panel");
