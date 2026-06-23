@@ -188,6 +188,8 @@ void ToggleOverlayFlag(
         case WorkspaceVisibilityMode::kRadiusFade:
             return WorkspaceVisibilityMode::kHardCull;
         case WorkspaceVisibilityMode::kHardCull:
+            return WorkspaceVisibilityMode::kFrustumCull;
+        case WorkspaceVisibilityMode::kFrustumCull:
             return WorkspaceVisibilityMode::kAllChunks;
     }
     return WorkspaceVisibilityMode::kAllChunks;
@@ -202,17 +204,27 @@ void ToggleOverlayFlag(
             return RaylibChunkVisibilityMode::kRadiusFade;
         case WorkspaceVisibilityMode::kHardCull:
             return RaylibChunkVisibilityMode::kHardCull;
+        case WorkspaceVisibilityMode::kFrustumCull:
+            return RaylibChunkVisibilityMode::kFrustumCull;
     }
     return RaylibChunkVisibilityMode::kAllChunks;
 }
 
-[[nodiscard]] RaylibChunkVisibilityOptions BuildRaylibVisibilityOptions(const WorkspaceState& workspace)
+[[nodiscard]] float ViewportAspectRatio(Rectangle viewport)
+{
+    return viewport.width > 1.0F && viewport.height > 1.0F ? viewport.width / viewport.height : 1.0F;
+}
+
+[[nodiscard]] RaylibChunkVisibilityOptions BuildRaylibVisibilityOptions(
+    const WorkspaceState& workspace,
+    Rectangle viewport)
 {
     return RaylibChunkVisibilityOptions{
         ToRaylibVisibilityMode(workspace.visibility_mode),
         workspace.visibility_radius_chunks,
         workspace.visibility_fade_ring_chunks,
         workspace.show_3d_hidden_chunk_bounds,
+        ViewportAspectRatio(viewport),
     };
 }
 
@@ -228,6 +240,9 @@ void ToggleOverlayFlag(
             break;
         case RaylibChunkVisibilityMode::kHardCull:
             result.mode = WorkspaceVisibilityMode::kHardCull;
+            break;
+        case RaylibChunkVisibilityMode::kFrustumCull:
+            result.mode = WorkspaceVisibilityMode::kFrustumCull;
             break;
     }
     result.radius_chunks = stats.radius_chunks;
@@ -1138,7 +1153,7 @@ void App::SetVisibilityMode(WorkspaceVisibilityMode mode, std::string_view reaso
     logger_.Info("visibility", "reason=" + std::string(reason) + " " + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
         workspace_.chunk_meshes,
         preview_camera_.Camera(),
-        BuildRaylibVisibilityOptions(workspace_))));
+        BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview))));
 }
 
 void App::CycleVisibilityMode(std::string_view reason)
@@ -1163,7 +1178,7 @@ void App::AdjustVisibilityRadius(int delta, std::string_view reason)
         + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
             workspace_.chunk_meshes,
             preview_camera_.Camera(),
-            BuildRaylibVisibilityOptions(workspace_))));
+            BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview))));
 }
 
 void App::AdjustVisibilityFadeRing(int delta, std::string_view reason)
@@ -1183,7 +1198,7 @@ void App::AdjustVisibilityFadeRing(int delta, std::string_view reason)
         + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
             workspace_.chunk_meshes,
             preview_camera_.Camera(),
-            BuildRaylibVisibilityOptions(workspace_))));
+            BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview))));
 }
 
 void App::UpdateVisibilityStats()
@@ -1199,7 +1214,7 @@ void App::UpdateVisibilityStats()
     workspace_.visibility_stats = ToWorkspaceVisibilityStats(chunk_mesh_preview_.CalculateVisibilityStats(
         workspace_.chunk_meshes,
         preview_camera_.Camera(),
-        BuildRaylibVisibilityOptions(workspace_)));
+        BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview)));
 }
 
 void App::ActivateSelectedMenuItem()
@@ -1407,6 +1422,9 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DVisibilityHardCull:
             SetVisibilityMode(WorkspaceVisibilityMode::kHardCull, "panel");
+            break;
+        case WorkspacePanelItem::k3DVisibilityFrustumCull:
+            SetVisibilityMode(WorkspaceVisibilityMode::kFrustumCull, "panel");
             break;
         case WorkspacePanelItem::k3DVisibilityRadiusMinus:
             AdjustVisibilityRadius(-1, "panel");

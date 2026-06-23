@@ -3,6 +3,7 @@
 #include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
+#include "vox3d/render/chunk_visibility.hpp"
 
 #include <raylib.h>
 
@@ -30,6 +31,7 @@ enum class RaylibChunkVisibilityMode : std::uint8_t {
     kAllChunks,
     kRadiusFade,
     kHardCull,
+    kFrustumCull,
 };
 
 /**
@@ -66,6 +68,7 @@ struct RaylibChunkVisibilityOptions {
     int radius_chunks = 2;
     int fade_ring_chunks = 1;
     bool show_hidden_bounds = false;
+    float viewport_aspect_ratio = 1.0F;
 };
 
 /**
@@ -133,6 +136,7 @@ struct RaylibUploadedChunkModel {
     Model model{};
     ChunkCoord coord{};
     TileBounds bounds{};
+    Aabb3f world_bounds{};
     std::uint64_t faces = 0;
 };
 
@@ -226,6 +230,7 @@ public:
 
 private:
     std::vector<RaylibUploadedChunkModel> chunks_;
+    std::vector<ChunkVisibilityItem> visibility_items_;
     RaylibChunkMeshPreviewStats stats_;
 };
 

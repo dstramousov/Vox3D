@@ -65,6 +65,7 @@ enum class WorkspaceVisibilityMode {
     kAllChunks,
     kRadiusFade,
     kHardCull,
+    kFrustumCull,
 };
 
 /**
@@ -113,6 +114,7 @@ enum class WorkspacePanelItem {
     k3DVisibilityAllChunks,
     k3DVisibilityRadiusFade,
     k3DVisibilityHardCull,
+    k3DVisibilityFrustumCull,
     k3DVisibilityRadiusMinus,
     k3DVisibilityRadiusPlus,
     k3DVisibilityFadeMinus,

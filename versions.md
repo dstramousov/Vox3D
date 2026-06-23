@@ -213,3 +213,9 @@
 - Added render visibility modes for all chunks, soft radius fade, and hard chunk culling in the 3D preview.
 - Added per-frame visibility diagnostics for resident, visible, fade, hidden, drawn, and culled chunks plus drawn/skipped faces.
 - Wired the workspace menu, F12 hotkey, Stats tab, status bar, and render logs to show measurable visibility/culling profit without changing mesh generation.
+
+## v0.4.5 -> v0.4.6
+
+- Added a renderer-independent chunk visibility module in `vox3d_core` with radius, hard-cull, and frustum AABB classification.
+- Added `Frustum Cull` as a selectable 3D visibility mode while keeping the existing soft radius fade and hard-cull debug modes.
+- Wired visibility stats, logs, menu selection, F12 cycling, and raylib drawing through the shared engine visibility report instead of local UI-only classification.

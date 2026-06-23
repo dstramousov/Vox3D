@@ -189,6 +189,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "radius fade";
         case WorkspaceVisibilityMode::kHardCull:
             return "hard cull";
+        case WorkspaceVisibilityMode::kFrustumCull:
+            return "frustum cull";
     }
     return "unknown";
 }
@@ -528,6 +530,8 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Radius Fade";
         case WorkspacePanelItem::k3DVisibilityHardCull:
             return "Hard Cull";
+        case WorkspacePanelItem::k3DVisibilityFrustumCull:
+            return "Frustum Cull";
         case WorkspacePanelItem::k3DVisibilityRadiusMinus:
             return "Radius -";
         case WorkspacePanelItem::k3DVisibilityRadiusPlus:
@@ -1339,15 +1343,22 @@ void DrawWorkspace(
             workspace_state.show_3d_collision_overlay,
             workspace_state.show_3d_height_overlay,
         };
+        RaylibChunkVisibilityMode raylib_visibility_mode = RaylibChunkVisibilityMode::kAllChunks;
+        if (workspace_state.visibility_mode == WorkspaceVisibilityMode::kRadiusFade) {
+            raylib_visibility_mode = RaylibChunkVisibilityMode::kRadiusFade;
+        } else if (workspace_state.visibility_mode == WorkspaceVisibilityMode::kHardCull) {
+            raylib_visibility_mode = RaylibChunkVisibilityMode::kHardCull;
+        } else if (workspace_state.visibility_mode == WorkspaceVisibilityMode::kFrustumCull) {
+            raylib_visibility_mode = RaylibChunkVisibilityMode::kFrustumCull;
+        }
         const RaylibChunkVisibilityOptions visibility{
-            workspace_state.visibility_mode == WorkspaceVisibilityMode::kRadiusFade
-                ? RaylibChunkVisibilityMode::kRadiusFade
-                : (workspace_state.visibility_mode == WorkspaceVisibilityMode::kHardCull
-                    ? RaylibChunkVisibilityMode::kHardCull
-                    : RaylibChunkVisibilityMode::kAllChunks),
+            raylib_visibility_mode,
             workspace_state.visibility_radius_chunks,
             workspace_state.visibility_fade_ring_chunks,
             workspace_state.show_3d_hidden_chunk_bounds,
+            workspace.map_overview.width > 1.0F && workspace.map_overview.height > 1.0F
+                ? workspace.map_overview.width / workspace.map_overview.height
+                : 1.0F,
         };
         mesh_preview->Draw(
             workspace.map_overview,

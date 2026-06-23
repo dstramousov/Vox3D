@@ -96,6 +96,8 @@ std::string_view ToString(WorkspaceVisibilityMode mode)
             return "radius_fade";
         case WorkspaceVisibilityMode::kHardCull:
             return "hard_cull";
+        case WorkspaceVisibilityMode::kFrustumCull:
+            return "frustum_cull";
     }
     return "unknown";
 }
@@ -203,6 +205,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_visibility_radius_fade";
         case WorkspacePanelItem::k3DVisibilityHardCull:
             return "3d_visibility_hard_cull";
+        case WorkspacePanelItem::k3DVisibilityFrustumCull:
+            return "3d_visibility_frustum_cull";
         case WorkspacePanelItem::k3DVisibilityRadiusMinus:
             return "3d_visibility_radius_minus";
         case WorkspacePanelItem::k3DVisibilityRadiusPlus:
@@ -370,6 +374,7 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Radio(Item::k3DVisibilityAllChunks, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kAllChunks));
         items.push_back(Radio(Item::k3DVisibilityRadiusFade, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kRadiusFade));
         items.push_back(Radio(Item::k3DVisibilityHardCull, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kHardCull));
+        items.push_back(Radio(Item::k3DVisibilityFrustumCull, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kFrustumCull));
         items.push_back(Action(Item::k3DVisibilityRadiusMinus, 1, workspace.chunk_meshes.IsValid()));
         items.push_back(Action(Item::k3DVisibilityRadiusPlus, 1, workspace.chunk_meshes.IsValid()));
         items.push_back(Action(Item::k3DVisibilityFadeMinus, 1, workspace.chunk_meshes.IsValid()));
