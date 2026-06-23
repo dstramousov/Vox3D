@@ -13,49 +13,121 @@
 namespace vox3d {
 
 /**
- * @brief Top-level workspace section shown in the right-side accordion panel.
+ * @brief Top-level workspace section shown in the right-side tree panel.
  */
 enum class WorkspaceTool {
-    kMap,
-    kView,
-    kLayers,
-    kObjects,
-    kRender,
+    kMode,
+    kMap2D,
+    kWorld3D,
+    kSelection,
+    kPackageData,
     kDebug,
     kSettings,
 };
 
 /**
- * @brief Clickable item shown inside an expanded workspace accordion section.
+ * @brief Semantic kind of a workspace tree row.
+ */
+enum class WorkspacePanelItemKind {
+    kGroup,
+    kAction,
+    kCheckbox,
+    kRadio,
+    kValue,
+};
+
+/**
+ * @brief Clickable item shown inside an expanded workspace tree section.
  */
 enum class WorkspacePanelItem {
-    kMapOverview,
-    kMapPackage,
-    kMapValidate,
-    kView2DMap,
-    kView3DPreview,
-    kViewFitMap,
-    kViewResetView,
+    kMode2DMap,
+    kMode3DWorld,
+
+    k2DNavigationGroup,
+    k2DFitView,
+    k2DResetView,
+    k2DZoomIn,
+    k2DZoomOut,
+    k2DBaseLayerGroup,
     kLayerTerrain,
     kLayerElevation,
     kLayerCollision,
+    k2DOverlayGroup,
     kLayerGrid,
-    kRenderOverview,
+    k2DChunks,
+    k2DStartGoal,
+    k2DObjects,
+    k2DPlaces,
+    k2DMarkers,
+    k2DRoutes,
+    k2DWorldGraph,
+    k2DGameplayZones,
+    k2DElevationFeatures,
+    k2DElevationTransitions,
+
+    k3DCameraGroup,
+    kViewFitMap,
+    kViewResetView,
+    k3DCaptureMouse,
+    k3DReleaseMouse,
+    k3DRenderGroup,
+    kRenderTerrainMesh,
     kRenderChunkBounds,
     kRenderWorldGrid,
     kRenderCollision,
     kRenderHeight,
+    k3DMeshGroup,
+    k3DVisibleFaces,
+    k3DCulledFaces,
+    k3DChunkMeshes,
+    k3DDirtyChunks,
+
+    kSelectionTileGroup,
+    kSelectionTileInfo,
+    kSelectionVoxelGroup,
+    kSelectionVoxelInfo,
+    kSelectionChunkGroup,
+    kSelectionChunkInfo,
+    kSelectionActionsGroup,
+    kSelectionInspect,
+    kSelectionFocus,
+    kSelectionCopyInfo,
+
+    kPackageMetadataGroup,
+    kMapPackage,
+    kMapValidate,
+    kPackageRuntimeGridsGroup,
+    kPackageHeightGrid,
+    kPackageCollisionGrid,
+    kPackageMovementCostGrid,
+    kPackageWorldDataGroup,
+    kPackageObjects,
+    kPackageMarkers,
+    kPackageRoutes,
+    kPackageGameplayZones,
+
+    kDebugRuntimeMap,
+    kDebugChunkGrid,
+    kDebugVoxelWorld,
+    kDebugFaceVisibility,
+    kDebugChunkMesh,
+    kDebugCamera,
     kDebugMemory,
     kDebugFps,
     kDebugLogs,
+
     kSettingsLanguage,
+    kSettingsCamera,
+    kSettingsRender,
 };
 
 /**
- * @brief Runtime state for one workspace accordion subitem.
+ * @brief Runtime state for one workspace tree row.
  */
 struct WorkspacePanelItemState {
-    WorkspacePanelItem item = WorkspacePanelItem::kMapOverview;
+    WorkspacePanelItem item = WorkspacePanelItem::kMode2DMap;
+    WorkspacePanelItemKind kind = WorkspacePanelItemKind::kAction;
+    int depth = 1;
     bool enabled = false;
     bool checked = false;
 };
@@ -64,7 +136,7 @@ struct WorkspacePanelItemState {
  * @brief Runtime state for the main workspace screen.
  */
 struct WorkspaceState {
-    WorkspaceTool selected_tool = WorkspaceTool::kMap;
+    WorkspaceTool selected_tool = WorkspaceTool::kMode;
     bool selected_tool_expanded = true;
     bool show_terrain_layer = true;
     bool show_elevation_layer = false;
@@ -100,10 +172,10 @@ struct WorkspaceState {
 [[nodiscard]] std::string_view ToString(WorkspacePanelItem item);
 
 /**
- * @brief Builds the visible subitems for the currently selected accordion section.
+ * @brief Builds the visible tree rows for the currently selected workspace section.
  *
  * @param workspace Workspace state.
- * @return Subitems shown under the selected workspace section.
+ * @return Rows shown under the selected workspace section.
  */
 [[nodiscard]] std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceState& workspace);
 

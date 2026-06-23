@@ -113,7 +113,7 @@ struct PlaceholderLayout {
  * @brief Hit box and text position for a workspace accordion section header.
  */
 struct WorkspaceToolBounds {
-    WorkspaceTool tool = WorkspaceTool::kMap;
+    WorkspaceTool tool = WorkspaceTool::kMode;
     Rectangle bounds{};
     Vector2 text_position{};
 };
@@ -122,7 +122,9 @@ struct WorkspaceToolBounds {
  * @brief Hit box and text position for a workspace accordion subitem.
  */
 struct WorkspacePanelItemBounds {
-    WorkspacePanelItem item = WorkspacePanelItem::kMapOverview;
+    WorkspacePanelItem item = WorkspacePanelItem::kMode2DMap;
+    WorkspacePanelItemKind kind = WorkspacePanelItemKind::kAction;
+    int depth = 1;
     Rectangle bounds{};
     Vector2 text_position{};
     bool enabled = false;

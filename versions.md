@@ -152,3 +152,9 @@
 - Fixed free-fly strafe direction so A moves left and D moves right relative to the current view direction.
 - Changed 3D fit-view to use the actual viewport aspect ratio when entering 3D mode or pressing F, so the whole map starts framed inside the canvas.
 - Added compact camera diagnostics for capture state, yaw/pitch, and position in the workspace info panel and camera log output.
+
+## v0.3.5 -> v0.3.6
+
+- Reworked the right workspace panel into a mode-oriented tree with top-level 2D map, 3D world, selection, package data, debug, and settings sections.
+- Added nested row metadata for groups, actions, checkboxes, radios, and value rows so future selection/picking data has a stable place in the UI.
+- Removed the decorative VoX3D title from the top of the right panel and starts the menu directly from the tree rows.

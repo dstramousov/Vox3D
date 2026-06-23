@@ -140,19 +140,19 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return CompactFloat(value.x) + "," + CompactFloat(value.y) + "," + CompactFloat(value.z);
 }
 
-[[nodiscard]] const std::string& WorkspaceToolLabel(WorkspaceTool tool, const UiLabels& labels)
+[[nodiscard]] std::string WorkspaceToolLabel(WorkspaceTool tool, const UiLabels& labels)
 {
     switch (tool) {
-        case WorkspaceTool::kMap:
-            return labels.workspace_tool_map;
-        case WorkspaceTool::kView:
-            return labels.workspace_tool_view;
-        case WorkspaceTool::kLayers:
-            return labels.workspace_tool_layers;
-        case WorkspaceTool::kObjects:
-            return labels.workspace_tool_objects;
-        case WorkspaceTool::kRender:
-            return labels.workspace_tool_render;
+        case WorkspaceTool::kMode:
+            return "Mode";
+        case WorkspaceTool::kMap2D:
+            return "2D Map";
+        case WorkspaceTool::kWorld3D:
+            return "3D World";
+        case WorkspaceTool::kSelection:
+            return "Selection";
+        case WorkspaceTool::kPackageData:
+            return "Package Data";
         case WorkspaceTool::kDebug:
             return labels.workspace_tool_debug;
         case WorkspaceTool::kSettings:
@@ -206,33 +206,69 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 }
 
 
-[[nodiscard]] const std::string& WorkspacePanelItemLabel(WorkspacePanelItem item, const UiLabels& labels)
+[[nodiscard]] std::string WorkspacePanelItemLabel(WorkspacePanelItem item, const UiLabels& labels)
 {
     switch (item) {
-        case WorkspacePanelItem::kMapOverview:
-            return labels.workspace_subitem_overview;
-        case WorkspacePanelItem::kMapPackage:
-            return labels.workspace_subitem_package;
-        case WorkspacePanelItem::kMapValidate:
-            return labels.workspace_subitem_validate;
-        case WorkspacePanelItem::kView2DMap:
+        case WorkspacePanelItem::kMode2DMap:
             return labels.workspace_subitem_2d_map;
-        case WorkspacePanelItem::kView3DPreview:
+        case WorkspacePanelItem::kMode3DWorld:
             return labels.workspace_subitem_3d_preview;
-        case WorkspacePanelItem::kViewFitMap:
+        case WorkspacePanelItem::k2DNavigationGroup:
+            return "Navigation";
+        case WorkspacePanelItem::k2DFitView:
             return labels.workspace_subitem_fit_view;
-        case WorkspacePanelItem::kViewResetView:
+        case WorkspacePanelItem::k2DResetView:
             return labels.workspace_subitem_reset_view;
+        case WorkspacePanelItem::k2DZoomIn:
+            return "Zoom In";
+        case WorkspacePanelItem::k2DZoomOut:
+            return "Zoom Out";
+        case WorkspacePanelItem::k2DBaseLayerGroup:
+            return "Base Layer";
         case WorkspacePanelItem::kLayerTerrain:
             return labels.workspace_terrain_label;
         case WorkspacePanelItem::kLayerElevation:
             return labels.workspace_elevation_label;
         case WorkspacePanelItem::kLayerCollision:
             return labels.workspace_collision_label;
+        case WorkspacePanelItem::k2DOverlayGroup:
+            return "Overlays";
         case WorkspacePanelItem::kLayerGrid:
             return labels.workspace_subitem_grid;
-        case WorkspacePanelItem::kRenderOverview:
-            return labels.workspace_subitem_overview;
+        case WorkspacePanelItem::k2DChunks:
+            return "Chunks";
+        case WorkspacePanelItem::k2DStartGoal:
+            return "Start / Goal";
+        case WorkspacePanelItem::k2DObjects:
+            return labels.workspace_tool_objects;
+        case WorkspacePanelItem::k2DPlaces:
+            return "Places";
+        case WorkspacePanelItem::k2DMarkers:
+            return "Markers";
+        case WorkspacePanelItem::k2DRoutes:
+            return "Routes";
+        case WorkspacePanelItem::k2DWorldGraph:
+            return "World Graph";
+        case WorkspacePanelItem::k2DGameplayZones:
+            return "Gameplay Zones";
+        case WorkspacePanelItem::k2DElevationFeatures:
+            return "Elevation Features";
+        case WorkspacePanelItem::k2DElevationTransitions:
+            return "Elevation Transitions";
+        case WorkspacePanelItem::k3DCameraGroup:
+            return "Camera";
+        case WorkspacePanelItem::kViewFitMap:
+            return labels.workspace_subitem_fit_view;
+        case WorkspacePanelItem::kViewResetView:
+            return labels.workspace_subitem_reset_view;
+        case WorkspacePanelItem::k3DCaptureMouse:
+            return "Capture Mouse";
+        case WorkspacePanelItem::k3DReleaseMouse:
+            return "Release Mouse";
+        case WorkspacePanelItem::k3DRenderGroup:
+            return labels.workspace_tool_render;
+        case WorkspacePanelItem::kRenderTerrainMesh:
+            return "Terrain Mesh";
         case WorkspacePanelItem::kRenderChunkBounds:
             return labels.workspace_subitem_chunk_bounds;
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -241,6 +277,72 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return labels.workspace_subitem_collision_overlay;
         case WorkspacePanelItem::kRenderHeight:
             return labels.workspace_subitem_height;
+        case WorkspacePanelItem::k3DMeshGroup:
+            return "Mesh";
+        case WorkspacePanelItem::k3DVisibleFaces:
+            return "Visible Faces";
+        case WorkspacePanelItem::k3DCulledFaces:
+            return "Culled Faces";
+        case WorkspacePanelItem::k3DChunkMeshes:
+            return "Chunk Meshes";
+        case WorkspacePanelItem::k3DDirtyChunks:
+            return "Dirty Chunks";
+        case WorkspacePanelItem::kSelectionTileGroup:
+            return "Selected Tile";
+        case WorkspacePanelItem::kSelectionTileInfo:
+            return "Tile Info";
+        case WorkspacePanelItem::kSelectionVoxelGroup:
+            return "Selected Voxel";
+        case WorkspacePanelItem::kSelectionVoxelInfo:
+            return "Voxel Info";
+        case WorkspacePanelItem::kSelectionChunkGroup:
+            return "Selected Chunk";
+        case WorkspacePanelItem::kSelectionChunkInfo:
+            return "Chunk Info";
+        case WorkspacePanelItem::kSelectionActionsGroup:
+            return "Actions";
+        case WorkspacePanelItem::kSelectionInspect:
+            return "Inspect";
+        case WorkspacePanelItem::kSelectionFocus:
+            return "Focus";
+        case WorkspacePanelItem::kSelectionCopyInfo:
+            return "Copy Info";
+        case WorkspacePanelItem::kPackageMetadataGroup:
+            return "Metadata";
+        case WorkspacePanelItem::kMapPackage:
+            return labels.workspace_subitem_package;
+        case WorkspacePanelItem::kMapValidate:
+            return labels.workspace_subitem_validate;
+        case WorkspacePanelItem::kPackageRuntimeGridsGroup:
+            return "Runtime Grids";
+        case WorkspacePanelItem::kPackageHeightGrid:
+            return "Height Grid";
+        case WorkspacePanelItem::kPackageCollisionGrid:
+            return "Collision Grid";
+        case WorkspacePanelItem::kPackageMovementCostGrid:
+            return "Movement Cost Grid";
+        case WorkspacePanelItem::kPackageWorldDataGroup:
+            return "World Data";
+        case WorkspacePanelItem::kPackageObjects:
+            return labels.workspace_tool_objects;
+        case WorkspacePanelItem::kPackageMarkers:
+            return "Markers";
+        case WorkspacePanelItem::kPackageRoutes:
+            return "Routes";
+        case WorkspacePanelItem::kPackageGameplayZones:
+            return "Gameplay Zones";
+        case WorkspacePanelItem::kDebugRuntimeMap:
+            return "RuntimeMap";
+        case WorkspacePanelItem::kDebugChunkGrid:
+            return "ChunkGrid";
+        case WorkspacePanelItem::kDebugVoxelWorld:
+            return "VoxelWorld";
+        case WorkspacePanelItem::kDebugFaceVisibility:
+            return "Face Visibility";
+        case WorkspacePanelItem::kDebugChunkMesh:
+            return "Chunk Mesh";
+        case WorkspacePanelItem::kDebugCamera:
+            return "Camera";
         case WorkspacePanelItem::kDebugMemory:
             return labels.workspace_subitem_memory;
         case WorkspacePanelItem::kDebugFps:
@@ -249,6 +351,10 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return labels.workspace_subitem_logs;
         case WorkspacePanelItem::kSettingsLanguage:
             return labels.workspace_subitem_language;
+        case WorkspacePanelItem::kSettingsCamera:
+            return "Camera Settings";
+        case WorkspacePanelItem::kSettingsRender:
+            return "Render Settings";
     }
     return labels.debug_none;
 }
@@ -256,10 +362,22 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 [[nodiscard]] std::string WorkspacePanelItemText(WorkspacePanelItemState item, const UiLabels& labels)
 {
     std::string prefix;
-    if (item.enabled) {
-        prefix = item.checked ? "[x] " : "[ ] ";
-    } else {
-        prefix = "[-] ";
+    switch (item.kind) {
+        case WorkspacePanelItemKind::kGroup:
+            prefix = item.depth <= 1 ? "- " : "  ";
+            break;
+        case WorkspacePanelItemKind::kAction:
+            prefix = item.enabled ? "  " : "[-] ";
+            break;
+        case WorkspacePanelItemKind::kCheckbox:
+            prefix = item.enabled ? (item.checked ? "[x] " : "[ ] ") : "[-] ";
+            break;
+        case WorkspacePanelItemKind::kRadio:
+            prefix = item.enabled ? (item.checked ? "(x) " : "( ) ") : "(-) ";
+            break;
+        case WorkspacePanelItemKind::kValue:
+            prefix = item.enabled ? "= " : "- ";
+            break;
     }
     return prefix + WorkspacePanelItemLabel(item.item, labels);
 }
@@ -539,15 +657,15 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         layout.tool_panel.x + border,
         layout.tool_panel.y + border,
         std::max(1.0F, layout.tool_panel.width - border * 2.0F),
-        std::max(metrics.workspace_tool_font_size + padding * 1.6F, 34.0F * metrics.scale),
+        0.0F,
     };
 
     constexpr std::array<WorkspaceTool, 7> tools{
-        WorkspaceTool::kMap,
-        WorkspaceTool::kView,
-        WorkspaceTool::kLayers,
-        WorkspaceTool::kObjects,
-        WorkspaceTool::kRender,
+        WorkspaceTool::kMode,
+        WorkspaceTool::kMap2D,
+        WorkspaceTool::kWorld3D,
+        WorkspaceTool::kSelection,
+        WorkspaceTool::kPackageData,
         WorkspaceTool::kDebug,
         WorkspaceTool::kSettings,
     };
@@ -555,7 +673,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     const float tool_height = metrics.workspace_tool_font_size + gap * 1.35F;
     const float item_height = metrics.workspace_tool_font_size + gap * 1.05F;
     const float tool_x = layout.tool_panel.x + padding;
-    float row_y = layout.tool_header.y + layout.tool_header.height + gap;
+    float row_y = layout.tool_panel.y + padding;
     const float tool_width = std::max(1.0F, layout.tool_panel.width - padding * 2.0F);
     const float row_bottom = layout.tool_panel.y + layout.tool_panel.height - padding;
     const float subitem_indent = gap * 2.4F;
@@ -583,9 +701,17 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
             if (row_y + item_height > row_bottom) {
                 break;
             }
-            const Rectangle item_bounds{tool_x + subitem_indent, row_y, std::max(1.0F, tool_width - subitem_indent), item_height};
+            const float indent = subitem_indent * static_cast<float>(std::max(0, item.depth));
+            const Rectangle item_bounds{
+                tool_x + indent,
+                row_y,
+                std::max(1.0F, tool_width - indent),
+                item_height,
+            };
             layout.panel_items.push_back(WorkspacePanelItemBounds{
                 item.item,
+                item.kind,
+                item.depth,
                 item_bounds,
                 Vector2{item_bounds.x + gap, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
                 item.enabled,
@@ -597,9 +723,9 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 
     layout.tool_menu = Rectangle{
         tool_x,
-        layout.tool_header.y + layout.tool_header.height + gap,
+        layout.tool_panel.y + padding,
         tool_width,
-        std::max(1.0F, row_y - (layout.tool_header.y + layout.tool_header.height + gap)),
+        std::max(1.0F, row_y - (layout.tool_panel.y + padding)),
     };
 
     const float info_y = row_y + gap * 2.0F;
@@ -840,19 +966,10 @@ void DrawWorkspace(
     DrawRectangleRec(workspace.status_bar, kEditorStatus);
     DrawRectangleLinesEx(workspace.status_bar, metrics.workspace_border_width, kEditorBorder);
 
-    DrawRectangleRec(workspace.tool_header, kEditorBackground);
-    DrawTextEx(
-        fonts.title,
-        labels.workspace_tool_panel_title.c_str(),
-        Vector2{workspace.tool_header.x + metrics.workspace_panel_padding, workspace.tool_header.y + metrics.workspace_panel_padding * 0.35F},
-        metrics.workspace_tool_font_size,
-        FontSpacing(metrics.workspace_tool_font_size),
-        kEditorViewportText);
-
     const float spacing = FontSpacing(metrics.workspace_tool_font_size);
     for (const auto& tool_bounds : workspace.tools) {
         const bool selected = workspace_state.selected_tool == tool_bounds.tool;
-        const std::string& label = WorkspaceToolLabel(tool_bounds.tool, labels);
+        const std::string label = WorkspaceToolLabel(tool_bounds.tool, labels);
         const std::string marker = selected && workspace_state.selected_tool_expanded ? "- " : "+ ";
         if (selected) {
             DrawRectangleRec(tool_bounds.bounds, Color{4, 92, 120, 255});
@@ -867,9 +984,18 @@ void DrawWorkspace(
     }
 
     for (const auto& item_bounds : workspace.panel_items) {
-        const WorkspacePanelItemState item{item_bounds.item, item_bounds.enabled, item_bounds.checked};
+        const WorkspacePanelItemState item{
+            item_bounds.item,
+            item_bounds.kind,
+            item_bounds.depth,
+            item_bounds.enabled,
+            item_bounds.checked,
+        };
         const std::string text = WorkspacePanelItemText(item, labels);
-        const Color color = !item_bounds.enabled ? Color{74, 138, 154, 255} : (item_bounds.checked ? kAccent : kEditorPanelText);
+        const bool is_group = item_bounds.kind == WorkspacePanelItemKind::kGroup;
+        const Color color = is_group
+            ? kEditorViewportText
+            : (!item_bounds.enabled ? Color{74, 138, 154, 255} : (item_bounds.checked ? kAccent : kEditorPanelText));
         DrawTextEx(
             fonts.text,
             text.c_str(),

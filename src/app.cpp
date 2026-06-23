@@ -663,23 +663,23 @@ void App::ActivatePlaceholderAction()
 void App::SelectPreviousWorkspaceTool()
 {
     switch (workspace_.selected_tool) {
-        case WorkspaceTool::kMap:
+        case WorkspaceTool::kMode:
             workspace_.selected_tool = WorkspaceTool::kSettings;
             break;
-        case WorkspaceTool::kView:
-            workspace_.selected_tool = WorkspaceTool::kMap;
+        case WorkspaceTool::kMap2D:
+            workspace_.selected_tool = WorkspaceTool::kMode;
             break;
-        case WorkspaceTool::kLayers:
-            workspace_.selected_tool = WorkspaceTool::kView;
+        case WorkspaceTool::kWorld3D:
+            workspace_.selected_tool = WorkspaceTool::kMap2D;
             break;
-        case WorkspaceTool::kObjects:
-            workspace_.selected_tool = WorkspaceTool::kLayers;
+        case WorkspaceTool::kSelection:
+            workspace_.selected_tool = WorkspaceTool::kWorld3D;
             break;
-        case WorkspaceTool::kRender:
-            workspace_.selected_tool = WorkspaceTool::kObjects;
+        case WorkspaceTool::kPackageData:
+            workspace_.selected_tool = WorkspaceTool::kSelection;
             break;
         case WorkspaceTool::kDebug:
-            workspace_.selected_tool = WorkspaceTool::kRender;
+            workspace_.selected_tool = WorkspaceTool::kPackageData;
             break;
         case WorkspaceTool::kSettings:
             workspace_.selected_tool = WorkspaceTool::kDebug;
@@ -693,26 +693,26 @@ void App::SelectPreviousWorkspaceTool()
 void App::SelectNextWorkspaceTool()
 {
     switch (workspace_.selected_tool) {
-        case WorkspaceTool::kMap:
-            workspace_.selected_tool = WorkspaceTool::kView;
+        case WorkspaceTool::kMode:
+            workspace_.selected_tool = WorkspaceTool::kMap2D;
             break;
-        case WorkspaceTool::kView:
-            workspace_.selected_tool = WorkspaceTool::kLayers;
+        case WorkspaceTool::kMap2D:
+            workspace_.selected_tool = WorkspaceTool::kWorld3D;
             break;
-        case WorkspaceTool::kLayers:
-            workspace_.selected_tool = WorkspaceTool::kObjects;
+        case WorkspaceTool::kWorld3D:
+            workspace_.selected_tool = WorkspaceTool::kSelection;
             break;
-        case WorkspaceTool::kObjects:
-            workspace_.selected_tool = WorkspaceTool::kRender;
+        case WorkspaceTool::kSelection:
+            workspace_.selected_tool = WorkspaceTool::kPackageData;
             break;
-        case WorkspaceTool::kRender:
+        case WorkspaceTool::kPackageData:
             workspace_.selected_tool = WorkspaceTool::kDebug;
             break;
         case WorkspaceTool::kDebug:
             workspace_.selected_tool = WorkspaceTool::kSettings;
             break;
         case WorkspaceTool::kSettings:
-            workspace_.selected_tool = WorkspaceTool::kMap;
+            workspace_.selected_tool = WorkspaceTool::kMode;
             break;
     }
     workspace_.selected_tool_expanded = true;
@@ -737,16 +737,20 @@ void App::ToggleWorkspaceTool(WorkspaceTool tool)
 
 void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
 {
-    bool enabled = false;
+    bool activatable = false;
     for (const WorkspacePanelItemState& state : BuildWorkspacePanelItems(workspace_)) {
-        if (state.item == item) {
-            enabled = state.enabled;
-            break;
+        if (state.item != item) {
+            continue;
         }
+        activatable = state.enabled
+            && (state.kind == WorkspacePanelItemKind::kAction
+                || state.kind == WorkspacePanelItemKind::kCheckbox
+                || state.kind == WorkspacePanelItemKind::kRadio);
+        break;
     }
 
-    if (!enabled) {
-        logger_.Debug("workspace", "disabled panel item ignored id=" + std::string(ToString(item)));
+    if (!activatable) {
+        logger_.Debug("workspace", "inactive panel item ignored id=" + std::string(ToString(item)));
         return;
     }
 
@@ -763,20 +767,21 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         case WorkspacePanelItem::kLayerGrid:
             workspace_.show_grid_layer = !workspace_.show_grid_layer;
             break;
-        case WorkspacePanelItem::kView2DMap:
+        case WorkspacePanelItem::kMode2DMap:
             workspace_.show_3d_preview = false;
             preview_camera_.ReleaseMouse();
             logger_.Info("workspace", "preview mode=2d");
             break;
-        case WorkspacePanelItem::kView3DPreview:
+        case WorkspacePanelItem::kMode3DWorld:
+        case WorkspacePanelItem::kRenderTerrainMesh:
             workspace_.show_3d_preview = chunk_mesh_preview_.IsUploaded();
             if (workspace_.show_3d_preview) {
                 FitPreviewCameraToViewport("panel");
             }
-            logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "2d_unavailable"));
+            logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "3d_unavailable"));
             break;
         case WorkspacePanelItem::kViewFitMap:
-            FitPreviewCameraToViewport("hotkey");
+            FitPreviewCameraToViewport("panel");
             break;
         case WorkspacePanelItem::kViewResetView:
             preview_camera_.ResetView();
@@ -794,20 +799,14 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         case WorkspacePanelItem::kRenderHeight:
             workspace_.show_3d_height_overlay = !workspace_.show_3d_height_overlay;
             break;
-        case WorkspacePanelItem::kMapOverview:
-        case WorkspacePanelItem::kMapPackage:
-        case WorkspacePanelItem::kMapValidate:
-        case WorkspacePanelItem::kRenderOverview:
-        case WorkspacePanelItem::kDebugMemory:
-        case WorkspacePanelItem::kDebugFps:
-        case WorkspacePanelItem::kDebugLogs:
-        case WorkspacePanelItem::kSettingsLanguage:
+        default:
             break;
     }
 
     layout_dirty_ = true;
     logger_.Debug("workspace", "panel item activated id=" + std::string(ToString(item)));
 }
+
 
 
 void App::FitPreviewCameraToViewport(std::string_view reason)
