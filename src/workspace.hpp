@@ -49,6 +49,16 @@ enum class WorkspacePanelItemKind {
 };
 
 /**
+ * @brief Diagnostic vertex-color mode used by the 3D workspace preview.
+ */
+enum class WorkspaceColorMode {
+    kMaterial,
+    kGeographic,
+    kChunkId,
+    kFaceType,
+};
+
+/**
  * @brief Clickable item shown inside an expanded workspace tree section.
  */
 enum class WorkspacePanelItem {
@@ -85,6 +95,11 @@ enum class WorkspacePanelItem {
     k3DReleaseMouse,
     k3DRenderGroup,
     kRenderTerrainMesh,
+    k3DColorModeGroup,
+    k3DColorMaterial,
+    k3DColorGeographic,
+    k3DColorChunkId,
+    k3DColorFaceType,
     kRenderChunkBounds,
     kRenderWorldGrid,
     kRenderCollision,
@@ -214,6 +229,7 @@ struct WorkspaceState {
     bool show_3d_world_grid = false;
     bool show_3d_collision_overlay = false;
     bool show_3d_height_overlay = false;
+    WorkspaceColorMode color_mode = WorkspaceColorMode::kMaterial;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;
     MapPackageInfo map;
@@ -248,6 +264,14 @@ struct WorkspaceState {
  * @return String representation.
  */
 [[nodiscard]] std::string_view ToString(WorkspacePanelTab tab);
+
+/**
+ * @brief Converts a workspace color mode identifier to a stable lowercase name.
+ *
+ * @param mode Color mode identifier.
+ * @return String representation.
+ */
+[[nodiscard]] std::string_view ToString(WorkspaceColorMode mode);
 
 /**
  * @brief Converts a workspace panel item identifier to a stable lowercase name.

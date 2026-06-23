@@ -165,6 +165,21 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "unknown";
 }
 
+[[nodiscard]] std::string ColorModeLabel(WorkspaceColorMode mode)
+{
+    switch (mode) {
+        case WorkspaceColorMode::kMaterial:
+            return "material";
+        case WorkspaceColorMode::kGeographic:
+            return "geographic";
+        case WorkspaceColorMode::kChunkId:
+            return "chunk";
+        case WorkspaceColorMode::kFaceType:
+            return "face type";
+    }
+    return "unknown";
+}
+
 [[nodiscard]] std::string CompactVector(Vector3 value)
 {
     return CompactFloat(value.x) + "," + CompactFloat(value.y) + "," + CompactFloat(value.z);
@@ -182,6 +197,7 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
         return labels.workspace_status_ready + " | " + preview_mode + " | " + MapStatusLabel(workspace_state.map, labels);
     }
     return labels.workspace_status_ready + " | " + preview_mode + " | " + MeshModeLabel(workspace_state.mesh_mode)
+        + " | " + ColorModeLabel(workspace_state.color_mode)
         + " | Chunk " + std::to_string(workspace_state.chunk_size_tiles)
         + " | Faces " + std::to_string(workspace_state.mesh_stats.active_faces)
         + " | Models " + std::to_string(workspace_state.mesh_stats.draw_models)
@@ -265,6 +281,12 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
 {
     std::vector<std::string> lines;
     PushMapStats(lines, workspace_state, labels);
+    lines.push_back("Color");
+    lines.push_back("  Mode: " + ColorModeLabel(workspace_state.color_mode));
+    lines.push_back("  Geographic bands: -5..20");
+    lines.push_back("  Legend: blue low, green mid");
+    lines.push_back("          yellow/brown high, white peak");
+    lines.push_back("");
     PushMeshStats(lines, workspace_state);
     PushDirtyStats(lines, workspace_state);
     if (workspace_state.show_3d_preview && camera_status.initialized) {
@@ -300,6 +322,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  F8   Mesh mode",
         "  F9   Chunk size",
         "  F10  Dirty rebuild probe",
+        "  F11  Color mode",
         "  F    Fit view",
         "  R    Reset camera",
         "  Esc  Release mouse first, then exit",
@@ -437,6 +460,16 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return labels.workspace_tool_render;
         case WorkspacePanelItem::kRenderTerrainMesh:
             return "Terrain Mesh";
+        case WorkspacePanelItem::k3DColorModeGroup:
+            return "Color Mode";
+        case WorkspacePanelItem::k3DColorMaterial:
+            return "Material";
+        case WorkspacePanelItem::k3DColorGeographic:
+            return "Geographic";
+        case WorkspacePanelItem::k3DColorChunkId:
+            return "Chunk Id";
+        case WorkspacePanelItem::k3DColorFaceType:
+            return "Face Type";
         case WorkspacePanelItem::kRenderChunkBounds:
             return labels.workspace_subitem_chunk_bounds;
         case WorkspacePanelItem::kRenderWorldGrid:

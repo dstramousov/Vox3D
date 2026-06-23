@@ -47,6 +47,7 @@ struct MeshVertex {
     MeshPosition position;
     BlockTypeId block_type = BlockTypeId::kEmpty;
     FaceDirection face_direction = FaceDirection::kUp;
+    int level = 0;
 };
 
 /**

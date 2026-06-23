@@ -8,10 +8,28 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <string_view>
 #include <sstream>
 
 namespace vox3d {
+
+std::string_view ToString(RaylibChunkMeshColorMode mode)
+{
+    switch (mode) {
+        case RaylibChunkMeshColorMode::kMaterial:
+            return "material";
+        case RaylibChunkMeshColorMode::kGeographic:
+            return "geographic";
+        case RaylibChunkMeshColorMode::kChunkId:
+            return "chunk_id";
+        case RaylibChunkMeshColorMode::kFaceType:
+            return "face_type";
+    }
+    return "unknown";
+}
+
 namespace {
 
 struct RgbaColor {
@@ -53,16 +71,95 @@ struct RgbaColor {
     return 1.0F;
 }
 
-[[nodiscard]] RgbaColor FaceColor(BlockTypeId type, FaceDirection direction)
+[[nodiscard]] RgbaColor ApplyShade(RgbaColor base, float shade)
 {
-    const RgbaColor base = BaseColor(type);
-    const float shade = DirectionShade(direction);
     return RgbaColor{
         static_cast<unsigned char>(std::clamp(std::round(static_cast<float>(base.r) * shade), 0.0F, 255.0F)),
         static_cast<unsigned char>(std::clamp(std::round(static_cast<float>(base.g) * shade), 0.0F, 255.0F)),
         static_cast<unsigned char>(std::clamp(std::round(static_cast<float>(base.b) * shade), 0.0F, 255.0F)),
         base.a,
     };
+}
+
+[[nodiscard]] RgbaColor GeographicBaseColor(int level)
+{
+    if (level <= -3) {
+        return RgbaColor{27, 73, 137, 255};
+    }
+    if (level <= -1) {
+        return RgbaColor{56, 132, 190, 255};
+    }
+    if (level <= 2) {
+        return RgbaColor{71, 143, 75, 255};
+    }
+    if (level <= 6) {
+        return RgbaColor{119, 173, 83, 255};
+    }
+    if (level <= 10) {
+        return RgbaColor{199, 190, 94, 255};
+    }
+    if (level <= 14) {
+        return RgbaColor{205, 139, 52, 255};
+    }
+    if (level <= 18) {
+        return RgbaColor{121, 84, 59, 255};
+    }
+    return RgbaColor{230, 229, 218, 255};
+}
+
+[[nodiscard]] RgbaColor ChunkBaseColor(ChunkCoord coord)
+{
+    const std::uint32_t hash = static_cast<std::uint32_t>(coord.x * 73856093)
+        ^ static_cast<std::uint32_t>(coord.y * 19349663);
+    return RgbaColor{
+        static_cast<unsigned char>(92U + (hash & 0x5FU)),
+        static_cast<unsigned char>(104U + ((hash >> 8U) & 0x5FU)),
+        static_cast<unsigned char>(116U + ((hash >> 16U) & 0x5FU)),
+        255,
+    };
+}
+
+[[nodiscard]] RgbaColor FaceTypeBaseColor(FaceDirection direction)
+{
+    switch (direction) {
+        case FaceDirection::kUp:
+            return RgbaColor{84, 170, 90, 255};
+        case FaceDirection::kDown:
+            return RgbaColor{94, 82, 134, 255};
+        case FaceDirection::kWest:
+        case FaceDirection::kEast:
+            return RgbaColor{177, 121, 64, 255};
+        case FaceDirection::kNorth:
+        case FaceDirection::kSouth:
+            return RgbaColor{132, 104, 82, 255};
+    }
+    return RgbaColor{180, 180, 170, 255};
+}
+
+[[nodiscard]] RgbaColor VertexBaseColor(
+    const MeshVertex& vertex,
+    ChunkCoord chunk_coord,
+    RaylibChunkMeshColorMode color_mode)
+{
+    switch (color_mode) {
+        case RaylibChunkMeshColorMode::kMaterial:
+            return BaseColor(vertex.block_type);
+        case RaylibChunkMeshColorMode::kGeographic:
+            return GeographicBaseColor(vertex.level);
+        case RaylibChunkMeshColorMode::kChunkId:
+            return ChunkBaseColor(chunk_coord);
+        case RaylibChunkMeshColorMode::kFaceType:
+            return FaceTypeBaseColor(vertex.face_direction);
+    }
+    return BaseColor(vertex.block_type);
+}
+
+[[nodiscard]] RgbaColor VertexColor(
+    const MeshVertex& vertex,
+    ChunkCoord chunk_coord,
+    RaylibChunkMeshColorMode color_mode)
+{
+    return ApplyShade(VertexBaseColor(vertex, chunk_coord, color_mode), DirectionShade(vertex.face_direction));
 }
 
 [[nodiscard]] Vector3 WorldPosition(const MeshPosition& position, int map_width, int map_height)
@@ -114,13 +211,18 @@ struct RgbaColor {
     });
 }
 
-void CopyChunkVertices(const ChunkMeshData& chunk, Mesh& mesh, int map_width, int map_height)
+void CopyChunkVertices(
+    const ChunkMeshData& chunk,
+    Mesh& mesh,
+    int map_width,
+    int map_height,
+    RaylibChunkMeshColorMode color_mode)
 {
     for (std::size_t i = 0; i < chunk.vertices.size(); ++i) {
         const MeshVertex& source = chunk.vertices[i];
         const Vector3 position = WorldPosition(source.position, map_width, map_height);
         const Vector3 normal = FaceNormal(source.face_direction);
-        const RgbaColor color = FaceColor(source.block_type, source.face_direction);
+        const RgbaColor color = VertexColor(source, chunk.coord, color_mode);
         const std::size_t vertex_offset = i * 3ULL;
         const std::size_t color_offset = i * 4ULL;
 
@@ -146,7 +248,11 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     }
 }
 
-[[nodiscard]] Model LoadChunkModel(const ChunkMeshData& chunk, int map_width, int map_height)
+[[nodiscard]] Model LoadChunkModel(
+    const ChunkMeshData& chunk,
+    int map_width,
+    int map_height,
+    RaylibChunkMeshColorMode color_mode)
 {
     Mesh mesh{};
     mesh.vertexCount = static_cast<int>(chunk.vertices.size());
@@ -172,7 +278,7 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
         return Model{};
     }
 
-    CopyChunkVertices(chunk, mesh, map_width, map_height);
+    CopyChunkVertices(chunk, mesh, map_width, map_height, color_mode);
     CopyChunkIndices(chunk, mesh);
     UploadMesh(&mesh, false);
     return LoadModelFromMesh(mesh);
@@ -330,7 +436,7 @@ RaylibChunkMeshPreview::~RaylibChunkMeshPreview()
     Unload();
 }
 
-bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result)
+bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode)
 {
     Unload();
 
@@ -348,7 +454,7 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result)
             continue;
         }
 
-        Model model = LoadChunkModel(chunk, build_result.info.map_width, build_result.info.map_height);
+        Model model = LoadChunkModel(chunk, build_result.info.map_width, build_result.info.map_height, color_mode);
         if (model.meshCount <= 0 || model.meshes == nullptr) {
             ++stats_.skipped_chunks;
             continue;

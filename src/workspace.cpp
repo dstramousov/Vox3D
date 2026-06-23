@@ -72,6 +72,21 @@ std::string_view ToString(WorkspacePanelTab tab)
     return "unknown";
 }
 
+std::string_view ToString(WorkspaceColorMode mode)
+{
+    switch (mode) {
+        case WorkspaceColorMode::kMaterial:
+            return "material";
+        case WorkspaceColorMode::kGeographic:
+            return "geographic";
+        case WorkspaceColorMode::kChunkId:
+            return "chunk_id";
+        case WorkspaceColorMode::kFaceType:
+            return "face_type";
+    }
+    return "unknown";
+}
+
 double WorkspaceChunkSizeComparison::DrawModelDeltaRatio() const
 {
     return available ? DeltaRatio(before_draw_models, after_draw_models) : 0.0;
@@ -147,6 +162,16 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_render";
         case WorkspacePanelItem::kRenderTerrainMesh:
             return "3d_terrain_mesh";
+        case WorkspacePanelItem::k3DColorModeGroup:
+            return "3d_color_mode";
+        case WorkspacePanelItem::k3DColorMaterial:
+            return "3d_color_material";
+        case WorkspacePanelItem::k3DColorGeographic:
+            return "3d_color_geographic";
+        case WorkspacePanelItem::k3DColorChunkId:
+            return "3d_color_chunk_id";
+        case WorkspacePanelItem::k3DColorFaceType:
+            return "3d_color_face_type";
         case WorkspacePanelItem::kRenderChunkBounds:
             return "render_chunk_bounds";
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -293,6 +318,12 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Checkbox(Item::kRenderWorldGrid, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_world_grid));
         items.push_back(Checkbox(Item::kRenderCollision, 1, workspace.runtime_map.info.collision_loaded, workspace.show_3d_collision_overlay));
         items.push_back(Checkbox(Item::kRenderHeight, 1, workspace.runtime_map.info.elevation_loaded, workspace.show_3d_height_overlay));
+
+        items.push_back(Group(Item::k3DColorModeGroup, 0));
+        items.push_back(Radio(Item::k3DColorMaterial, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kMaterial));
+        items.push_back(Radio(Item::k3DColorGeographic, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kGeographic));
+        items.push_back(Radio(Item::k3DColorChunkId, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kChunkId));
+        items.push_back(Radio(Item::k3DColorFaceType, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kFaceType));
 
         items.push_back(Group(Item::k3DMeshGroup, 0));
         items.push_back(Radio(Item::k3DMeshSimple, 1, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));

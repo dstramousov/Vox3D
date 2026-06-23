@@ -8,9 +8,28 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vox3d {
+
+/**
+ * @brief Vertex-color palette used when uploading chunk meshes to raylib.
+ */
+enum class RaylibChunkMeshColorMode : std::uint8_t {
+    kMaterial,
+    kGeographic,
+    kChunkId,
+    kFaceType,
+};
+
+/**
+ * @brief Converts a raylib chunk-mesh color mode to a stable diagnostic name.
+ *
+ * @param mode Color mode identifier.
+ * @return Stable lowercase string representation.
+ */
+[[nodiscard]] std::string_view ToString(RaylibChunkMeshColorMode mode);
 
 /**
  * @brief Upload statistics for the raylib chunk-mesh preview renderer.
@@ -69,9 +88,10 @@ public:
      * reported in the resulting stats.
      *
      * @param build_result Renderer-independent chunk mesh data.
+     * @param color_mode Vertex-color mode applied during upload.
      * @return True if at least one non-empty chunk model was uploaded.
      */
-    [[nodiscard]] bool Upload(const ChunkMeshBuildResult& build_result);
+    [[nodiscard]] bool Upload(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode);
 
     /**
      * @brief Draws uploaded chunk mesh models inside the viewport rectangle.

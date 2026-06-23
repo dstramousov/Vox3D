@@ -150,6 +150,36 @@ void ToggleOverlayFlag(
     return chunk_size == kChunkSize16 ? kChunkSize32 : kChunkSize16;
 }
 
+[[nodiscard]] WorkspaceColorMode NextColorMode(WorkspaceColorMode mode)
+{
+    switch (mode) {
+        case WorkspaceColorMode::kMaterial:
+            return WorkspaceColorMode::kGeographic;
+        case WorkspaceColorMode::kGeographic:
+            return WorkspaceColorMode::kChunkId;
+        case WorkspaceColorMode::kChunkId:
+            return WorkspaceColorMode::kFaceType;
+        case WorkspaceColorMode::kFaceType:
+            return WorkspaceColorMode::kMaterial;
+    }
+    return WorkspaceColorMode::kMaterial;
+}
+
+[[nodiscard]] RaylibChunkMeshColorMode ToRaylibColorMode(WorkspaceColorMode mode)
+{
+    switch (mode) {
+        case WorkspaceColorMode::kMaterial:
+            return RaylibChunkMeshColorMode::kMaterial;
+        case WorkspaceColorMode::kGeographic:
+            return RaylibChunkMeshColorMode::kGeographic;
+        case WorkspaceColorMode::kChunkId:
+            return RaylibChunkMeshColorMode::kChunkId;
+        case WorkspaceColorMode::kFaceType:
+            return RaylibChunkMeshColorMode::kFaceType;
+    }
+    return RaylibChunkMeshColorMode::kMaterial;
+}
+
 [[nodiscard]] bool IsSupportedChunkSize(int chunk_size)
 {
     return chunk_size == kChunkSize16 || chunk_size == kChunkSize32;
@@ -538,6 +568,9 @@ void App::HandleWorkspaceInput(float dt)
         }
         if (IsKeyPressed(KEY_F10)) {
             RunDirtyRebuildProbe("hotkey");
+        }
+        if (IsKeyPressed(KEY_F11)) {
+            CycleColorMode("hotkey");
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
@@ -969,9 +1002,12 @@ void App::RunDirtyRebuildProbe(std::string_view reason)
 
 void App::UploadActiveChunkMesh(std::string_view reason)
 {
-    const bool uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes);
+    const bool uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes, ToRaylibColorMode(workspace_.color_mode));
     RefreshMeshOptimizationStats();
-    logger_.Info("render3d", "upload reason=" + std::string(reason) + " " + ToLogString(chunk_mesh_preview_.Stats()));
+    logger_.Info(
+        "render3d",
+        "upload reason=" + std::string(reason) + " color=" + std::string(ToString(workspace_.color_mode)) + " "
+            + ToLogString(chunk_mesh_preview_.Stats()));
     logger_.Info("mesh_stats", ToLogString(workspace_.mesh_stats));
     if (!uploaded) {
         logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");
@@ -997,6 +1033,26 @@ void App::SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason)
     SetActiveMeshCacheFromMode();
     UploadActiveChunkMesh(reason);
     layout_dirty_ = true;
+}
+
+void App::SetColorMode(WorkspaceColorMode mode, std::string_view reason)
+{
+    if (workspace_.color_mode == mode && chunk_mesh_preview_.IsUploaded()) {
+        logger_.Debug("render3d", "color mode unchanged mode=" + std::string(ToString(mode)));
+        return;
+    }
+
+    workspace_.color_mode = mode;
+    if (workspace_.chunk_meshes.IsValid()) {
+        UploadActiveChunkMesh(reason);
+    }
+    layout_dirty_ = true;
+    logger_.Info("render3d", "color mode=" + std::string(ToString(mode)) + " reason=" + std::string(reason));
+}
+
+void App::CycleColorMode(std::string_view reason)
+{
+    SetColorMode(NextColorMode(workspace_.color_mode), reason);
 }
 
 void App::ActivateSelectedMenuItem()
@@ -1183,6 +1239,18 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
                 OverlayPrimitiveCount(workspace_, item),
                 logger_,
                 layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DColorMaterial:
+            SetColorMode(WorkspaceColorMode::kMaterial, "panel");
+            break;
+        case WorkspacePanelItem::k3DColorGeographic:
+            SetColorMode(WorkspaceColorMode::kGeographic, "panel");
+            break;
+        case WorkspacePanelItem::k3DColorChunkId:
+            SetColorMode(WorkspaceColorMode::kChunkId, "panel");
+            break;
+        case WorkspacePanelItem::k3DColorFaceType:
+            SetColorMode(WorkspaceColorMode::kFaceType, "panel");
             break;
         case WorkspacePanelItem::k3DMeshSimple:
             SetMeshBuildMode(ChunkMeshBuildMode::kSimpleFaces, "panel");

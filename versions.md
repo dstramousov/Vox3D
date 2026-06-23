@@ -200,3 +200,9 @@
 - Added span merging for stepped terrain top surfaces so adjacent tiles with the same height and block type are emitted as one larger quad.
 - Added one-dimensional span merging for terrain wall/cliff faces along chunk rows or columns while preserving the existing terrain surface mesh mode.
 - Added terrain raw-vs-merged diagnostics for top faces, wall faces, total terrain faces, and merge-saved ratios in logs and the workspace Stats tab.
+
+## v0.4.3 -> v0.4.4
+
+- Added 3D diagnostic color modes for material, geographic elevation, chunk id, and face type previews without changing mesh geometry.
+- Added deterministic geographic elevation colors for map levels and reuploads active chunk meshes when switching color mode.
+- Wired the workspace menu, F11 hotkey, status bar, Stats tab, and render logs to expose the active color visualization mode.
