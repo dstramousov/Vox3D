@@ -1046,6 +1046,91 @@ void DrawMovementProbeOverlay(
     }
 }
 
+[[nodiscard]] bool IsPassabilityIssueEnabled(
+    PassabilityIssueKind kind,
+    RaylibPassabilityValidationOverlayOptions options)
+{
+    switch (kind) {
+        case PassabilityIssueKind::kInvalidTransition:
+            return options.show_invalid_transitions;
+        case PassabilityIssueKind::kBlockedRamp:
+        case PassabilityIssueKind::kBlockedStairs:
+            return options.show_blocked_transitions;
+        case PassabilityIssueKind::kSuspiciousDrop:
+            return options.show_suspicious_drops;
+        case PassabilityIssueKind::kIsolatedTile:
+            return options.show_isolated_tiles;
+    }
+    return false;
+}
+
+[[nodiscard]] Color PassabilityIssueColor(PassabilityIssueKind kind)
+{
+    switch (kind) {
+        case PassabilityIssueKind::kInvalidTransition:
+            return Color{224, 64, 232, 240};
+        case PassabilityIssueKind::kBlockedRamp:
+        case PassabilityIssueKind::kBlockedStairs:
+            return Color{255, 196, 54, 240};
+        case PassabilityIssueKind::kSuspiciousDrop:
+            return Color{255, 98, 44, 240};
+        case PassabilityIssueKind::kIsolatedTile:
+            return Color{160, 100, 255, 240};
+    }
+    return Color{255, 255, 255, 220};
+}
+
+void DrawPassabilityValidationOverlay(
+    const RuntimeMap& map,
+    const ChunkMeshBuildResult& build_result,
+    const PassabilityValidationReport& report,
+    RaylibPassabilityValidationOverlayOptions options)
+{
+    if (!options.show || !report.IsValid()) {
+        return;
+    }
+
+    constexpr float kLevelOffset = 1.65F;
+    constexpr float kIssueSize = 0.16F;
+    for (const PassabilityIssue& issue : report.issues) {
+        if (!IsPassabilityIssueEnabled(issue.kind, options) || !map.height.Contains(issue.from_tile)) {
+            continue;
+        }
+
+        const Color color = PassabilityIssueColor(issue.kind);
+        const Vector3 from = TileCenterWorld(
+            issue.from_tile.x,
+            issue.from_tile.y,
+            static_cast<float>(issue.from_elevation + 1) + kLevelOffset,
+            build_result.info.map_width,
+            build_result.info.map_height);
+
+        if (issue.kind == PassabilityIssueKind::kIsolatedTile || !map.height.Contains(issue.to_tile)
+            || (issue.from_tile.x == issue.to_tile.x && issue.from_tile.y == issue.to_tile.y)) {
+            DrawSphere(from, kIssueSize * 1.25F, color);
+            const Vector3 top{from.x, from.y + 0.45F, from.z};
+            DrawLine3D(from, top, color);
+            continue;
+        }
+
+        const Vector3 to = TileCenterWorld(
+            issue.to_tile.x,
+            issue.to_tile.y,
+            static_cast<float>(issue.to_elevation + 1) + kLevelOffset,
+            build_result.info.map_width,
+            build_result.info.map_height);
+        const Vector3 middle{
+            (from.x + to.x) * 0.5F,
+            (from.y + to.y) * 0.5F + 0.14F,
+            (from.z + to.z) * 0.5F,
+        };
+
+        DrawLine3D(from, middle, color);
+        DrawLine3D(middle, to, color);
+        DrawSphere(middle, kIssueSize, color);
+    }
+}
+
 void DrawDebugOverlays(
     const ChunkMeshBuildResult& build_result,
     const RuntimeMap* runtime_map,
@@ -1187,7 +1272,9 @@ void RaylibChunkMeshPreview::Draw(
     RaylibTransitionOverlayOptions transitions,
     RaylibTileSelectionOverlayOptions selected_tile,
     const MovementProbeResult* movement_probe,
-    RaylibMovementProbeOverlayOptions movement) const
+    RaylibMovementProbeOverlayOptions movement,
+    const PassabilityValidationReport* passability,
+    RaylibPassabilityValidationOverlayOptions passability_overlay) const
 {
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
@@ -1228,6 +1315,9 @@ void RaylibChunkMeshPreview::Draw(
         DrawSelectedTileOverlay(*runtime_map, build_result, selected_tile);
         if (movement_probe != nullptr) {
             DrawMovementProbeOverlay(*runtime_map, build_result, *movement_probe, movement);
+        }
+        if (passability != nullptr) {
+            DrawPassabilityValidationOverlay(*runtime_map, build_result, *passability, passability_overlay);
         }
     }
 

@@ -6,6 +6,7 @@
 #include "vox3d/movement/movement_probe.hpp"
 #include "vox3d/render/chunk_visibility.hpp"
 #include "vox3d/transition/transition_feature.hpp"
+#include "vox3d/validation/passability_validator.hpp"
 
 #include <raylib.h>
 
@@ -107,6 +108,17 @@ struct RaylibTileSelectionOverlayOptions {
  */
 struct RaylibMovementProbeOverlayOptions {
     bool show = false;
+};
+
+/**
+ * @brief Passability validation overlay visibility flags used by the 3D preview.
+ */
+struct RaylibPassabilityValidationOverlayOptions {
+    bool show = false;
+    bool show_invalid_transitions = true;
+    bool show_blocked_transitions = true;
+    bool show_suspicious_drops = true;
+    bool show_isolated_tiles = true;
 };
 
 /**
@@ -230,6 +242,8 @@ public:
      * @param selected_tile Selected tile overlay visibility options.
      * @param movement_probe Optional movement probe drawn as pass/block markers.
      * @param movement Movement probe overlay visibility options.
+     * @param passability Optional map-wide passability validation report.
+     * @param passability_overlay Passability validation overlay visibility flags.
      */
     void Draw(
         Rectangle viewport,
@@ -244,7 +258,9 @@ public:
         RaylibTransitionOverlayOptions transitions = {},
         RaylibTileSelectionOverlayOptions selected_tile = {},
         const MovementProbeResult* movement_probe = nullptr,
-        RaylibMovementProbeOverlayOptions movement = {}) const;
+        RaylibMovementProbeOverlayOptions movement = {},
+        const PassabilityValidationReport* passability = nullptr,
+        RaylibPassabilityValidationOverlayOptions passability_overlay = {}) const;
 
     /**
      * @brief Picks a runtime-map tile under a screen-space cursor position.

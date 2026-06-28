@@ -310,6 +310,30 @@ void PushMovementStats(std::vector<std::string>& lines, const WorkspaceState& wo
     lines.push_back("");
 }
 
+void PushPassabilityStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
+{
+    lines.push_back("Passability Validation");
+    if (!workspace_state.passability_validation.IsValid()) {
+        lines.push_back("  unavailable");
+        lines.push_back("");
+        return;
+    }
+
+    const PassabilityValidationStats& stats = workspace_state.passability_validation.stats;
+    lines.push_back("  Edges: " + std::to_string(stats.checked_edges));
+    lines.push_back("  Pass/Block: " + std::to_string(stats.passable_edges) + "/"
+        + std::to_string(stats.blocked_edges));
+    lines.push_back("  Invalid: " + std::to_string(stats.invalid_transitions));
+    lines.push_back("  Drops: " + std::to_string(stats.suspicious_drops));
+    lines.push_back("  Blocked R/S: " + std::to_string(stats.blocked_ramps) + "/"
+        + std::to_string(stats.blocked_stairs));
+    lines.push_back("  Isolated: " + std::to_string(stats.isolated_tiles));
+    lines.push_back("  Stored issues: " + std::to_string(stats.stored_issues)
+        + std::string(stats.issue_storage_truncated ? " (truncated)" : ""));
+    lines.push_back("  Overlay: " + std::string(workspace_state.show_passability_issues ? "on" : "off"));
+    lines.push_back("");
+}
+
 void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
 {
     lines.push_back("Mesh");
@@ -390,6 +414,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     PushVisibilityStats(lines, workspace_state);
     PushTransitionStats(lines, workspace_state);
     PushMovementStats(lines, workspace_state);
+    PushPassabilityStats(lines, workspace_state);
     PushMeshStats(lines, workspace_state);
     PushDirtyStats(lines, workspace_state);
     if (workspace_state.show_3d_preview && camera_status.initialized) {
@@ -518,6 +543,18 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     for (int index = 0; index < probe.step_count; ++index) {
         lines.push_back(MovementStepText(probe.steps[static_cast<std::size_t>(index)]));
     }
+    lines.push_back("");
+    lines.push_back("Validation");
+    if (workspace_state.passability_validation.IsValid()) {
+        const PassabilityValidationStats& stats = workspace_state.passability_validation.stats;
+        lines.push_back("  Invalid: " + std::to_string(stats.invalid_transitions));
+        lines.push_back("  Blocked R/S: " + std::to_string(stats.blocked_ramps) + "/"
+            + std::to_string(stats.blocked_stairs));
+        lines.push_back("  Drops: " + std::to_string(stats.suspicious_drops));
+        lines.push_back("  Isolated: " + std::to_string(stats.isolated_tiles));
+    } else {
+        lines.push_back("  unavailable");
+    }
     return lines;
 }
 
@@ -534,6 +571,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  F12  Visibility mode",
         "  T    Toggle transitions",
         "  M    Toggle movement probe",
+        "  V    Toggle passability issues",
         "  LMB  Pick tile",
         "  F    Fit view",
         "  R    Reset camera",
@@ -726,6 +764,18 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Movement Debug";
         case WorkspacePanelItem::k3DShowMovementProbe:
             return "Show Movement Probe";
+        case WorkspacePanelItem::k3DValidationGroup:
+            return "Validation";
+        case WorkspacePanelItem::k3DShowPassabilityIssues:
+            return "Show Passability Issues";
+        case WorkspacePanelItem::k3DValidationInvalidTransitions:
+            return "Invalid Transitions";
+        case WorkspacePanelItem::k3DValidationBlockedTransitions:
+            return "Blocked Ramps/Stairs";
+        case WorkspacePanelItem::k3DValidationSuspiciousDrops:
+            return "Suspicious Drops";
+        case WorkspacePanelItem::k3DValidationIsolatedTiles:
+            return "Isolated Tiles";
         case WorkspacePanelItem::kRenderChunkBounds:
             return labels.workspace_subitem_chunk_bounds;
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -1605,6 +1655,14 @@ void DrawWorkspace(
             workspace_state.movement_probe.IsValid() ? &workspace_state.movement_probe : nullptr,
             RaylibMovementProbeOverlayOptions{
                 workspace_state.show_movement_probe,
+            },
+            workspace_state.passability_validation.IsValid() ? &workspace_state.passability_validation : nullptr,
+            RaylibPassabilityValidationOverlayOptions{
+                workspace_state.show_passability_issues,
+                workspace_state.show_passability_invalid_transitions,
+                workspace_state.show_passability_blocked_transitions,
+                workspace_state.show_passability_suspicious_drops,
+                workspace_state.show_passability_isolated_tiles,
             });
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {

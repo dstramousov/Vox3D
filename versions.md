@@ -256,3 +256,16 @@
 - Added a renderer-independent 4-way movement probe in `vox3d_core` that explains passable and blocked neighbour steps around the selected tile.
 - Wired movement diagnostics into the Inspect and Stats tabs, including pass/block counts, height deltas, transition kind, and block reasons.
 - Added a 3D movement probe overlay and `M` hotkey without adding pathfinding, player movement, animation, or map editing.
+
+## v0.5.2 -> v0.5.3
+
+- Added renderer-independent map-wide passability validation in `vox3d_core`, reusing movement rules to audit local edges across the whole runtime map.
+- Added validation counters for checked, passable, blocked, invalid, suspicious drop, blocked ramp/stair, isolated-tile, and stored issue counts.
+- Wired validation diagnostics into logs, workspace Menu, Stats, Inspect, 3D issue overlay, and `V` hotkey without adding pathfinding, player movement, or map auto-fixes.
+
+
+## v0.5.3 -> v0.5.4
+
+- Fixed the broken passability validation patch by adding the missing `passability_validator` core source and header files referenced by CMake and UI code.
+- Kept map-wide passability validation renderer-independent, with checked/passable/blocked edge counters, issue storage, and compact logging.
+- Preserved the existing validation menu, Stats, Inspect, and 3D overlay wiring without adding new gameplay behavior.

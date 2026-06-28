@@ -9,6 +9,7 @@
 #include "vox3d/mesh/mesh_data.hpp"
 #include "vox3d/movement/movement_probe.hpp"
 #include "vox3d/transition/transition_feature.hpp"
+#include "vox3d/validation/passability_validator.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
 #include <cstdint>
@@ -135,6 +136,12 @@ enum class WorkspacePanelItem {
     k3DTransitionDrops,
     k3DMovementGroup,
     k3DShowMovementProbe,
+    k3DValidationGroup,
+    k3DShowPassabilityIssues,
+    k3DValidationInvalidTransitions,
+    k3DValidationBlockedTransitions,
+    k3DValidationSuspiciousDrops,
+    k3DValidationIsolatedTiles,
     kRenderChunkBounds,
     kRenderWorldGrid,
     kRenderCollision,
@@ -312,8 +319,14 @@ struct WorkspaceState {
     bool show_transition_bridges = true;
     bool show_transition_drops = true;
     bool show_movement_probe = true;
+    bool show_passability_issues = false;
+    bool show_passability_invalid_transitions = true;
+    bool show_passability_blocked_transitions = true;
+    bool show_passability_suspicious_drops = true;
+    bool show_passability_isolated_tiles = true;
     TileInspectResult selected_tile;
     MovementProbeResult movement_probe;
+    PassabilityValidationReport passability_validation;
     WorkspaceVisibilityStats visibility_stats;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;

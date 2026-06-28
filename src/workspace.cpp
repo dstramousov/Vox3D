@@ -241,6 +241,18 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_movement";
         case WorkspacePanelItem::k3DShowMovementProbe:
             return "3d_show_movement_probe";
+        case WorkspacePanelItem::k3DValidationGroup:
+            return "3d_validation";
+        case WorkspacePanelItem::k3DShowPassabilityIssues:
+            return "3d_show_passability_issues";
+        case WorkspacePanelItem::k3DValidationInvalidTransitions:
+            return "3d_validation_invalid_transitions";
+        case WorkspacePanelItem::k3DValidationBlockedTransitions:
+            return "3d_validation_blocked_transitions";
+        case WorkspacePanelItem::k3DValidationSuspiciousDrops:
+            return "3d_validation_suspicious_drops";
+        case WorkspacePanelItem::k3DValidationIsolatedTiles:
+            return "3d_validation_isolated_tiles";
         case WorkspacePanelItem::kRenderChunkBounds:
             return "render_chunk_bounds";
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -417,6 +429,15 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         const bool movement_probe_enabled = workspace.selected_tile.IsValid() && workspace.movement_probe.IsValid();
         items.push_back(Group(Item::k3DMovementGroup, 0));
         items.push_back(Checkbox(Item::k3DShowMovementProbe, 1, movement_probe_enabled, workspace.show_movement_probe));
+
+        const bool validation_enabled = workspace.passability_validation.IsValid()
+            && !workspace.passability_validation.issues.empty();
+        items.push_back(Group(Item::k3DValidationGroup, 0));
+        items.push_back(Checkbox(Item::k3DShowPassabilityIssues, 1, validation_enabled, workspace.show_passability_issues));
+        items.push_back(Checkbox(Item::k3DValidationInvalidTransitions, 1, validation_enabled, workspace.show_passability_invalid_transitions));
+        items.push_back(Checkbox(Item::k3DValidationBlockedTransitions, 1, validation_enabled, workspace.show_passability_blocked_transitions));
+        items.push_back(Checkbox(Item::k3DValidationSuspiciousDrops, 1, validation_enabled, workspace.show_passability_suspicious_drops));
+        items.push_back(Checkbox(Item::k3DValidationIsolatedTiles, 1, validation_enabled, workspace.show_passability_isolated_tiles));
 
         const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
             && workspace.terrain_chunk_meshes.IsValid();

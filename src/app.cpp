@@ -9,6 +9,7 @@
 #include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/mesh/terrain_mesh_builder.hpp"
 #include "vox3d/transition/transition_feature.hpp"
+#include "vox3d/validation/passability_validator.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
 #include <raylib.h>
@@ -699,6 +700,9 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_M)) {
             ToggleMovementProbeOverlay("hotkey");
         }
+        if (IsKeyPressed(KEY_V)) {
+            TogglePassabilityValidationOverlay("hotkey");
+        }
         const Vector2 pick_mouse = GetMousePosition();
         if (!preview_camera_.IsCursorCaptured() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
             && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
@@ -1046,6 +1050,14 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         logger_.Warn("transitions", warning);
     }
 
+    PassabilityValidationReport next_passability_validation = ValidatePassability(
+        workspace_.runtime_map,
+        next_transition_features);
+    logger_.Info("passability", "reason=" + std::string(reason) + " " + ToLogString(next_passability_validation));
+    for (const auto& warning : next_passability_validation.diagnostics.warnings) {
+        logger_.Warn("passability", warning);
+    }
+
     workspace_.chunk_size_tiles = chunk_size;
     workspace_.chunk_grid = std::move(next_chunk_grid);
     workspace_.voxel_world = std::move(next_voxel_world);
@@ -1054,6 +1066,7 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
     workspace_.terrain_chunk_meshes = std::move(next_terrain_meshes);
     workspace_.transition_features = std::move(next_transition_features);
+    workspace_.passability_validation = std::move(next_passability_validation);
     if (workspace_.selected_tile.IsValid()) {
         workspace_.selected_tile = InspectTile(
             workspace_.runtime_map,
@@ -1421,6 +1434,20 @@ void App::ToggleMovementProbeOverlay(std::string_view reason)
         + " reason=" + std::string(reason));
 }
 
+void App::TogglePassabilityValidationOverlay(std::string_view reason)
+{
+    if (!workspace_.passability_validation.IsValid() || workspace_.passability_validation.issues.empty()) {
+        logger_.Debug("passability", "overlay toggle ignored because no validation issues are available");
+        return;
+    }
+
+    workspace_.show_passability_issues = !workspace_.show_passability_issues;
+    layout_dirty_ = true;
+    logger_.Info("passability", std::string("overlay=")
+        + (workspace_.show_passability_issues ? "on" : "off")
+        + " reason=" + std::string(reason));
+}
+
 void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
 {
     if (!workspace_.show_3d_preview || !chunk_mesh_preview_.IsUploaded() || !workspace_.runtime_map.IsValid()) {
@@ -1656,6 +1683,33 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DShowMovementProbe:
             ToggleMovementProbeOverlay("panel");
+            break;
+        case WorkspacePanelItem::k3DShowPassabilityIssues:
+            TogglePassabilityValidationOverlay("panel");
+            break;
+        case WorkspacePanelItem::k3DValidationInvalidTransitions:
+            workspace_.show_passability_invalid_transitions = !workspace_.show_passability_invalid_transitions;
+            layout_dirty_ = true;
+            logger_.Info("passability", std::string("invalid_transitions=")
+                + (workspace_.show_passability_invalid_transitions ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DValidationBlockedTransitions:
+            workspace_.show_passability_blocked_transitions = !workspace_.show_passability_blocked_transitions;
+            layout_dirty_ = true;
+            logger_.Info("passability", std::string("blocked_transitions=")
+                + (workspace_.show_passability_blocked_transitions ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DValidationSuspiciousDrops:
+            workspace_.show_passability_suspicious_drops = !workspace_.show_passability_suspicious_drops;
+            layout_dirty_ = true;
+            logger_.Info("passability", std::string("suspicious_drops=")
+                + (workspace_.show_passability_suspicious_drops ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DValidationIsolatedTiles:
+            workspace_.show_passability_isolated_tiles = !workspace_.show_passability_isolated_tiles;
+            layout_dirty_ = true;
+            logger_.Info("passability", std::string("isolated_tiles=")
+                + (workspace_.show_passability_isolated_tiles ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DMeshSimple:
             SetMeshBuildMode(ChunkMeshBuildMode::kSimpleFaces, "panel");
