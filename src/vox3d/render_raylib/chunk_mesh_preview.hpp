@@ -238,9 +238,11 @@ public:
     /**
      * @brief Picks a runtime-map tile under a screen-space cursor position.
      *
-     * The pick ray is built against the supplied viewport rather than the full
-     * window. The first pass ray-marches against the height grid; when height
-     * data is unavailable, the method falls back to the y=0 map plane.
+     * The viewport is used to reject clicks outside the 3D canvas. The pick ray
+     * mirrors raylib's current full render-target projection because the preview
+     * is clipped with a scissor rectangle after BeginMode3D builds that projection.
+     * The first pass ray-marches against the height grid; when height data is
+     * unavailable, the method falls back to the y=0 map plane.
      *
      * @param screen_position Mouse position in screen coordinates.
      * @param viewport Screen-space 3D viewport rectangle.

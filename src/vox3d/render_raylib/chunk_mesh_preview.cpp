@@ -370,14 +370,25 @@ struct Ray3f {
     Vector3 direction{};
 };
 
-[[nodiscard]] Ray3f BuildViewportRay(Vector2 screen_position, Rectangle viewport, const Camera3D& camera)
+[[nodiscard]] float CurrentRenderAspectRatio()
+{
+    const int width = std::max(1, GetScreenWidth());
+    const int height = std::max(1, GetScreenHeight());
+    return std::max(0.1F, static_cast<float>(width) / static_cast<float>(height));
+}
+
+[[nodiscard]] Ray3f BuildScreenRay(Vector2 screen_position, const Camera3D& camera)
 {
     constexpr float kDegToRad = 3.14159265358979323846F / 180.0F;
-    const float local_x = (screen_position.x - viewport.x) / std::max(1.0F, viewport.width);
-    const float local_y = (screen_position.y - viewport.y) / std::max(1.0F, viewport.height);
-    const float ndc_x = local_x * 2.0F - 1.0F;
-    const float ndc_y = 1.0F - local_y * 2.0F;
-    const float aspect = std::max(0.1F, viewport.width / std::max(1.0F, viewport.height));
+
+    // BeginMode3D builds its projection from the full render target size, even
+    // when drawing is clipped by BeginScissorMode. Picking must mirror that
+    // projection; otherwise the ray is shifted relative to the visible image.
+    const float screen_width = static_cast<float>(std::max(1, GetScreenWidth()));
+    const float screen_height = static_cast<float>(std::max(1, GetScreenHeight()));
+    const float ndc_x = (screen_position.x / screen_width) * 2.0F - 1.0F;
+    const float ndc_y = 1.0F - (screen_position.y / screen_height) * 2.0F;
+    const float aspect = CurrentRenderAspectRatio();
     const float half_vertical = std::tan(camera.fovy * 0.5F * kDegToRad);
 
     const Vector3 forward = Normalize(Subtract(camera.target, camera.position), Vector3{0.0F, 0.0F, -1.0F});
@@ -1123,7 +1134,7 @@ void RaylibChunkMeshPreview::Draw(
         static_cast<int>(viewport.height));
     BeginMode3D(camera);
 
-    visibility.viewport_aspect_ratio = std::max(0.1F, viewport.width / std::max(1.0F, viewport.height));
+    visibility.viewport_aspect_ratio = CurrentRenderAspectRatio();
     const ChunkVisibilityReport visibility_report = BuildChunkVisibility(
         visibility_items_,
         BuildCoreVisibilityOptions(build_result, camera, visibility));
@@ -1166,7 +1177,7 @@ std::optional<TileCoord> RaylibChunkMeshPreview::PickTile(
         return std::nullopt;
     }
 
-    const Ray3f ray = BuildViewportRay(screen_position, viewport, camera);
+    const Ray3f ray = BuildScreenRay(screen_position, camera);
     if (std::optional<TileCoord> tile = PickHeightfieldTile(ray, runtime_map, camera); tile.has_value()) {
         return tile;
     }

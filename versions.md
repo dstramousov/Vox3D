@@ -243,3 +243,10 @@
 - Added renderer-independent tile inspection in `vox3d_core`, combining runtime terrain/elevation/collision, chunk ownership, and transition counters for one selected tile.
 - Added 3D viewport tile picking from a viewport-correct camera ray with heightfield ray marching and a plane fallback for maps without height data.
 - Wired left-click selection into the workspace Inspect tab and highlighted the selected tile in the 3D preview without adding map editing, object picking, pathfinding, or movement changes.
+
+
+## v0.5.0 -> v0.5.1
+
+- Fixed 3D tile picking so the mouse ray mirrors raylib's actual full render-target projection while still rejecting clicks outside the 3D canvas.
+- Aligned frustum visibility aspect-ratio calculations with the same render projection used by the 3D preview.
+- Updated picking documentation to describe the current scissored-preview projection behavior without changing map inspection, terrain mesh generation, or selection UI.

@@ -211,21 +211,23 @@ void ToggleOverlayFlag(
     return RaylibChunkVisibilityMode::kAllChunks;
 }
 
-[[nodiscard]] float ViewportAspectRatio(Rectangle viewport)
+[[nodiscard]] float CurrentRenderAspectRatio()
 {
-    return viewport.width > 1.0F && viewport.height > 1.0F ? viewport.width / viewport.height : 1.0F;
+    const int width = std::max(1, GetScreenWidth());
+    const int height = std::max(1, GetScreenHeight());
+    return static_cast<float>(width) / static_cast<float>(height);
 }
 
 [[nodiscard]] RaylibChunkVisibilityOptions BuildRaylibVisibilityOptions(
     const WorkspaceState& workspace,
-    Rectangle viewport)
+    Rectangle /*viewport*/)
 {
     return RaylibChunkVisibilityOptions{
         ToRaylibVisibilityMode(workspace.visibility_mode),
         workspace.visibility_radius_chunks,
         workspace.visibility_fade_ring_chunks,
         workspace.show_3d_hidden_chunk_bounds,
-        ViewportAspectRatio(viewport),
+        CurrentRenderAspectRatio(),
     };
 }
 
