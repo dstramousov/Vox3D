@@ -250,3 +250,9 @@
 - Fixed 3D tile picking so the mouse ray mirrors raylib's actual full render-target projection while still rejecting clicks outside the 3D canvas.
 - Aligned frustum visibility aspect-ratio calculations with the same render projection used by the 3D preview.
 - Updated picking documentation to describe the current scissored-preview projection behavior without changing map inspection, terrain mesh generation, or selection UI.
+
+## v0.5.1 -> v0.5.2
+
+- Added a renderer-independent 4-way movement probe in `vox3d_core` that explains passable and blocked neighbour steps around the selected tile.
+- Wired movement diagnostics into the Inspect and Stats tabs, including pass/block counts, height deltas, transition kind, and block reasons.
+- Added a 3D movement probe overlay and `M` hotkey without adding pathfinding, player movement, animation, or map editing.

@@ -7,6 +7,7 @@
 #include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
+#include "vox3d/movement/movement_probe.hpp"
 #include "vox3d/transition/transition_feature.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
@@ -132,6 +133,8 @@ enum class WorkspacePanelItem {
     k3DTransitionStairs,
     k3DTransitionBridges,
     k3DTransitionDrops,
+    k3DMovementGroup,
+    k3DShowMovementProbe,
     kRenderChunkBounds,
     kRenderWorldGrid,
     kRenderCollision,
@@ -308,7 +311,9 @@ struct WorkspaceState {
     bool show_transition_stairs = true;
     bool show_transition_bridges = true;
     bool show_transition_drops = true;
+    bool show_movement_probe = true;
     TileInspectResult selected_tile;
+    MovementProbeResult movement_probe;
     WorkspaceVisibilityStats visibility_stats;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;

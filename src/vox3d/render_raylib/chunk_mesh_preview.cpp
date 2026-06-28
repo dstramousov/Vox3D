@@ -982,6 +982,70 @@ void DrawSelectedTileOverlay(
     DrawSphere(marker_bottom, 0.08F, kSelectionInner);
 }
 
+[[nodiscard]] Color MovementProbeColor(const MovementProbeStep& step)
+{
+    if (step.passable) {
+        return Color{92, 232, 118, 235};
+    }
+    if (step.block_reason == MovementBlockReason::kOutOfBounds) {
+        return Color{130, 130, 140, 210};
+    }
+    if (step.block_reason == MovementBlockReason::kDrop) {
+        return Color{246, 116, 56, 235};
+    }
+    return Color{236, 74, 74, 235};
+}
+
+void DrawMovementProbeOverlay(
+    const RuntimeMap& map,
+    const ChunkMeshBuildResult& build_result,
+    const MovementProbeResult& probe,
+    RaylibMovementProbeOverlayOptions options)
+{
+    if (!options.show || !probe.IsValid() || !map.height.Contains(probe.source_tile)) {
+        return;
+    }
+
+    constexpr float kLevelOffset = 0.55F;
+    constexpr float kSourceSize = 0.16F;
+    constexpr float kTargetSize = 0.13F;
+    const Vector3 source = TileCenterWorld(
+        probe.source_tile.x,
+        probe.source_tile.y,
+        static_cast<float>(probe.source_elevation + 1) + kLevelOffset,
+        build_result.info.map_width,
+        build_result.info.map_height);
+    DrawSphere(source, kSourceSize, Color{255, 245, 110, 245});
+
+    for (int index = 0; index < probe.step_count; ++index) {
+        const MovementProbeStep& step = probe.steps[static_cast<std::size_t>(index)];
+        if (!step.target_in_bounds || !map.height.Contains(step.to_tile)) {
+            continue;
+        }
+
+        const Color color = MovementProbeColor(step);
+        const Vector3 target = TileCenterWorld(
+            step.to_tile.x,
+            step.to_tile.y,
+            static_cast<float>(step.to_elevation + 1) + kLevelOffset,
+            build_result.info.map_width,
+            build_result.info.map_height);
+        const Vector3 middle{
+            (source.x + target.x) * 0.5F,
+            (source.y + target.y) * 0.5F + 0.08F,
+            (source.z + target.z) * 0.5F,
+        };
+
+        DrawLine3D(source, middle, color);
+        DrawLine3D(middle, target, color);
+        DrawSphere(target, kTargetSize, color);
+        if (!step.passable) {
+            const Vector3 mark_top{target.x, target.y + 0.35F, target.z};
+            DrawLine3D(target, mark_top, color);
+        }
+    }
+}
+
 void DrawDebugOverlays(
     const ChunkMeshBuildResult& build_result,
     const RuntimeMap* runtime_map,
@@ -1121,7 +1185,9 @@ void RaylibChunkMeshPreview::Draw(
     RaylibTerrainPassOptions terrain_passes,
     const TransitionFeatureSet* transition_features,
     RaylibTransitionOverlayOptions transitions,
-    RaylibTileSelectionOverlayOptions selected_tile) const
+    RaylibTileSelectionOverlayOptions selected_tile,
+    const MovementProbeResult* movement_probe,
+    RaylibMovementProbeOverlayOptions movement) const
 {
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
@@ -1160,6 +1226,9 @@ void RaylibChunkMeshPreview::Draw(
     DrawDebugOverlays(build_result, runtime_map, chunk_grid, overlays);
     if (runtime_map != nullptr) {
         DrawSelectedTileOverlay(*runtime_map, build_result, selected_tile);
+        if (movement_probe != nullptr) {
+            DrawMovementProbeOverlay(*runtime_map, build_result, *movement_probe, movement);
+        }
     }
 
     EndMode3D();

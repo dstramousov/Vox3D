@@ -696,6 +696,9 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_T)) {
             ToggleTransitionOverlay("hotkey");
         }
+        if (IsKeyPressed(KEY_M)) {
+            ToggleMovementProbeOverlay("hotkey");
+        }
         const Vector2 pick_mouse = GetMousePosition();
         if (!preview_camera_.IsCursorCaptured() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
             && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
@@ -1051,6 +1054,19 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
     workspace_.terrain_chunk_meshes = std::move(next_terrain_meshes);
     workspace_.transition_features = std::move(next_transition_features);
+    if (workspace_.selected_tile.IsValid()) {
+        workspace_.selected_tile = InspectTile(
+            workspace_.runtime_map,
+            workspace_.chunk_grid,
+            workspace_.transition_features,
+            workspace_.selected_tile.tile);
+        workspace_.movement_probe = BuildMovementProbe(
+            workspace_.runtime_map,
+            workspace_.transition_features,
+            workspace_.selected_tile.tile);
+    } else {
+        workspace_.movement_probe = MovementProbeResult{};
+    }
     workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
     workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
     SetActiveMeshCacheFromMode();
@@ -1391,6 +1407,20 @@ void App::ToggleTransitionOverlay(std::string_view reason)
         + " reason=" + std::string(reason));
 }
 
+void App::ToggleMovementProbeOverlay(std::string_view reason)
+{
+    if (!workspace_.selected_tile.IsValid() || !workspace_.movement_probe.IsValid()) {
+        logger_.Debug("movement", "probe overlay toggle ignored because no tile is selected");
+        return;
+    }
+
+    workspace_.show_movement_probe = !workspace_.show_movement_probe;
+    layout_dirty_ = true;
+    logger_.Info("movement", std::string("probe_overlay=")
+        + (workspace_.show_movement_probe ? "on" : "off")
+        + " reason=" + std::string(reason));
+}
+
 void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
 {
     if (!workspace_.show_3d_preview || !chunk_mesh_preview_.IsUploaded() || !workspace_.runtime_map.IsValid()) {
@@ -1404,6 +1434,7 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
         preview_camera_.Camera());
     if (!picked_tile.has_value()) {
         workspace_.selected_tile = TileInspectResult{};
+        workspace_.movement_probe = MovementProbeResult{};
         workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
         layout_dirty_ = true;
         logger_.Debug("inspect", "tile pick missed reason=" + std::string(reason));
@@ -1415,9 +1446,14 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
         workspace_.chunk_grid,
         workspace_.transition_features,
         *picked_tile);
+    workspace_.movement_probe = BuildMovementProbe(
+        workspace_.runtime_map,
+        workspace_.transition_features,
+        workspace_.selected_tile.tile);
     workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
     layout_dirty_ = true;
     logger_.Info("inspect", "reason=" + std::string(reason) + " " + ToLogString(workspace_.selected_tile));
+    logger_.Info("movement", "reason=" + std::string(reason) + " " + ToLogString(workspace_.movement_probe));
 }
 
 void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
@@ -1617,6 +1653,9 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             layout_dirty_ = true;
             logger_.Info("transitions", std::string("drops=")
                 + (workspace_.show_transition_drops ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DShowMovementProbe:
+            ToggleMovementProbeOverlay("panel");
             break;
         case WorkspacePanelItem::k3DMeshSimple:
             SetMeshBuildMode(ChunkMeshBuildMode::kSimpleFaces, "panel");

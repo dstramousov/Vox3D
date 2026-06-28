@@ -237,6 +237,10 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_transition_bridges";
         case WorkspacePanelItem::k3DTransitionDrops:
             return "3d_transition_drops";
+        case WorkspacePanelItem::k3DMovementGroup:
+            return "3d_movement";
+        case WorkspacePanelItem::k3DShowMovementProbe:
+            return "3d_show_movement_probe";
         case WorkspacePanelItem::kRenderChunkBounds:
             return "render_chunk_bounds";
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -409,6 +413,10 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Checkbox(Item::k3DTransitionStairs, 1, transition_features_enabled, workspace.show_transition_stairs));
         items.push_back(Checkbox(Item::k3DTransitionBridges, 1, transition_features_enabled, workspace.show_transition_bridges));
         items.push_back(Checkbox(Item::k3DTransitionDrops, 1, transition_features_enabled, workspace.show_transition_drops));
+
+        const bool movement_probe_enabled = workspace.selected_tile.IsValid() && workspace.movement_probe.IsValid();
+        items.push_back(Group(Item::k3DMovementGroup, 0));
+        items.push_back(Checkbox(Item::k3DShowMovementProbe, 1, movement_probe_enabled, workspace.show_movement_probe));
 
         const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
             && workspace.terrain_chunk_meshes.IsValid();

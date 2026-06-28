@@ -204,6 +204,7 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 [[nodiscard]] std::string MapSizeText(const MapPackageInfo& map, const UiLabels& labels);
 [[nodiscard]] std::string MapLevelsText(const MapPackageInfo& map, const UiLabels& labels);
 [[nodiscard]] std::string MapTileText(const MapPackageInfo& map, const UiLabels& labels);
+[[nodiscard]] std::string TileCoordText(TileCoord tile);
 
 [[nodiscard]] std::string CompactStatusText(const WorkspaceState& workspace_state, const UiLabels& labels)
 {
@@ -291,6 +292,24 @@ void PushTransitionStats(std::vector<std::string>& lines, const WorkspaceState& 
     lines.push_back("");
 }
 
+void PushMovementStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
+{
+    lines.push_back("Movement");
+    if (!workspace_state.movement_probe.IsValid()) {
+        lines.push_back("  select a tile");
+        lines.push_back("");
+        return;
+    }
+
+    const MovementProbeResult& probe = workspace_state.movement_probe;
+    lines.push_back("  Tile: " + TileCoordText(probe.source_tile));
+    lines.push_back("  Checked: " + std::to_string(probe.stats.checked));
+    lines.push_back("  Passable: " + std::to_string(probe.stats.passable));
+    lines.push_back("  Blocked: " + std::to_string(probe.stats.blocked));
+    lines.push_back("  Overlay: " + std::string(workspace_state.show_movement_probe ? "on" : "off"));
+    lines.push_back("");
+}
+
 void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
 {
     lines.push_back("Mesh");
@@ -370,6 +389,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     lines.push_back("");
     PushVisibilityStats(lines, workspace_state);
     PushTransitionStats(lines, workspace_state);
+    PushMovementStats(lines, workspace_state);
     PushMeshStats(lines, workspace_state);
     PushDirtyStats(lines, workspace_state);
     if (workspace_state.show_3d_preview && camera_status.initialized) {
@@ -391,6 +411,66 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
 {
     return std::to_string(bounds.min_x) + "," + std::to_string(bounds.min_y)
         + ".." + std::to_string(bounds.max_x) + "," + std::to_string(bounds.max_y);
+}
+
+[[nodiscard]] std::string MovementDirectionLabel(FaceDirection direction)
+{
+    switch (direction) {
+        case FaceDirection::kNorth:
+            return "N";
+        case FaceDirection::kSouth:
+            return "S";
+        case FaceDirection::kWest:
+            return "W";
+        case FaceDirection::kEast:
+            return "E";
+        case FaceDirection::kDown:
+            return "D";
+        case FaceDirection::kUp:
+            return "U";
+    }
+    return "?";
+}
+
+[[nodiscard]] std::string MovementTransitionLabel(const MovementProbeStep& step)
+{
+    if (!step.has_transition) {
+        return "flat";
+    }
+    return std::string(ToString(step.transition_kind));
+}
+
+[[nodiscard]] std::string MovementBlockLabel(MovementBlockReason reason)
+{
+    switch (reason) {
+        case MovementBlockReason::kNone:
+            return "ok";
+        case MovementBlockReason::kMissingData:
+            return "missing";
+        case MovementBlockReason::kSourceBlocked:
+            return "source blocked";
+        case MovementBlockReason::kOutOfBounds:
+            return "outside";
+        case MovementBlockReason::kTargetBlocked:
+            return "target blocked";
+        case MovementBlockReason::kDrop:
+            return "drop";
+        case MovementBlockReason::kTransitionBlocked:
+            return "transition blocked";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string MovementStepText(const MovementProbeStep& step)
+{
+    std::string text = "  " + MovementDirectionLabel(step.direction) + ": ";
+    text += step.passable ? "pass" : "block";
+    text += ", d" + std::to_string(step.delta_levels);
+    text += ", " + MovementTransitionLabel(step);
+    if (!step.passable) {
+        text += ", " + MovementBlockLabel(step.block_reason);
+    }
+    return text;
 }
 
 [[nodiscard]] std::vector<std::string> BuildInspectPanelLines(const WorkspaceState& workspace_state)
@@ -427,6 +507,17 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         + std::to_string(tile.transitions.drops));
     lines.push_back("  Passable: " + std::to_string(tile.transitions.passable));
     lines.push_back("  Blocked: " + std::to_string(tile.transitions.blocked));
+    lines.push_back("");
+    lines.push_back("Movement");
+    if (!workspace_state.movement_probe.IsValid()) {
+        lines.push_back("  unavailable");
+        return lines;
+    }
+    const MovementProbeResult& probe = workspace_state.movement_probe;
+    lines.push_back("  P/B: " + std::to_string(probe.stats.passable) + "/" + std::to_string(probe.stats.blocked));
+    for (int index = 0; index < probe.step_count; ++index) {
+        lines.push_back(MovementStepText(probe.steps[static_cast<std::size_t>(index)]));
+    }
     return lines;
 }
 
@@ -442,6 +533,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  F11  Color mode",
         "  F12  Visibility mode",
         "  T    Toggle transitions",
+        "  M    Toggle movement probe",
         "  LMB  Pick tile",
         "  F    Fit view",
         "  R    Reset camera",
@@ -630,6 +722,10 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Bridges";
         case WorkspacePanelItem::k3DTransitionDrops:
             return "Drops";
+        case WorkspacePanelItem::k3DMovementGroup:
+            return "Movement Debug";
+        case WorkspacePanelItem::k3DShowMovementProbe:
+            return "Show Movement Probe";
         case WorkspacePanelItem::kRenderChunkBounds:
             return labels.workspace_subitem_chunk_bounds;
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -1505,6 +1601,10 @@ void DrawWorkspace(
             RaylibTileSelectionOverlayOptions{
                 workspace_state.selected_tile.IsValid(),
                 workspace_state.selected_tile.tile,
+            },
+            workspace_state.movement_probe.IsValid() ? &workspace_state.movement_probe : nullptr,
+            RaylibMovementProbeOverlayOptions{
+                workspace_state.show_movement_probe,
             });
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {

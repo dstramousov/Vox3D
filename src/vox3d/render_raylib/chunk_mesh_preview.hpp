@@ -3,6 +3,7 @@
 #include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
+#include "vox3d/movement/movement_probe.hpp"
 #include "vox3d/render/chunk_visibility.hpp"
 #include "vox3d/transition/transition_feature.hpp"
 
@@ -101,6 +102,12 @@ struct RaylibTileSelectionOverlayOptions {
     TileCoord tile;
 };
 
+/**
+ * @brief Movement probe overlay options used by the 3D preview.
+ */
+struct RaylibMovementProbeOverlayOptions {
+    bool show = false;
+};
 
 /**
  * @brief Last measured visibility and draw-culling counters.
@@ -221,6 +228,8 @@ public:
      * @param transition_features Optional transition feature set drawn as debug markers.
      * @param transitions Transition feature overlay visibility flags.
      * @param selected_tile Selected tile overlay visibility options.
+     * @param movement_probe Optional movement probe drawn as pass/block markers.
+     * @param movement Movement probe overlay visibility options.
      */
     void Draw(
         Rectangle viewport,
@@ -233,7 +242,9 @@ public:
         RaylibTerrainPassOptions terrain_passes = {},
         const TransitionFeatureSet* transition_features = nullptr,
         RaylibTransitionOverlayOptions transitions = {},
-        RaylibTileSelectionOverlayOptions selected_tile = {}) const;
+        RaylibTileSelectionOverlayOptions selected_tile = {},
+        const MovementProbeResult* movement_probe = nullptr,
+        RaylibMovementProbeOverlayOptions movement = {}) const;
 
     /**
      * @brief Picks a runtime-map tile under a screen-space cursor position.
