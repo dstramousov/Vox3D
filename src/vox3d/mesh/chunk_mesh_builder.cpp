@@ -150,7 +150,7 @@ void EmitQuad(
     mesh.faces.push_back(face);
 
     for (const MeshPosition& position : corners) {
-        mesh.vertices.push_back(MeshVertex{position, block_type, direction, block_coord.z});
+        mesh.vertices.push_back(MeshVertex{position, block_type, direction, TerrainRenderPass::kBody, block_coord.z});
     }
 
     mesh.indices.push_back(first_vertex + 0U);
@@ -528,6 +528,21 @@ std::string_view ToString(ChunkMeshBuildMode mode)
     return "unknown";
 }
 
+std::string_view ToString(TerrainRenderPass pass)
+{
+    switch (pass) {
+        case TerrainRenderPass::kBody:
+            return "body";
+        case TerrainRenderPass::kTops:
+            return "tops";
+        case TerrainRenderPass::kWalls:
+            return "walls";
+        case TerrainRenderPass::kCliffs:
+            return "cliffs";
+    }
+    return "unknown";
+}
+
 bool ChunkMeshBuildChunkResult::IsValid() const
 {
     return mesh.IsValid();
@@ -546,9 +561,9 @@ std::uint64_t ChunkMeshData::FaceCount() const
 bool ChunkMeshBuildInfo::IsValid() const
 {
     const bool terrain_counts_valid = mode != ChunkMeshBuildMode::kTerrainSurface
-        || (terrain_top_faces + terrain_wall_faces == visible_faces
+        || (terrain_top_faces + terrain_wall_faces + terrain_cliff_faces == visible_faces
             && terrain_raw_top_faces >= terrain_top_faces
-            && terrain_raw_wall_faces >= terrain_wall_faces);
+            && terrain_raw_wall_faces >= terrain_wall_faces + terrain_cliff_faces);
     return map_width > 0 && map_height > 0 && chunks_x > 0 && chunks_y > 0
         && static_cast<std::uint64_t>(total_chunks) == ExpectedChunkCount(chunks_x, chunks_y) && levels.has_value()
         && levels->max >= levels->min && vertices == visible_faces * 4ULL && indices == visible_faces * 6ULL
@@ -593,7 +608,7 @@ double MeshOptimizationStats::TerrainTopMergeReductionRatio() const
 
 double MeshOptimizationStats::TerrainWallMergeReductionRatio() const
 {
-    return ReductionRatio(terrain_raw_wall_faces, terrain_wall_faces);
+    return ReductionRatio(terrain_raw_wall_faces, terrain_wall_faces + terrain_cliff_faces);
 }
 
 double MeshOptimizationStats::ActiveReductionRatio() const
@@ -682,6 +697,7 @@ std::string ToLogString(const ChunkMeshBuildResult& result)
         out << " raw_walls=" << result.info.terrain_raw_wall_faces;
         out << " top=" << result.info.terrain_top_faces;
         out << " walls=" << result.info.terrain_wall_faces;
+        out << " cliffs=" << result.info.terrain_cliff_faces;
     }
     out << " vertices=" << result.info.vertices;
     out << " indices=" << result.info.indices;
@@ -706,6 +722,7 @@ std::string ToLogString(const MeshOptimizationStats& stats)
     out << " terrain_raw_walls=" << stats.terrain_raw_wall_faces;
     out << " terrain_top=" << stats.terrain_top_faces;
     out << " terrain_walls=" << stats.terrain_wall_faces;
+    out << " terrain_cliffs=" << stats.terrain_cliff_faces;
     out << " active_faces=" << stats.active_faces;
     out << " vertices=" << stats.active_vertices;
     out << " indices=" << stats.active_indices;

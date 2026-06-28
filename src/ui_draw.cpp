@@ -256,12 +256,38 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
     lines.push_back("  Visible/Fade: " + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
         + std::to_string(workspace_state.visibility_stats.fade_chunks));
     lines.push_back("  Hidden: " + std::to_string(workspace_state.visibility_stats.hidden_chunks));
-    lines.push_back("  Drawn: " + std::to_string(workspace_state.visibility_stats.drawn_models) + "/"
-        + std::to_string(workspace_state.visibility_stats.resident_chunks));
+    lines.push_back("  Models: " + std::to_string(workspace_state.visibility_stats.drawn_models) + "/"
+        + std::to_string(workspace_state.visibility_stats.resident_models));
     lines.push_back("  Faces: " + std::to_string(workspace_state.visibility_stats.drawn_faces) + "/"
         + std::to_string(workspace_state.visibility_stats.total_faces));
     lines.push_back("  Draw saved: " + CompactPercent(workspace_state.visibility_stats.DrawSavedRatio()));
     lines.push_back("  Face saved: " + CompactPercent(workspace_state.visibility_stats.FaceSavedRatio()));
+    lines.push_back("");
+}
+
+void PushTransitionStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
+{
+    lines.push_back("Transitions");
+    if (!workspace_state.transition_features.IsValid()) {
+        lines.push_back("  unavailable");
+        lines.push_back("");
+        return;
+    }
+
+    const TransitionFeatureStats& stats = workspace_state.transition_features.stats;
+    lines.push_back("  Total: " + std::to_string(stats.total));
+    lines.push_back("  R/S/B/D: " + std::to_string(stats.ramps) + "/"
+        + std::to_string(stats.stairs) + "/"
+        + std::to_string(stats.bridges) + "/"
+        + std::to_string(stats.drops));
+    lines.push_back("  Passable: " + std::to_string(stats.passable));
+    lines.push_back("  Blocked: " + std::to_string(stats.blocked));
+    lines.push_back("  Overlay: " + std::string(workspace_state.show_transition_overlay ? "on" : "off"));
+    lines.push_back("  Shown: "
+        + std::string(workspace_state.show_transition_ramps ? "R" : "-")
+        + std::string(workspace_state.show_transition_stairs ? "S" : "-")
+        + std::string(workspace_state.show_transition_bridges ? "B" : "-")
+        + std::string(workspace_state.show_transition_drops ? "D" : "-"));
     lines.push_back("");
 }
 
@@ -293,8 +319,13 @@ void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& worksp
     lines.push_back("  Terrain merged: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
     lines.push_back("  Raw T/W: " + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces) + "/"
         + std::to_string(workspace_state.mesh_stats.terrain_raw_wall_faces));
-    lines.push_back("  Merged T/W: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
-        + std::to_string(workspace_state.mesh_stats.terrain_wall_faces));
+    lines.push_back("  Merged T/W/C: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.terrain_wall_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.terrain_cliff_faces));
+    lines.push_back("  Passes: "
+        + std::string(workspace_state.show_terrain_tops ? "T" : "-")
+        + std::string(workspace_state.show_terrain_walls ? "W" : "-")
+        + std::string(workspace_state.show_terrain_cliffs ? "C" : "-"));
     lines.push_back("  Terrain merge: " + CompactPercent(workspace_state.mesh_stats.TerrainMergeReductionRatio()));
     lines.push_back("  Terrain vs greedy: " + CompactSignedPercent(workspace_state.mesh_stats.TerrainVsGreedyDeltaRatio()));
     if (workspace_state.chunk_size_comparison.available) {
@@ -338,6 +369,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     lines.push_back("          yellow/brown high, white peak");
     lines.push_back("");
     PushVisibilityStats(lines, workspace_state);
+    PushTransitionStats(lines, workspace_state);
     PushMeshStats(lines, workspace_state);
     PushDirtyStats(lines, workspace_state);
     if (workspace_state.show_3d_preview && camera_status.initialized) {
@@ -542,6 +574,26 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Fade Ring +";
         case WorkspacePanelItem::k3DShowHiddenBounds:
             return "Hidden Bounds";
+        case WorkspacePanelItem::k3DTerrainPassGroup:
+            return "Terrain Passes";
+        case WorkspacePanelItem::k3DTerrainPassTops:
+            return "Tops";
+        case WorkspacePanelItem::k3DTerrainPassWalls:
+            return "Walls";
+        case WorkspacePanelItem::k3DTerrainPassCliffs:
+            return "Cliffs";
+        case WorkspacePanelItem::k3DTransitionGroup:
+            return "Transitions";
+        case WorkspacePanelItem::k3DShowTransitions:
+            return "Show Transitions";
+        case WorkspacePanelItem::k3DTransitionRamps:
+            return "Ramps";
+        case WorkspacePanelItem::k3DTransitionStairs:
+            return "Stairs";
+        case WorkspacePanelItem::k3DTransitionBridges:
+            return "Bridges";
+        case WorkspacePanelItem::k3DTransitionDrops:
+            return "Drops";
         case WorkspacePanelItem::kRenderChunkBounds:
             return labels.workspace_subitem_chunk_bounds;
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -1367,7 +1419,20 @@ void DrawWorkspace(
             &workspace_state.runtime_map,
             &workspace_state.chunk_grid,
             overlays,
-            visibility);
+            visibility,
+            RaylibTerrainPassOptions{
+                workspace_state.show_terrain_tops,
+                workspace_state.show_terrain_walls,
+                workspace_state.show_terrain_cliffs,
+            },
+            &workspace_state.transition_features,
+            RaylibTransitionOverlayOptions{
+                workspace_state.show_transition_overlay,
+                workspace_state.show_transition_ramps,
+                workspace_state.show_transition_stairs,
+                workspace_state.show_transition_bridges,
+                workspace_state.show_transition_drops,
+            });
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {
         DrawWorkspaceOverview(workspace_state, workspace, metrics);

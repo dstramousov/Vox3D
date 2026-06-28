@@ -4,6 +4,7 @@
 #include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
 #include "vox3d/render/chunk_visibility.hpp"
+#include "vox3d/transition/transition_feature.hpp"
 
 #include <raylib.h>
 
@@ -72,6 +73,26 @@ struct RaylibChunkVisibilityOptions {
 };
 
 /**
+ * @brief Terrain render pass visibility flags used by the 3D preview.
+ */
+struct RaylibTerrainPassOptions {
+    bool show_tops = true;
+    bool show_walls = true;
+    bool show_cliffs = true;
+};
+
+/**
+ * @brief Transition feature overlay visibility flags used by the 3D preview.
+ */
+struct RaylibTransitionOverlayOptions {
+    bool show = false;
+    bool show_ramps = true;
+    bool show_stairs = true;
+    bool show_bridges = true;
+    bool show_drops = true;
+};
+
+/**
  * @brief Last measured visibility and draw-culling counters.
  */
 struct RaylibChunkVisibilityStats {
@@ -79,6 +100,7 @@ struct RaylibChunkVisibilityStats {
     int radius_chunks = 0;
     int fade_ring_chunks = 0;
     std::uint64_t resident_chunks = 0;
+    std::uint64_t resident_models = 0;
     std::uint64_t visible_chunks = 0;
     std::uint64_t fade_chunks = 0;
     std::uint64_t hidden_chunks = 0;
@@ -137,6 +159,8 @@ struct RaylibUploadedChunkModel {
     ChunkCoord coord{};
     TileBounds bounds{};
     Aabb3f world_bounds{};
+    TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
+    std::size_t visibility_item_index = 0;
     std::uint64_t faces = 0;
 };
 
@@ -183,6 +207,9 @@ public:
      * @param chunk_grid Optional chunk grid used by debug overlays.
      * @param overlays 3D debug overlay visibility flags.
      * @param visibility Chunk visibility and soft-fade options.
+     * @param terrain_passes Terrain render-pass visibility flags.
+     * @param transition_features Optional transition feature set drawn as debug markers.
+     * @param transitions Transition feature overlay visibility flags.
      */
     void Draw(
         Rectangle viewport,
@@ -191,7 +218,10 @@ public:
         const RuntimeMap* runtime_map = nullptr,
         const ChunkGrid* chunk_grid = nullptr,
         RaylibChunkMeshDebugOverlayOptions overlays = {},
-        RaylibChunkVisibilityOptions visibility = {}) const;
+        RaylibChunkVisibilityOptions visibility = {},
+        RaylibTerrainPassOptions terrain_passes = {},
+        const TransitionFeatureSet* transition_features = nullptr,
+        RaylibTransitionOverlayOptions transitions = {}) const;
 
     /**
      * @brief Calculates visibility counters for the current camera and options.
@@ -202,12 +232,14 @@ public:
      * @param build_result Original mesh build summary used for map dimensions.
      * @param camera Camera used for the 3D preview draw pass.
      * @param visibility Chunk visibility and soft-fade options.
+     * @param terrain_passes Terrain render-pass visibility flags used when counting models.
      * @return Visibility counters for uploaded chunks.
      */
     [[nodiscard]] RaylibChunkVisibilityStats CalculateVisibilityStats(
         const ChunkMeshBuildResult& build_result,
         const Camera3D& camera,
-        RaylibChunkVisibilityOptions visibility = {}) const;
+        RaylibChunkVisibilityOptions visibility = {},
+        RaylibTerrainPassOptions terrain_passes = {}) const;
 
     /**
      * @brief Releases uploaded raylib Model resources.

@@ -400,6 +400,7 @@ struct RgbaColor {
     result.radius_chunks = report.radius_chunks;
     result.fade_ring_chunks = report.fade_ring_chunks;
     result.resident_chunks = report.resident_chunks;
+    result.resident_models = report.drawn_models + report.culled_models;
     result.visible_chunks = report.visible_chunks;
     result.fade_chunks = report.fade_chunks;
     result.hidden_chunks = report.hidden_chunks;
@@ -577,6 +578,72 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
 }
 
 
+[[nodiscard]] bool IsTerrainPassEnabled(TerrainRenderPass pass, RaylibTerrainPassOptions options)
+{
+    switch (pass) {
+        case TerrainRenderPass::kBody:
+            return true;
+        case TerrainRenderPass::kTops:
+            return options.show_tops;
+        case TerrainRenderPass::kWalls:
+            return options.show_walls;
+        case TerrainRenderPass::kCliffs:
+            return options.show_cliffs;
+    }
+    return true;
+}
+
+[[nodiscard]] std::array<TerrainRenderPass, 3> TerrainDrawPasses()
+{
+    return {TerrainRenderPass::kTops, TerrainRenderPass::kWalls, TerrainRenderPass::kCliffs};
+}
+
+[[nodiscard]] ChunkMeshData ExtractTerrainPassMesh(const ChunkMeshData& chunk, TerrainRenderPass pass)
+{
+    ChunkMeshData result;
+    result.coord = chunk.coord;
+    result.bounds = chunk.bounds;
+
+    result.faces.reserve(chunk.faces.size());
+    result.vertices.reserve(chunk.vertices.size());
+    result.indices.reserve(chunk.indices.size());
+
+    for (const MeshFace& face : chunk.faces) {
+        if (face.terrain_pass != pass || face.first_vertex + 3U >= chunk.vertices.size()) {
+            continue;
+        }
+
+        const auto first_vertex = static_cast<std::uint32_t>(result.vertices.size());
+        const auto first_index = static_cast<std::uint32_t>(result.indices.size());
+        MeshFace copied = face;
+        copied.first_vertex = first_vertex;
+        copied.first_index = first_index;
+        result.faces.push_back(copied);
+
+        for (std::uint32_t offset = 0; offset < 4U; ++offset) {
+            result.vertices.push_back(chunk.vertices[face.first_vertex + offset]);
+        }
+
+        result.indices.push_back(first_vertex + 0U);
+        result.indices.push_back(first_vertex + 1U);
+        result.indices.push_back(first_vertex + 2U);
+        result.indices.push_back(first_vertex + 0U);
+        result.indices.push_back(first_vertex + 2U);
+        result.indices.push_back(first_vertex + 3U);
+    }
+
+    return result;
+}
+
+void AccumulateUploadStats(const ChunkMeshData& mesh, RaylibChunkMeshPreviewStats& stats)
+{
+    ++stats.models;
+    stats.faces += static_cast<std::uint64_t>(mesh.faces.size());
+    stats.vertices += static_cast<std::uint64_t>(mesh.vertices.size());
+    stats.indices += static_cast<std::uint64_t>(mesh.indices.size());
+}
+
+
 [[nodiscard]] Vector3 TileCenterWorld(int tile_x, int tile_y, float level, int map_width, int map_height)
 {
     return Vector3{
@@ -693,6 +760,81 @@ void DrawHeightOverlay(const RuntimeMap& map)
     }
 }
 
+[[nodiscard]] bool IsTransitionKindEnabled(TransitionFeatureKind kind, RaylibTransitionOverlayOptions options)
+{
+    switch (kind) {
+        case TransitionFeatureKind::kRamp:
+            return options.show_ramps;
+        case TransitionFeatureKind::kStairs:
+            return options.show_stairs;
+        case TransitionFeatureKind::kBridge:
+            return options.show_bridges;
+        case TransitionFeatureKind::kDrop:
+            return options.show_drops;
+    }
+    return false;
+}
+
+[[nodiscard]] Color TransitionFeatureColor(TransitionFeatureKind kind, bool passable)
+{
+    if (!passable && kind != TransitionFeatureKind::kDrop) {
+        return Color{170, 170, 170, 205};
+    }
+    switch (kind) {
+        case TransitionFeatureKind::kRamp:
+            return Color{70, 230, 110, 230};
+        case TransitionFeatureKind::kStairs:
+            return Color{248, 214, 74, 230};
+        case TransitionFeatureKind::kBridge:
+            return Color{86, 210, 235, 230};
+        case TransitionFeatureKind::kDrop:
+            return Color{244, 92, 74, 230};
+    }
+    return Color{220, 220, 220, 220};
+}
+
+void DrawTransitionFeatureOverlay(
+    const TransitionFeatureSet& features,
+    const ChunkMeshBuildResult& build_result,
+    RaylibTransitionOverlayOptions options)
+{
+    if (!options.show || !features.IsValid()) {
+        return;
+    }
+
+    constexpr float kLevelOffset = 1.28F;
+    constexpr float kMarkerSize = 0.18F;
+    for (const TransitionFeature& feature : features.features) {
+        if (!IsTransitionKindEnabled(feature.kind, options)) {
+            continue;
+        }
+
+        const float from_level = static_cast<float>(feature.from_level + 1) + kLevelOffset;
+        const float to_level = static_cast<float>(feature.to_level + 1) + kLevelOffset;
+        const Vector3 from = TileCenterWorld(
+            feature.from_tile.x,
+            feature.from_tile.y,
+            from_level,
+            build_result.info.map_width,
+            build_result.info.map_height);
+        const Vector3 to = TileCenterWorld(
+            feature.to_tile.x,
+            feature.to_tile.y,
+            to_level,
+            build_result.info.map_width,
+            build_result.info.map_height);
+        const Color color = TransitionFeatureColor(feature.kind, feature.passable);
+        const Vector3 middle{
+            (from.x + to.x) * 0.5F,
+            (from.y + to.y) * 0.5F,
+            (from.z + to.z) * 0.5F,
+        };
+
+        DrawLine3D(from, to, color);
+        DrawSphere(middle, kMarkerSize, color);
+    }
+}
+
 void DrawDebugOverlays(
     const ChunkMeshBuildResult& build_result,
     const RuntimeMap* runtime_map,
@@ -720,12 +862,12 @@ void DrawDebugOverlays(
 
 bool RaylibChunkVisibilityStats::IsValid() const
 {
-    return resident_chunks > 0 && resident_chunks == drawn_models + culled_models;
+    return resident_chunks > 0 && resident_models > 0 && resident_models == drawn_models + culled_models;
 }
 
 double RaylibChunkVisibilityStats::DrawSavedRatio() const
 {
-    return resident_chunks == 0 ? 0.0 : static_cast<double>(culled_models) / static_cast<double>(resident_chunks);
+    return resident_models == 0 ? 0.0 : static_cast<double>(culled_models) / static_cast<double>(resident_models);
 }
 
 double RaylibChunkVisibilityStats::FaceSavedRatio() const
@@ -751,12 +893,49 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
         return false;
     }
 
-    chunks_.reserve(build_result.chunks.size());
+    const bool split_terrain_passes = build_result.info.mode == ChunkMeshBuildMode::kTerrainSurface;
+    chunks_.reserve(build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL));
     visibility_items_.reserve(build_result.chunks.size());
     for (const ChunkMeshData& chunk : build_result.chunks) {
         if (chunk.faces.empty()) {
             continue;
         }
+
+        const Aabb3f world_bounds = ComputeWorldBounds(chunk, build_result.info.map_width, build_result.info.map_height);
+        const auto visibility_item_index = visibility_items_.size();
+        visibility_items_.push_back(ChunkVisibilityItem{chunk.coord, world_bounds, chunk.FaceCount()});
+
+        if (split_terrain_passes) {
+            for (TerrainRenderPass pass : TerrainDrawPasses()) {
+                ChunkMeshData pass_mesh = ExtractTerrainPassMesh(chunk, pass);
+                if (pass_mesh.faces.empty()) {
+                    continue;
+                }
+                if (!CanUploadChunk(pass_mesh)) {
+                    ++stats_.skipped_chunks;
+                    continue;
+                }
+
+                Model model = LoadChunkModel(pass_mesh, build_result.info.map_width, build_result.info.map_height, color_mode);
+                if (model.meshCount <= 0 || model.meshes == nullptr) {
+                    ++stats_.skipped_chunks;
+                    continue;
+                }
+
+                chunks_.push_back(RaylibUploadedChunkModel{
+                    model,
+                    chunk.coord,
+                    chunk.bounds,
+                    world_bounds,
+                    pass,
+                    visibility_item_index,
+                    pass_mesh.FaceCount(),
+                });
+                AccumulateUploadStats(pass_mesh, stats_);
+            }
+            continue;
+        }
+
         if (!CanUploadChunk(chunk)) {
             ++stats_.skipped_chunks;
             continue;
@@ -768,14 +947,16 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
             continue;
         }
 
-        const auto face_count = static_cast<std::uint64_t>(chunk.faces.size());
-        const Aabb3f world_bounds = ComputeWorldBounds(chunk, build_result.info.map_width, build_result.info.map_height);
-        chunks_.push_back(RaylibUploadedChunkModel{model, chunk.coord, chunk.bounds, world_bounds, face_count});
-        visibility_items_.push_back(ChunkVisibilityItem{chunk.coord, world_bounds, face_count});
-        ++stats_.models;
-        stats_.faces += static_cast<std::uint64_t>(chunk.faces.size());
-        stats_.vertices += static_cast<std::uint64_t>(chunk.vertices.size());
-        stats_.indices += static_cast<std::uint64_t>(chunk.indices.size());
+        chunks_.push_back(RaylibUploadedChunkModel{
+            model,
+            chunk.coord,
+            chunk.bounds,
+            world_bounds,
+            TerrainRenderPass::kBody,
+            visibility_item_index,
+            chunk.FaceCount(),
+        });
+        AccumulateUploadStats(chunk, stats_);
     }
 
     stats_.uploaded = !chunks_.empty();
@@ -789,7 +970,10 @@ void RaylibChunkMeshPreview::Draw(
     const RuntimeMap* runtime_map,
     const ChunkGrid* chunk_grid,
     RaylibChunkMeshDebugOverlayOptions overlays,
-    RaylibChunkVisibilityOptions visibility) const
+    RaylibChunkVisibilityOptions visibility,
+    RaylibTerrainPassOptions terrain_passes,
+    const TransitionFeatureSet* transition_features,
+    RaylibTransitionOverlayOptions transitions) const
 {
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
@@ -809,16 +993,22 @@ void RaylibChunkMeshPreview::Draw(
 
     constexpr Vector3 kOrigin{0.0F, 0.0F, 0.0F};
     constexpr float kScale = 1.0F;
-    const std::size_t draw_count = std::min(chunks_.size(), visibility_report.entries.size());
-    for (std::size_t index = 0; index < draw_count; ++index) {
-        const ChunkVisibilityClass visibility_class = visibility_report.entries[index].visibility_class;
+    for (const RaylibUploadedChunkModel& chunk : chunks_) {
+        if (!IsTerrainPassEnabled(chunk.terrain_pass, terrain_passes)
+            || chunk.visibility_item_index >= visibility_report.entries.size()) {
+            continue;
+        }
+        const ChunkVisibilityClass visibility_class = visibility_report.entries[chunk.visibility_item_index].visibility_class;
         if (visibility_class == ChunkVisibilityClass::kHidden) {
             continue;
         }
-        DrawModel(chunks_[index].model, kOrigin, kScale, VisibilityTint(visibility_class));
+        DrawModel(chunk.model, kOrigin, kScale, VisibilityTint(visibility_class));
     }
 
     DrawHiddenChunkBounds(chunks_, build_result, visibility_report, visibility.show_hidden_bounds);
+    if (transition_features != nullptr) {
+        DrawTransitionFeatureOverlay(*transition_features, build_result, transitions);
+    }
     DrawDebugOverlays(build_result, runtime_map, chunk_grid, overlays);
 
     EndMode3D();
@@ -828,7 +1018,8 @@ void RaylibChunkMeshPreview::Draw(
 RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(
     const ChunkMeshBuildResult& build_result,
     const Camera3D& camera,
-    RaylibChunkVisibilityOptions visibility) const
+    RaylibChunkVisibilityOptions visibility,
+    RaylibTerrainPassOptions terrain_passes) const
 {
     RaylibChunkVisibilityStats result;
     result.mode = visibility.mode;
@@ -838,9 +1029,34 @@ RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(
         return result;
     }
 
-    return ToRaylibVisibilityStats(
-        BuildChunkVisibility(visibility_items_, BuildCoreVisibilityOptions(build_result, camera, visibility)),
-        visibility.mode);
+    const ChunkVisibilityReport report = BuildChunkVisibility(
+        visibility_items_,
+        BuildCoreVisibilityOptions(build_result, camera, visibility));
+    result = ToRaylibVisibilityStats(report, visibility.mode);
+    result.resident_models = 0;
+    result.drawn_models = 0;
+    result.culled_models = 0;
+    result.total_faces = 0;
+    result.drawn_faces = 0;
+    result.culled_faces = 0;
+
+    for (const RaylibUploadedChunkModel& chunk : chunks_) {
+        if (!IsTerrainPassEnabled(chunk.terrain_pass, terrain_passes)) {
+            continue;
+        }
+        ++result.resident_models;
+        result.total_faces += chunk.faces;
+        if (chunk.visibility_item_index >= report.entries.size()
+            || report.entries[chunk.visibility_item_index].visibility_class == ChunkVisibilityClass::kHidden) {
+            ++result.culled_models;
+            result.culled_faces += chunk.faces;
+            continue;
+        }
+        ++result.drawn_models;
+        result.drawn_faces += chunk.faces;
+    }
+
+    return result;
 }
 
 void RaylibChunkMeshPreview::Unload()
@@ -885,11 +1101,12 @@ std::string ToLogString(const RaylibChunkVisibilityStats& stats)
     out << "mode=" << ToString(stats.mode);
     out << " radius=" << stats.radius_chunks;
     out << " fade_ring=" << stats.fade_ring_chunks;
-    out << " resident=" << stats.resident_chunks;
+    out << " resident_chunks=" << stats.resident_chunks;
+    out << " resident_models=" << stats.resident_models;
     out << " visible=" << stats.visible_chunks;
     out << " fade=" << stats.fade_chunks;
     out << " hidden=" << stats.hidden_chunks;
-    out << " drawn_models=" << stats.drawn_models << '/' << stats.resident_chunks;
+    out << " drawn_models=" << stats.drawn_models << '/' << stats.resident_models;
     out << " faces=" << stats.drawn_faces << '/' << stats.total_faces;
     out << " draw_saved=" << std::fixed << std::setprecision(1) << stats.DrawSavedRatio() * 100.0 << '%';
     out << " face_saved=" << std::fixed << std::setprecision(1) << stats.FaceSavedRatio() * 100.0 << '%';

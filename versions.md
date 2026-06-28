@@ -219,3 +219,15 @@
 - Added a renderer-independent chunk visibility module in `vox3d_core` with radius, hard-cull, and frustum AABB classification.
 - Added `Frustum Cull` as a selectable 3D visibility mode while keeping the existing soft radius fade and hard-cull debug modes.
 - Wired visibility stats, logs, menu selection, F12 cycling, and raylib drawing through the shared engine visibility report instead of local UI-only classification.
+
+## v0.4.6 -> v0.4.7
+
+- Split terrain surface meshes into explicit render-pass metadata for tops, regular walls, and cliffs while keeping one renderer-independent terrain build result.
+- Updated the raylib preview upload path to create separate terrain pass models per chunk, exposing the real draw-model cost of pass separation.
+- Added workspace menu toggles and Stats diagnostics for terrain passes, including merged top/wall/cliff counts and active pass flags.
+
+## v0.4.7 -> v0.4.8
+
+- Added a renderer-independent transition feature foundation in `vox3d_core` that derives ramp, stair, bridge-reserved, and drop markers from runtime height/collision grids.
+- Wired transition diagnostics into the chunk pipeline logs and workspace Stats tab with total, kind, passable, and blocked counters.
+- Added 3D transition overlay toggles for ramps, stairs, bridges, and drops, drawing lightweight debug markers without changing terrain mesh, collision, pathfinding, or movement rules.

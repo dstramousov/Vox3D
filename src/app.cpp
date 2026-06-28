@@ -8,6 +8,7 @@
 #include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/mesh/terrain_mesh_builder.hpp"
+#include "vox3d/transition/transition_feature.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
 #include <raylib.h>
@@ -228,6 +229,15 @@ void ToggleOverlayFlag(
     };
 }
 
+[[nodiscard]] RaylibTerrainPassOptions BuildRaylibTerrainPassOptions(const WorkspaceState& workspace)
+{
+    return RaylibTerrainPassOptions{
+        workspace.show_terrain_tops,
+        workspace.show_terrain_walls,
+        workspace.show_terrain_cliffs,
+    };
+}
+
 [[nodiscard]] WorkspaceVisibilityStats ToWorkspaceVisibilityStats(const RaylibChunkVisibilityStats& stats)
 {
     WorkspaceVisibilityStats result;
@@ -248,6 +258,7 @@ void ToggleOverlayFlag(
     result.radius_chunks = stats.radius_chunks;
     result.fade_ring_chunks = stats.fade_ring_chunks;
     result.resident_chunks = stats.resident_chunks;
+    result.resident_models = stats.resident_models;
     result.visible_chunks = stats.visible_chunks;
     result.fade_chunks = stats.fade_chunks;
     result.hidden_chunks = stats.hidden_chunks;
@@ -900,6 +911,7 @@ void App::RefreshMeshOptimizationStats()
         workspace_.mesh_stats.terrain_raw_wall_faces = workspace_.terrain_chunk_meshes.info.terrain_raw_wall_faces;
         workspace_.mesh_stats.terrain_top_faces = workspace_.terrain_chunk_meshes.info.terrain_top_faces;
         workspace_.mesh_stats.terrain_wall_faces = workspace_.terrain_chunk_meshes.info.terrain_wall_faces;
+        workspace_.mesh_stats.terrain_cliff_faces = workspace_.terrain_chunk_meshes.info.terrain_cliff_faces;
     }
     if (workspace_.chunk_meshes.IsValid()) {
         workspace_.mesh_stats.active_faces = workspace_.chunk_meshes.info.visible_faces;
@@ -989,6 +1001,12 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         logger_.Warn("terrain_mesh", warning);
     }
 
+    TransitionFeatureSet next_transition_features = BuildTransitionFeatures(workspace_.runtime_map);
+    logger_.Info("transitions", "reason=" + std::string(reason) + " " + ToLogString(next_transition_features));
+    for (const auto& warning : next_transition_features.diagnostics.warnings) {
+        logger_.Warn("transitions", warning);
+    }
+
     workspace_.chunk_size_tiles = chunk_size;
     workspace_.chunk_grid = std::move(next_chunk_grid);
     workspace_.voxel_world = std::move(next_voxel_world);
@@ -996,6 +1014,7 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     workspace_.simple_chunk_mesh_cache = std::move(next_simple_cache);
     workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
     workspace_.terrain_chunk_meshes = std::move(next_terrain_meshes);
+    workspace_.transition_features = std::move(next_transition_features);
     workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
     workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
     SetActiveMeshCacheFromMode();
@@ -1153,7 +1172,8 @@ void App::SetVisibilityMode(WorkspaceVisibilityMode mode, std::string_view reaso
     logger_.Info("visibility", "reason=" + std::string(reason) + " " + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
         workspace_.chunk_meshes,
         preview_camera_.Camera(),
-        BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview))));
+        BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview),
+        BuildRaylibTerrainPassOptions(workspace_))));
 }
 
 void App::CycleVisibilityMode(std::string_view reason)
@@ -1178,7 +1198,8 @@ void App::AdjustVisibilityRadius(int delta, std::string_view reason)
         + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
             workspace_.chunk_meshes,
             preview_camera_.Camera(),
-            BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview))));
+            BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview),
+        BuildRaylibTerrainPassOptions(workspace_))));
 }
 
 void App::AdjustVisibilityFadeRing(int delta, std::string_view reason)
@@ -1198,7 +1219,8 @@ void App::AdjustVisibilityFadeRing(int delta, std::string_view reason)
         + ToLogString(chunk_mesh_preview_.CalculateVisibilityStats(
             workspace_.chunk_meshes,
             preview_camera_.Camera(),
-            BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview))));
+            BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview),
+        BuildRaylibTerrainPassOptions(workspace_))));
 }
 
 void App::UpdateVisibilityStats()
@@ -1214,7 +1236,8 @@ void App::UpdateVisibilityStats()
     workspace_.visibility_stats = ToWorkspaceVisibilityStats(chunk_mesh_preview_.CalculateVisibilityStats(
         workspace_.chunk_meshes,
         preview_camera_.Camera(),
-        BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview)));
+        BuildRaylibVisibilityOptions(workspace_, layout_cache_.workspace.map_overview),
+        BuildRaylibTerrainPassOptions(workspace_)));
 }
 
 void App::ActivateSelectedMenuItem()
@@ -1443,6 +1466,52 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             UpdateVisibilityStats();
             logger_.Info("visibility", std::string("hidden_bounds=")
                 + (workspace_.show_3d_hidden_chunk_bounds ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DTerrainPassTops:
+            workspace_.show_terrain_tops = !workspace_.show_terrain_tops;
+            UpdateVisibilityStats();
+            layout_dirty_ = true;
+            logger_.Info("render3d", std::string("terrain_pass_tops=")
+                + (workspace_.show_terrain_tops ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DTerrainPassWalls:
+            workspace_.show_terrain_walls = !workspace_.show_terrain_walls;
+            UpdateVisibilityStats();
+            layout_dirty_ = true;
+            logger_.Info("render3d", std::string("terrain_pass_walls=")
+                + (workspace_.show_terrain_walls ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DTerrainPassCliffs:
+            workspace_.show_terrain_cliffs = !workspace_.show_terrain_cliffs;
+            UpdateVisibilityStats();
+            layout_dirty_ = true;
+            logger_.Info("render3d", std::string("terrain_pass_cliffs=")
+                + (workspace_.show_terrain_cliffs ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DShowTransitions:
+            workspace_.show_transition_overlay = !workspace_.show_transition_overlay;
+            logger_.Info("transitions", std::string("overlay=")
+                + (workspace_.show_transition_overlay ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DTransitionRamps:
+            workspace_.show_transition_ramps = !workspace_.show_transition_ramps;
+            logger_.Info("transitions", std::string("ramps=")
+                + (workspace_.show_transition_ramps ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DTransitionStairs:
+            workspace_.show_transition_stairs = !workspace_.show_transition_stairs;
+            logger_.Info("transitions", std::string("stairs=")
+                + (workspace_.show_transition_stairs ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DTransitionBridges:
+            workspace_.show_transition_bridges = !workspace_.show_transition_bridges;
+            logger_.Info("transitions", std::string("bridges=")
+                + (workspace_.show_transition_bridges ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DTransitionDrops:
+            workspace_.show_transition_drops = !workspace_.show_transition_drops;
+            logger_.Info("transitions", std::string("drops=")
+                + (workspace_.show_transition_drops ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DMeshSimple:
             SetMeshBuildMode(ChunkMeshBuildMode::kSimpleFaces, "panel");

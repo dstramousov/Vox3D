@@ -24,6 +24,24 @@ enum class ChunkMeshBuildMode : std::uint8_t {
 };
 
 /**
+ * @brief Render pass assigned to terrain mesh faces.
+ */
+enum class TerrainRenderPass : std::uint8_t {
+    kBody,
+    kTops,
+    kWalls,
+    kCliffs,
+};
+
+/**
+ * @brief Converts a terrain render pass to a stable diagnostic name.
+ *
+ * @param pass Terrain render pass identifier.
+ * @return Stable lowercase string representation.
+ */
+[[nodiscard]] std::string_view ToString(TerrainRenderPass pass);
+
+/**
  * @brief Converts a chunk mesh build mode to a stable diagnostic name.
  *
  * @param mode Build mode identifier.
@@ -47,6 +65,7 @@ struct MeshVertex {
     MeshPosition position;
     BlockTypeId block_type = BlockTypeId::kEmpty;
     FaceDirection face_direction = FaceDirection::kUp;
+    TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
     int level = 0;
 };
 
@@ -57,6 +76,7 @@ struct MeshFace {
     BlockCoord block;
     FaceDirection direction = FaceDirection::kUp;
     BlockTypeId block_type = BlockTypeId::kEmpty;
+    TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
     std::uint32_t first_vertex = 0;
     std::uint32_t first_index = 0;
 };
@@ -105,6 +125,7 @@ struct ChunkMeshBuildInfo {
     std::uint64_t terrain_raw_wall_faces = 0;
     std::uint64_t terrain_top_faces = 0;
     std::uint64_t terrain_wall_faces = 0;
+    std::uint64_t terrain_cliff_faces = 0;
     std::uint64_t vertices = 0;
     std::uint64_t indices = 0;
     std::uint64_t non_empty_chunks = 0;
@@ -147,6 +168,7 @@ struct MeshOptimizationStats {
     std::uint64_t terrain_raw_wall_faces = 0;
     std::uint64_t terrain_top_faces = 0;
     std::uint64_t terrain_wall_faces = 0;
+    std::uint64_t terrain_cliff_faces = 0;
     std::uint64_t terrain_faces = 0;
     std::uint64_t active_faces = 0;
     std::uint64_t active_vertices = 0;

@@ -6,6 +6,7 @@
 #include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
+#include "vox3d/transition/transition_feature.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
 #include <cstdint>
@@ -120,6 +121,16 @@ enum class WorkspacePanelItem {
     k3DVisibilityFadeMinus,
     k3DVisibilityFadePlus,
     k3DShowHiddenBounds,
+    k3DTerrainPassGroup,
+    k3DTerrainPassTops,
+    k3DTerrainPassWalls,
+    k3DTerrainPassCliffs,
+    k3DTransitionGroup,
+    k3DShowTransitions,
+    k3DTransitionRamps,
+    k3DTransitionStairs,
+    k3DTransitionBridges,
+    k3DTransitionDrops,
     kRenderChunkBounds,
     kRenderWorldGrid,
     kRenderCollision,
@@ -206,6 +217,7 @@ struct WorkspaceVisibilityStats {
     int radius_chunks = 0;
     int fade_ring_chunks = 0;
     std::uint64_t resident_chunks = 0;
+    std::uint64_t resident_models = 0;
     std::uint64_t visible_chunks = 0;
     std::uint64_t fade_chunks = 0;
     std::uint64_t hidden_chunks = 0;
@@ -286,6 +298,14 @@ struct WorkspaceState {
     int visibility_radius_chunks = 2;
     int visibility_fade_ring_chunks = 1;
     bool show_3d_hidden_chunk_bounds = false;
+    bool show_terrain_tops = true;
+    bool show_terrain_walls = true;
+    bool show_terrain_cliffs = true;
+    bool show_transition_overlay = false;
+    bool show_transition_ramps = true;
+    bool show_transition_stairs = true;
+    bool show_transition_bridges = true;
+    bool show_transition_drops = true;
     WorkspaceVisibilityStats visibility_stats;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;
@@ -302,6 +322,7 @@ struct WorkspaceState {
     ChunkMeshBuildResult greedy_chunk_meshes;
     ChunkMeshBuildResult terrain_chunk_meshes;
     ChunkMeshBuildResult chunk_meshes;
+    TransitionFeatureSet transition_features;
     MeshOptimizationStats mesh_stats;
     ChunkMeshRebuildReport last_mesh_rebuild;
 };

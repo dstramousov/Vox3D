@@ -104,7 +104,7 @@ std::string_view ToString(WorkspaceVisibilityMode mode)
 
 double WorkspaceVisibilityStats::DrawSavedRatio() const
 {
-    return resident_chunks == 0 ? 0.0 : static_cast<double>(culled_models) / static_cast<double>(resident_chunks);
+    return resident_models == 0 ? 0.0 : static_cast<double>(culled_models) / static_cast<double>(resident_models);
 }
 
 double WorkspaceVisibilityStats::FaceSavedRatio() const
@@ -217,6 +217,26 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_visibility_fade_plus";
         case WorkspacePanelItem::k3DShowHiddenBounds:
             return "3d_show_hidden_bounds";
+        case WorkspacePanelItem::k3DTerrainPassGroup:
+            return "3d_terrain_passes";
+        case WorkspacePanelItem::k3DTerrainPassTops:
+            return "3d_terrain_pass_tops";
+        case WorkspacePanelItem::k3DTerrainPassWalls:
+            return "3d_terrain_pass_walls";
+        case WorkspacePanelItem::k3DTerrainPassCliffs:
+            return "3d_terrain_pass_cliffs";
+        case WorkspacePanelItem::k3DTransitionGroup:
+            return "3d_transitions";
+        case WorkspacePanelItem::k3DShowTransitions:
+            return "3d_show_transitions";
+        case WorkspacePanelItem::k3DTransitionRamps:
+            return "3d_transition_ramps";
+        case WorkspacePanelItem::k3DTransitionStairs:
+            return "3d_transition_stairs";
+        case WorkspacePanelItem::k3DTransitionBridges:
+            return "3d_transition_bridges";
+        case WorkspacePanelItem::k3DTransitionDrops:
+            return "3d_transition_drops";
         case WorkspacePanelItem::kRenderChunkBounds:
             return "render_chunk_bounds";
         case WorkspacePanelItem::kRenderWorldGrid:
@@ -380,6 +400,22 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Action(Item::k3DVisibilityFadeMinus, 1, workspace.chunk_meshes.IsValid()));
         items.push_back(Action(Item::k3DVisibilityFadePlus, 1, workspace.chunk_meshes.IsValid()));
         items.push_back(Checkbox(Item::k3DShowHiddenBounds, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_hidden_chunk_bounds));
+
+        const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
+            && workspace.terrain_chunk_meshes.IsValid();
+        items.push_back(Group(Item::k3DTerrainPassGroup, 0));
+        items.push_back(Checkbox(Item::k3DTerrainPassTops, 1, terrain_passes_enabled, workspace.show_terrain_tops));
+        items.push_back(Checkbox(Item::k3DTerrainPassWalls, 1, terrain_passes_enabled, workspace.show_terrain_walls));
+        items.push_back(Checkbox(Item::k3DTerrainPassCliffs, 1, terrain_passes_enabled, workspace.show_terrain_cliffs));
+
+        const bool transition_features_enabled = workspace.transition_features.IsValid()
+            && !workspace.transition_features.features.empty();
+        items.push_back(Group(Item::k3DTransitionGroup, 0));
+        items.push_back(Checkbox(Item::k3DShowTransitions, 1, transition_features_enabled, workspace.show_transition_overlay));
+        items.push_back(Checkbox(Item::k3DTransitionRamps, 1, transition_features_enabled, workspace.show_transition_ramps));
+        items.push_back(Checkbox(Item::k3DTransitionStairs, 1, transition_features_enabled, workspace.show_transition_stairs));
+        items.push_back(Checkbox(Item::k3DTransitionBridges, 1, transition_features_enabled, workspace.show_transition_bridges));
+        items.push_back(Checkbox(Item::k3DTransitionDrops, 1, transition_features_enabled, workspace.show_transition_drops));
 
         items.push_back(Group(Item::k3DMeshGroup, 0));
         items.push_back(Radio(Item::k3DMeshSimple, 1, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));

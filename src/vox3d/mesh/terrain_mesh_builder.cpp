@@ -112,6 +112,7 @@ void EmitQuad(
     BlockCoord block_coord,
     BlockTypeId block_type,
     FaceDirection direction,
+    TerrainRenderPass terrain_pass,
     const std::array<MeshPosition, 4>& corners)
 {
     const auto first_vertex = static_cast<std::uint32_t>(mesh.vertices.size());
@@ -121,12 +122,13 @@ void EmitQuad(
     face.block = block_coord;
     face.direction = direction;
     face.block_type = block_type;
+    face.terrain_pass = terrain_pass;
     face.first_vertex = first_vertex;
     face.first_index = first_index;
     mesh.faces.push_back(face);
 
     for (const MeshPosition& position : corners) {
-        mesh.vertices.push_back(MeshVertex{position, block_type, direction, block_coord.z});
+        mesh.vertices.push_back(MeshVertex{position, block_type, direction, terrain_pass, block_coord.z});
     }
 
     mesh.indices.push_back(first_vertex + 0U);
@@ -192,6 +194,7 @@ void EmitTopSpan(ChunkMeshData& mesh, const TopSpan& span, ChunkMeshBuildInfo& i
         BlockCoord{span.tile.x, span.tile.y, span.level},
         span.block_type,
         FaceDirection::kUp,
+        TerrainRenderPass::kTops,
         TopSpanCorners(span));
     ++info.terrain_top_faces;
 }
@@ -203,13 +206,21 @@ void EmitWallSpan(ChunkMeshData& mesh, const WallSpan& span, ChunkMeshBuildInfo&
         return;
     }
 
+    const TerrainRenderPass terrain_pass = span.top_level - span.bottom_level > 1
+        ? TerrainRenderPass::kCliffs
+        : TerrainRenderPass::kWalls;
     EmitQuad(
         mesh,
         BlockCoord{span.tile.x, span.tile.y, span.bottom_level},
         span.block_type,
         span.direction,
+        terrain_pass,
         WallSpanCorners(span));
-    ++info.terrain_wall_faces;
+    if (terrain_pass == TerrainRenderPass::kCliffs) {
+        ++info.terrain_cliff_faces;
+    } else {
+        ++info.terrain_wall_faces;
+    }
 }
 
 void ReserveTerrainChunkBuffers(const ChunkInfo& chunk, ChunkMeshData& mesh)
