@@ -73,6 +73,24 @@ enum class WorkspaceVisibilityMode {
 };
 
 /**
+ * @brief Execution policy for expensive map-wide validation passes.
+ */
+enum class WorkspaceValidationMode {
+    kOff,
+    kManual,
+    kOnLoad,
+};
+
+/**
+ * @brief Cached passability validation report state shown in the workspace UI.
+ */
+enum class WorkspaceValidationStatus {
+    kDisabled,
+    kNotRun,
+    kDone,
+};
+
+/**
  * @brief Clickable item shown inside an expanded workspace tree section.
  */
 enum class WorkspacePanelItem {
@@ -137,6 +155,11 @@ enum class WorkspacePanelItem {
     k3DMovementGroup,
     k3DShowMovementProbe,
     k3DValidationGroup,
+    k3DValidationModeOff,
+    k3DValidationModeManual,
+    k3DValidationModeOnLoad,
+    k3DRunPassabilityValidation,
+    k3DClearPassabilityValidation,
     k3DShowPassabilityIssues,
     k3DValidationInvalidTransitions,
     k3DValidationBlockedTransitions,
@@ -319,6 +342,10 @@ struct WorkspaceState {
     bool show_transition_bridges = true;
     bool show_transition_drops = true;
     bool show_movement_probe = true;
+    WorkspaceValidationMode validation_mode = WorkspaceValidationMode::kManual;
+    WorkspaceValidationStatus passability_validation_status = WorkspaceValidationStatus::kNotRun;
+    double passability_validation_last_run_ms = 0.0;
+    bool passability_validation_dirty = true;
     bool show_passability_issues = false;
     bool show_passability_invalid_transitions = true;
     bool show_passability_blocked_transitions = true;
@@ -379,6 +406,22 @@ struct WorkspaceState {
  * @return String representation.
  */
 [[nodiscard]] std::string_view ToString(WorkspaceVisibilityMode mode);
+
+/**
+ * @brief Converts a validation execution mode to a stable lowercase name.
+ *
+ * @param mode Validation execution mode.
+ * @return String representation.
+ */
+[[nodiscard]] std::string_view ToString(WorkspaceValidationMode mode);
+
+/**
+ * @brief Converts a validation report status to a stable lowercase name.
+ *
+ * @param status Validation report status.
+ * @return String representation.
+ */
+[[nodiscard]] std::string_view ToString(WorkspaceValidationStatus status);
 
 /**
  * @brief Converts a workspace panel item identifier to a stable lowercase name.

@@ -269,3 +269,9 @@
 - Fixed the broken passability validation patch by adding the missing `passability_validator` core source and header files referenced by CMake and UI code.
 - Kept map-wide passability validation renderer-independent, with checked/passable/blocked edge counters, issue storage, and compact logging.
 - Preserved the existing validation menu, Stats, Inspect, and 3D overlay wiring without adding new gameplay behavior.
+
+## v0.5.4 -> v0.5.5
+
+- Added validation execution policy controls: Off, Manual, and On Load, with Manual as the default to keep map loading responsive.
+- Added cached passability validation report state with explicit Run Validation and Clear Report actions, status text, last-run duration, and footer/Stats/Inspect reporting.
+- Stopped running full-map passability validation unconditionally during chunk pipeline rebuilds; existing reports are reused until the user clears or reruns validation.

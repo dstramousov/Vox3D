@@ -81,6 +81,9 @@ private:
     void ActivateWorkspacePanelItem(WorkspacePanelItem item);
     void ToggleTransitionOverlay(std::string_view reason);
     void ToggleMovementProbeOverlay(std::string_view reason);
+    void SetValidationMode(WorkspaceValidationMode mode, std::string_view reason);
+    void RunPassabilityValidation(std::string_view reason);
+    void ClearPassabilityValidation(std::string_view reason);
     void TogglePassabilityValidationOverlay(std::string_view reason);
     void SelectTileAtMouse(Vector2 mouse, std::string_view reason);
     void ScrollWorkspaceMenu(int delta_rows, std::string_view reason);

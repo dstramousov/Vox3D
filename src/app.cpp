@@ -15,6 +15,7 @@
 #include <raylib.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cmath>
@@ -1050,14 +1051,6 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         logger_.Warn("transitions", warning);
     }
 
-    PassabilityValidationReport next_passability_validation = ValidatePassability(
-        workspace_.runtime_map,
-        next_transition_features);
-    logger_.Info("passability", "reason=" + std::string(reason) + " " + ToLogString(next_passability_validation));
-    for (const auto& warning : next_passability_validation.diagnostics.warnings) {
-        logger_.Warn("passability", warning);
-    }
-
     workspace_.chunk_size_tiles = chunk_size;
     workspace_.chunk_grid = std::move(next_chunk_grid);
     workspace_.voxel_world = std::move(next_voxel_world);
@@ -1066,7 +1059,22 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
     workspace_.terrain_chunk_meshes = std::move(next_terrain_meshes);
     workspace_.transition_features = std::move(next_transition_features);
-    workspace_.passability_validation = std::move(next_passability_validation);
+    if (workspace_.validation_mode == WorkspaceValidationMode::kOff) {
+        ClearPassabilityValidation("chunk_pipeline_disabled");
+    } else if (workspace_.passability_validation_dirty) {
+        if (workspace_.validation_mode == WorkspaceValidationMode::kOnLoad) {
+            RunPassabilityValidation(reason);
+        } else {
+            workspace_.passability_validation = PassabilityValidationReport{};
+            workspace_.passability_validation_status = WorkspaceValidationStatus::kNotRun;
+            workspace_.passability_validation_last_run_ms = 0.0;
+            workspace_.show_passability_issues = false;
+            logger_.Info(
+                "passability",
+                "status=not_run mode=" + std::string(ToString(workspace_.validation_mode))
+                    + " reason=" + std::string(reason));
+        }
+    }
     if (workspace_.selected_tile.IsValid()) {
         workspace_.selected_tile = InspectTile(
             workspace_.runtime_map,
@@ -1434,6 +1442,88 @@ void App::ToggleMovementProbeOverlay(std::string_view reason)
         + " reason=" + std::string(reason));
 }
 
+void App::SetValidationMode(WorkspaceValidationMode mode, std::string_view reason)
+{
+    if (workspace_.validation_mode == mode) {
+        logger_.Debug("passability", "validation mode unchanged mode=" + std::string(ToString(mode)));
+        return;
+    }
+
+    workspace_.validation_mode = mode;
+    if (mode == WorkspaceValidationMode::kOff) {
+        ClearPassabilityValidation(reason);
+    } else if (workspace_.passability_validation_status == WorkspaceValidationStatus::kDisabled) {
+        workspace_.passability_validation_status = WorkspaceValidationStatus::kNotRun;
+        workspace_.passability_validation_dirty = true;
+    }
+
+    logger_.Info(
+        "passability",
+        "mode=" + std::string(ToString(workspace_.validation_mode)) + " reason=" + std::string(reason));
+
+    if (mode == WorkspaceValidationMode::kOnLoad && workspace_.passability_validation_dirty
+        && workspace_.runtime_map.IsValid() && workspace_.transition_features.IsValid()) {
+        RunPassabilityValidation("mode_on_load");
+    }
+
+    layout_dirty_ = true;
+}
+
+void App::RunPassabilityValidation(std::string_view reason)
+{
+    if (workspace_.validation_mode == WorkspaceValidationMode::kOff) {
+        logger_.Debug("passability", "validation run ignored because validation mode is off");
+        return;
+    }
+    if (!workspace_.runtime_map.IsValid() || !workspace_.transition_features.IsValid()) {
+        logger_.Warn("passability", "validation run ignored because map or transition features are unavailable");
+        return;
+    }
+
+    const auto start = std::chrono::steady_clock::now();
+    PassabilityValidationReport next_passability_validation = ValidatePassability(
+        workspace_.runtime_map,
+        workspace_.transition_features);
+    const auto finish = std::chrono::steady_clock::now();
+    const std::chrono::duration<double, std::milli> elapsed = finish - start;
+
+    workspace_.passability_validation_last_run_ms = elapsed.count();
+    workspace_.passability_validation_status = WorkspaceValidationStatus::kDone;
+    workspace_.passability_validation_dirty = false;
+    workspace_.passability_validation = std::move(next_passability_validation);
+
+    std::ostringstream out;
+    out << "reason=" << reason << ' ' << ToLogString(workspace_.passability_validation)
+        << " duration_ms=" << std::fixed << std::setprecision(2)
+        << workspace_.passability_validation_last_run_ms;
+    logger_.Info("passability", out.str());
+    for (const auto& warning : workspace_.passability_validation.diagnostics.warnings) {
+        logger_.Warn("passability", warning);
+    }
+
+    layout_dirty_ = true;
+}
+
+void App::ClearPassabilityValidation(std::string_view reason)
+{
+    workspace_.passability_validation = PassabilityValidationReport{};
+    workspace_.passability_validation_last_run_ms = 0.0;
+    workspace_.show_passability_issues = false;
+    if (workspace_.validation_mode == WorkspaceValidationMode::kOff) {
+        workspace_.passability_validation_status = WorkspaceValidationStatus::kDisabled;
+        workspace_.passability_validation_dirty = false;
+    } else {
+        workspace_.passability_validation_status = WorkspaceValidationStatus::kNotRun;
+        workspace_.passability_validation_dirty = workspace_.runtime_map.IsValid() && workspace_.transition_features.IsValid();
+    }
+
+    logger_.Info(
+        "passability",
+        "clear reason=" + std::string(reason)
+            + " status=" + std::string(ToString(workspace_.passability_validation_status)));
+    layout_dirty_ = true;
+}
+
 void App::TogglePassabilityValidationOverlay(std::string_view reason)
 {
     if (!workspace_.passability_validation.IsValid() || workspace_.passability_validation.issues.empty()) {
@@ -1683,6 +1773,21 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DShowMovementProbe:
             ToggleMovementProbeOverlay("panel");
+            break;
+        case WorkspacePanelItem::k3DValidationModeOff:
+            SetValidationMode(WorkspaceValidationMode::kOff, "panel");
+            break;
+        case WorkspacePanelItem::k3DValidationModeManual:
+            SetValidationMode(WorkspaceValidationMode::kManual, "panel");
+            break;
+        case WorkspacePanelItem::k3DValidationModeOnLoad:
+            SetValidationMode(WorkspaceValidationMode::kOnLoad, "panel");
+            break;
+        case WorkspacePanelItem::k3DRunPassabilityValidation:
+            RunPassabilityValidation("panel");
+            break;
+        case WorkspacePanelItem::k3DClearPassabilityValidation:
+            ClearPassabilityValidation("panel");
             break;
         case WorkspacePanelItem::k3DShowPassabilityIssues:
             TogglePassabilityValidationOverlay("panel");

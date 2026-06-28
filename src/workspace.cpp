@@ -102,6 +102,32 @@ std::string_view ToString(WorkspaceVisibilityMode mode)
     return "unknown";
 }
 
+std::string_view ToString(WorkspaceValidationMode mode)
+{
+    switch (mode) {
+        case WorkspaceValidationMode::kOff:
+            return "off";
+        case WorkspaceValidationMode::kManual:
+            return "manual";
+        case WorkspaceValidationMode::kOnLoad:
+            return "on_load";
+    }
+    return "unknown";
+}
+
+std::string_view ToString(WorkspaceValidationStatus status)
+{
+    switch (status) {
+        case WorkspaceValidationStatus::kDisabled:
+            return "disabled";
+        case WorkspaceValidationStatus::kNotRun:
+            return "not_run";
+        case WorkspaceValidationStatus::kDone:
+            return "done";
+    }
+    return "unknown";
+}
+
 double WorkspaceVisibilityStats::DrawSavedRatio() const
 {
     return resident_models == 0 ? 0.0 : static_cast<double>(culled_models) / static_cast<double>(resident_models);
@@ -243,6 +269,16 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_show_movement_probe";
         case WorkspacePanelItem::k3DValidationGroup:
             return "3d_validation";
+        case WorkspacePanelItem::k3DValidationModeOff:
+            return "3d_validation_mode_off";
+        case WorkspacePanelItem::k3DValidationModeManual:
+            return "3d_validation_mode_manual";
+        case WorkspacePanelItem::k3DValidationModeOnLoad:
+            return "3d_validation_mode_on_load";
+        case WorkspacePanelItem::k3DRunPassabilityValidation:
+            return "3d_run_passability_validation";
+        case WorkspacePanelItem::k3DClearPassabilityValidation:
+            return "3d_clear_passability_validation";
         case WorkspacePanelItem::k3DShowPassabilityIssues:
             return "3d_show_passability_issues";
         case WorkspacePanelItem::k3DValidationInvalidTransitions:
@@ -430,9 +466,30 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Group(Item::k3DMovementGroup, 0));
         items.push_back(Checkbox(Item::k3DShowMovementProbe, 1, movement_probe_enabled, workspace.show_movement_probe));
 
-        const bool validation_enabled = workspace.passability_validation.IsValid()
-            && !workspace.passability_validation.issues.empty();
+        const bool validation_report_available = workspace.passability_validation.IsValid();
+        const bool validation_enabled = validation_report_available && !workspace.passability_validation.issues.empty();
+        const bool validation_can_run = workspace.runtime_map.IsValid() && workspace.transition_features.IsValid()
+            && workspace.validation_mode != WorkspaceValidationMode::kOff;
+        const bool validation_can_clear = validation_report_available
+            || workspace.passability_validation_status == WorkspaceValidationStatus::kDone;
         items.push_back(Group(Item::k3DValidationGroup, 0));
+        items.push_back(Radio(
+            Item::k3DValidationModeOff,
+            1,
+            true,
+            workspace.validation_mode == WorkspaceValidationMode::kOff));
+        items.push_back(Radio(
+            Item::k3DValidationModeManual,
+            1,
+            true,
+            workspace.validation_mode == WorkspaceValidationMode::kManual));
+        items.push_back(Radio(
+            Item::k3DValidationModeOnLoad,
+            1,
+            true,
+            workspace.validation_mode == WorkspaceValidationMode::kOnLoad));
+        items.push_back(Action(Item::k3DRunPassabilityValidation, 1, validation_can_run));
+        items.push_back(Action(Item::k3DClearPassabilityValidation, 1, validation_can_clear));
         items.push_back(Checkbox(Item::k3DShowPassabilityIssues, 1, validation_enabled, workspace.show_passability_issues));
         items.push_back(Checkbox(Item::k3DValidationInvalidTransitions, 1, validation_enabled, workspace.show_passability_invalid_transitions));
         items.push_back(Checkbox(Item::k3DValidationBlockedTransitions, 1, validation_enabled, workspace.show_passability_blocked_transitions));

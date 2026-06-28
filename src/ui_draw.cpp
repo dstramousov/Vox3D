@@ -195,6 +195,39 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "unknown";
 }
 
+[[nodiscard]] std::string ValidationModeLabel(WorkspaceValidationMode mode)
+{
+    switch (mode) {
+        case WorkspaceValidationMode::kOff:
+            return "off";
+        case WorkspaceValidationMode::kManual:
+            return "manual";
+        case WorkspaceValidationMode::kOnLoad:
+            return "on load";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string ValidationStatusLabel(WorkspaceValidationStatus status)
+{
+    switch (status) {
+        case WorkspaceValidationStatus::kDisabled:
+            return "disabled";
+        case WorkspaceValidationStatus::kNotRun:
+            return "not run";
+        case WorkspaceValidationStatus::kDone:
+            return "done";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string MillisecondsText(double value)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << value << " ms";
+    return out.str();
+}
+
 [[nodiscard]] std::string CompactVector(Vector3 value)
 {
     return CompactFloat(value.x) + "," + CompactFloat(value.y) + "," + CompactFloat(value.z);
@@ -205,6 +238,16 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 [[nodiscard]] std::string MapLevelsText(const MapPackageInfo& map, const UiLabels& labels);
 [[nodiscard]] std::string MapTileText(const MapPackageInfo& map, const UiLabels& labels);
 [[nodiscard]] std::string TileCoordText(TileCoord tile);
+
+[[nodiscard]] std::string ValidationStatusCompactText(const WorkspaceState& workspace_state)
+{
+    if (workspace_state.passability_validation_status == WorkspaceValidationStatus::kDone
+        && workspace_state.passability_validation.IsValid()) {
+        return "Val issues " + std::to_string(workspace_state.passability_validation.stats.stored_issues)
+            + " / " + MillisecondsText(workspace_state.passability_validation_last_run_ms);
+    }
+    return "Val " + ValidationStatusLabel(workspace_state.passability_validation_status);
+}
 
 [[nodiscard]] std::string CompactStatusText(const WorkspaceState& workspace_state, const UiLabels& labels)
 {
@@ -219,7 +262,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             + " | Visible " + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
             + std::to_string(workspace_state.visibility_stats.resident_chunks)
             + " | Drawn " + std::to_string(workspace_state.visibility_stats.drawn_models)
-            + " | Faces " + std::to_string(workspace_state.visibility_stats.drawn_faces);
+            + " | Faces " + std::to_string(workspace_state.visibility_stats.drawn_faces)
+            + " | " + ValidationStatusCompactText(workspace_state);
     }
 
     return labels.workspace_status_ready + " | " + preview_mode + " | " + MeshModeLabel(workspace_state.mesh_mode)
@@ -227,7 +271,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
         + " | Chunk " + std::to_string(workspace_state.chunk_size_tiles)
         + " | Faces " + std::to_string(workspace_state.mesh_stats.active_faces)
         + " | Models " + std::to_string(workspace_state.mesh_stats.draw_models)
-        + " | Saved " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio());
+        + " | Saved " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio())
+        + " | " + ValidationStatusCompactText(workspace_state);
 }
 
 void PushMapStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state, const UiLabels& labels)
@@ -313,8 +358,13 @@ void PushMovementStats(std::vector<std::string>& lines, const WorkspaceState& wo
 void PushPassabilityStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
 {
     lines.push_back("Passability Validation");
+    lines.push_back("  Mode: " + ValidationModeLabel(workspace_state.validation_mode));
+    lines.push_back("  Status: " + ValidationStatusLabel(workspace_state.passability_validation_status));
+    if (workspace_state.passability_validation_last_run_ms > 0.0) {
+        lines.push_back("  Last run: " + MillisecondsText(workspace_state.passability_validation_last_run_ms));
+    }
     if (!workspace_state.passability_validation.IsValid()) {
-        lines.push_back("  unavailable");
+        lines.push_back("  Report: not available");
         lines.push_back("");
         return;
     }
@@ -545,6 +595,8 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     }
     lines.push_back("");
     lines.push_back("Validation");
+    lines.push_back("  Mode: " + ValidationModeLabel(workspace_state.validation_mode));
+    lines.push_back("  Status: " + ValidationStatusLabel(workspace_state.passability_validation_status));
     if (workspace_state.passability_validation.IsValid()) {
         const PassabilityValidationStats& stats = workspace_state.passability_validation.stats;
         lines.push_back("  Invalid: " + std::to_string(stats.invalid_transitions));
@@ -553,7 +605,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         lines.push_back("  Drops: " + std::to_string(stats.suspicious_drops));
         lines.push_back("  Isolated: " + std::to_string(stats.isolated_tiles));
     } else {
-        lines.push_back("  unavailable");
+        lines.push_back("  report not available");
     }
     return lines;
 }
@@ -572,6 +624,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  T    Toggle transitions",
         "  M    Toggle movement probe",
         "  V    Toggle passability issues",
+        "  Menu Validation -> Run Validation",
         "  LMB  Pick tile",
         "  F    Fit view",
         "  R    Reset camera",
@@ -766,6 +819,16 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Show Movement Probe";
         case WorkspacePanelItem::k3DValidationGroup:
             return "Validation";
+        case WorkspacePanelItem::k3DValidationModeOff:
+            return "Mode: Off";
+        case WorkspacePanelItem::k3DValidationModeManual:
+            return "Mode: Manual";
+        case WorkspacePanelItem::k3DValidationModeOnLoad:
+            return "Mode: On Load";
+        case WorkspacePanelItem::k3DRunPassabilityValidation:
+            return "Run Validation";
+        case WorkspacePanelItem::k3DClearPassabilityValidation:
+            return "Clear Report";
         case WorkspacePanelItem::k3DShowPassabilityIssues:
             return "Show Passability Issues";
         case WorkspacePanelItem::k3DValidationInvalidTransitions:
