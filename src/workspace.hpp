@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vox3d/chunk/chunk_grid.hpp"
+#include "vox3d/inspect/map_inspector.hpp"
 #include "vox3d/map/map_package.hpp"
 #include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/face_visibility.hpp"
@@ -307,6 +308,7 @@ struct WorkspaceState {
     bool show_transition_stairs = true;
     bool show_transition_bridges = true;
     bool show_transition_drops = true;
+    TileInspectResult selected_tile;
     WorkspaceVisibilityStats visibility_stats;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VoX3D VERSION 0.4.9 LANGUAGES CXX)
+project(VoX3D VERSION 0.5.0 LANGUAGES CXX)
 
 option(VOX3D_FETCH_RAYLIB "Fetch raylib with CMake FetchContent when no system package is found" ON)
 set(VOX3D_DEPS_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "Persistent dependency cache directory")
@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(vox3d_core STATIC
     src/vox3d/chunk/chunk_grid.cpp
+    src/vox3d/inspect/map_inspector.cpp
     src/vox3d/mesh/chunk_mesh_builder.cpp
     src/vox3d/mesh/chunk_mesh_cache.cpp
     src/vox3d/mesh/face_visibility.cpp

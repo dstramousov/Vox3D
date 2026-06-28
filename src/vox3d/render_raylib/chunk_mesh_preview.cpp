@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <iomanip>
 #include <limits>
+#include <optional>
 #include <string_view>
 #include <sstream>
 
@@ -362,6 +363,103 @@ struct RgbaColor {
         options.frustum = BuildCameraFrustum(camera, build_result.info, visibility.viewport_aspect_ratio);
     }
     return options;
+}
+
+struct Ray3f {
+    Vector3 origin{};
+    Vector3 direction{};
+};
+
+[[nodiscard]] Ray3f BuildViewportRay(Vector2 screen_position, Rectangle viewport, const Camera3D& camera)
+{
+    constexpr float kDegToRad = 3.14159265358979323846F / 180.0F;
+    const float local_x = (screen_position.x - viewport.x) / std::max(1.0F, viewport.width);
+    const float local_y = (screen_position.y - viewport.y) / std::max(1.0F, viewport.height);
+    const float ndc_x = local_x * 2.0F - 1.0F;
+    const float ndc_y = 1.0F - local_y * 2.0F;
+    const float aspect = std::max(0.1F, viewport.width / std::max(1.0F, viewport.height));
+    const float half_vertical = std::tan(camera.fovy * 0.5F * kDegToRad);
+
+    const Vector3 forward = Normalize(Subtract(camera.target, camera.position), Vector3{0.0F, 0.0F, -1.0F});
+    const Vector3 right = Normalize(Cross(forward, camera.up), Vector3{1.0F, 0.0F, 0.0F});
+    const Vector3 up = Normalize(Cross(right, forward), Vector3{0.0F, 1.0F, 0.0F});
+    const Vector3 direction = Normalize(
+        Add(Add(forward, Scale(right, ndc_x * half_vertical * aspect)), Scale(up, ndc_y * half_vertical)),
+        forward);
+    return Ray3f{camera.position, direction};
+}
+
+[[nodiscard]] bool TileFromWorldPoint(Vector3 point, const RuntimeMap& map, TileCoord& tile)
+{
+    const int x = static_cast<int>(std::floor(point.x + static_cast<float>(map.info.width) * 0.5F));
+    const int y = static_cast<int>(std::floor(static_cast<float>(map.info.height) * 0.5F - point.z));
+    const TileCoord candidate{x, y};
+    if (!map.IsValid() || candidate.x < 0 || candidate.y < 0
+        || candidate.x >= map.info.width || candidate.y >= map.info.height) {
+        return false;
+    }
+    tile = candidate;
+    return true;
+}
+
+[[nodiscard]] float TerrainTopLevel(const RuntimeMap& map, TileCoord tile)
+{
+    if (!map.height.IsValid() || !map.height.Contains(tile)) {
+        return 0.0F;
+    }
+    const auto index = static_cast<std::size_t>(tile.y) * static_cast<std::size_t>(map.info.width)
+        + static_cast<std::size_t>(tile.x);
+    return static_cast<float>(map.height.cells[index] + 1);
+}
+
+[[nodiscard]] float PickMaxDistance(const RuntimeMap& map, const Camera3D& camera)
+{
+    const float width = static_cast<float>(std::max(1, map.info.width));
+    const float height = static_cast<float>(std::max(1, map.info.height));
+    const float level_span = map.info.levels.has_value()
+        ? static_cast<float>(std::max(1, map.info.levels->max - map.info.levels->min + 1))
+        : 16.0F;
+    const float map_diagonal = std::sqrt(width * width + height * height + level_span * level_span);
+    return std::max(128.0F, map_diagonal * 3.0F + Length(Subtract(camera.target, camera.position)));
+}
+
+[[nodiscard]] std::optional<TileCoord> PickHeightfieldTile(const Ray3f& ray, const RuntimeMap& map, const Camera3D& camera)
+{
+    if (!map.height.IsValid()) {
+        return std::nullopt;
+    }
+
+    constexpr float kStep = 0.25F;
+    constexpr float kHitEpsilon = 0.06F;
+    const float max_distance = PickMaxDistance(map, camera);
+    for (float distance = 0.0F; distance <= max_distance; distance += kStep) {
+        const Vector3 point = Add(ray.origin, Scale(ray.direction, distance));
+        TileCoord tile;
+        if (!TileFromWorldPoint(point, map, tile)) {
+            continue;
+        }
+        if (point.y <= TerrainTopLevel(map, tile) + kHitEpsilon) {
+            return tile;
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<TileCoord> PickPlaneTile(const Ray3f& ray, const RuntimeMap& map)
+{
+    if (std::abs(ray.direction.y) <= 0.0001F) {
+        return std::nullopt;
+    }
+    const float t = -ray.origin.y / ray.direction.y;
+    if (t < 0.0F) {
+        return std::nullopt;
+    }
+
+    TileCoord tile;
+    if (!TileFromWorldPoint(Add(ray.origin, Scale(ray.direction, t)), map, tile)) {
+        return std::nullopt;
+    }
+    return tile;
 }
 
 [[nodiscard]] Aabb3f ComputeWorldBounds(const ChunkMeshData& chunk, int map_width, int map_height)
@@ -835,6 +933,44 @@ void DrawTransitionFeatureOverlay(
     }
 }
 
+void DrawSelectedTileOverlay(
+    const RuntimeMap& map,
+    const ChunkMeshBuildResult& build_result,
+    RaylibTileSelectionOverlayOptions selected_tile)
+{
+    if (!selected_tile.show || !map.height.Contains(selected_tile.tile)) {
+        return;
+    }
+
+    const float level = TerrainTopLevel(map, selected_tile.tile) + 0.10F;
+    const float min_x = static_cast<float>(selected_tile.tile.x);
+    const float min_y = static_cast<float>(selected_tile.tile.y);
+    const float max_x = min_x + 1.0F;
+    const float max_y = min_y + 1.0F;
+    const Vector3 nw = TileCornerWorld(min_x, min_y, level, build_result.info.map_width, build_result.info.map_height);
+    const Vector3 ne = TileCornerWorld(max_x, min_y, level, build_result.info.map_width, build_result.info.map_height);
+    const Vector3 se = TileCornerWorld(max_x, max_y, level, build_result.info.map_width, build_result.info.map_height);
+    const Vector3 sw = TileCornerWorld(min_x, max_y, level, build_result.info.map_width, build_result.info.map_height);
+
+    constexpr Color kSelectionOuter{255, 245, 110, 255};
+    constexpr Color kSelectionInner{20, 28, 32, 240};
+    DrawLine3D(nw, ne, kSelectionOuter);
+    DrawLine3D(ne, se, kSelectionOuter);
+    DrawLine3D(se, sw, kSelectionOuter);
+    DrawLine3D(sw, nw, kSelectionOuter);
+
+    const Vector3 marker_bottom = TileCenterWorld(
+        selected_tile.tile.x,
+        selected_tile.tile.y,
+        level,
+        build_result.info.map_width,
+        build_result.info.map_height);
+    const Vector3 marker_top{marker_bottom.x, marker_bottom.y + 1.2F, marker_bottom.z};
+    DrawLine3D(marker_bottom, marker_top, kSelectionOuter);
+    DrawSphere(marker_top, 0.14F, kSelectionOuter);
+    DrawSphere(marker_bottom, 0.08F, kSelectionInner);
+}
+
 void DrawDebugOverlays(
     const ChunkMeshBuildResult& build_result,
     const RuntimeMap* runtime_map,
@@ -973,7 +1109,8 @@ void RaylibChunkMeshPreview::Draw(
     RaylibChunkVisibilityOptions visibility,
     RaylibTerrainPassOptions terrain_passes,
     const TransitionFeatureSet* transition_features,
-    RaylibTransitionOverlayOptions transitions) const
+    RaylibTransitionOverlayOptions transitions,
+    RaylibTileSelectionOverlayOptions selected_tile) const
 {
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
@@ -1010,9 +1147,30 @@ void RaylibChunkMeshPreview::Draw(
         DrawTransitionFeatureOverlay(*transition_features, build_result, transitions);
     }
     DrawDebugOverlays(build_result, runtime_map, chunk_grid, overlays);
+    if (runtime_map != nullptr) {
+        DrawSelectedTileOverlay(*runtime_map, build_result, selected_tile);
+    }
 
     EndMode3D();
     EndScissorMode();
+}
+
+std::optional<TileCoord> RaylibChunkMeshPreview::PickTile(
+    Vector2 screen_position,
+    Rectangle viewport,
+    const RuntimeMap& runtime_map,
+    const Camera3D& camera) const
+{
+    if (!runtime_map.IsValid() || viewport.width <= 1.0F || viewport.height <= 1.0F
+        || !CheckCollisionPointRec(screen_position, viewport)) {
+        return std::nullopt;
+    }
+
+    const Ray3f ray = BuildViewportRay(screen_position, viewport, camera);
+    if (std::optional<TileCoord> tile = PickHeightfieldTile(ray, runtime_map, camera); tile.has_value()) {
+        return tile;
+    }
+    return PickPlaneTile(ray, runtime_map);
 }
 
 RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(

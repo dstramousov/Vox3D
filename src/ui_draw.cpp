@@ -382,18 +382,52 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     return lines;
 }
 
-[[nodiscard]] std::vector<std::string> BuildInspectPanelLines()
+[[nodiscard]] std::string TileCoordText(TileCoord tile)
 {
-    return {
-        "Selection",
-        "  Tile: none",
-        "  Chunk: none",
-        "  Face: none",
-        "",
-        "Picking is not implemented yet.",
-        "This tab is reserved for ray hit,",
-        "tile, terrain and chunk inspection.",
-    };
+    return std::to_string(tile.x) + "," + std::to_string(tile.y);
+}
+
+[[nodiscard]] std::string ChunkBoundsText(const TileBounds& bounds)
+{
+    return std::to_string(bounds.min_x) + "," + std::to_string(bounds.min_y)
+        + ".." + std::to_string(bounds.max_x) + "," + std::to_string(bounds.max_y);
+}
+
+[[nodiscard]] std::vector<std::string> BuildInspectPanelLines(const WorkspaceState& workspace_state)
+{
+    std::vector<std::string> lines;
+    lines.push_back("Selection");
+    if (!workspace_state.selected_tile.IsValid()) {
+        lines.push_back("  Tile: none");
+        lines.push_back("  Chunk: none");
+        lines.push_back("  Transitions: none");
+        lines.push_back("");
+        lines.push_back("Click terrain in 3D preview");
+        lines.push_back("to inspect a tile.");
+        return lines;
+    }
+
+    const TileInspectResult& tile = workspace_state.selected_tile;
+    lines.push_back("  Tile: " + TileCoordText(tile.tile));
+    lines.push_back("  Terrain: " + tile.terrain);
+    lines.push_back("  Elevation: " + std::to_string(tile.elevation));
+    lines.push_back("  Collision: " + std::string(tile.blocked ? "blocked" : "free"));
+    if (tile.chunk_found) {
+        lines.push_back("  Chunk: " + TileCoordText(TileCoord{tile.chunk.x, tile.chunk.y}));
+        lines.push_back("  Bounds: " + ChunkBoundsText(tile.chunk_bounds));
+    } else {
+        lines.push_back("  Chunk: none");
+    }
+    lines.push_back("");
+    lines.push_back("Transitions");
+    lines.push_back("  Total: " + std::to_string(tile.transitions.total));
+    lines.push_back("  R/S/B/D: " + std::to_string(tile.transitions.ramps) + "/"
+        + std::to_string(tile.transitions.stairs) + "/"
+        + std::to_string(tile.transitions.bridges) + "/"
+        + std::to_string(tile.transitions.drops));
+    lines.push_back("  Passable: " + std::to_string(tile.transitions.passable));
+    lines.push_back("  Blocked: " + std::to_string(tile.transitions.blocked));
+    return lines;
 }
 
 [[nodiscard]] std::vector<std::string> BuildHelpPanelLines()
@@ -408,6 +442,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  F11  Color mode",
         "  F12  Visibility mode",
         "  T    Toggle transitions",
+        "  LMB  Pick tile",
         "  F    Fit view",
         "  R    Reset camera",
         "  Esc  Release mouse first, then exit",
@@ -1396,7 +1431,7 @@ void DrawWorkspace(
         if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
             lines = BuildStatsPanelLines(workspace_state, camera_status, labels);
         } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
-            lines = BuildInspectPanelLines();
+            lines = BuildInspectPanelLines(workspace_state);
         } else {
             lines = BuildHelpPanelLines();
         }
@@ -1466,6 +1501,10 @@ void DrawWorkspace(
                 workspace_state.show_transition_stairs,
                 workspace_state.show_transition_bridges,
                 workspace_state.show_transition_drops,
+            },
+            RaylibTileSelectionOverlayOptions{
+                workspace_state.selected_tile.IsValid(),
+                workspace_state.selected_tile.tile,
             });
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {

@@ -237,3 +237,9 @@
 - Fixed right Menu tab overflow by adding a scrollable workspace menu list.
 - Moved transition controls above terrain passes so the new overlay controls are visible earlier.
 - Added a `T` hotkey for toggling the transition overlay without using the right panel.
+
+## v0.4.9 -> v0.5.0
+
+- Added renderer-independent tile inspection in `vox3d_core`, combining runtime terrain/elevation/collision, chunk ownership, and transition counters for one selected tile.
+- Added 3D viewport tile picking from a viewport-correct camera ray with heightfield ray marching and a plane fallback for maps without height data.
+- Wired left-click selection into the workspace Inspect tab and highlighted the selected tile in the 3D preview without adding map editing, object picking, pathfinding, or movement changes.

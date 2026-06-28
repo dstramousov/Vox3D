@@ -694,6 +694,11 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_T)) {
             ToggleTransitionOverlay("hotkey");
         }
+        const Vector2 pick_mouse = GetMousePosition();
+        if (!preview_camera_.IsCursorCaptured() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
+            && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
+            SelectTileAtMouse(pick_mouse, "mouse");
+        }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
@@ -1382,6 +1387,35 @@ void App::ToggleTransitionOverlay(std::string_view reason)
     logger_.Info("transitions", std::string("overlay=")
         + (workspace_.show_transition_overlay ? "on" : "off")
         + " reason=" + std::string(reason));
+}
+
+void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
+{
+    if (!workspace_.show_3d_preview || !chunk_mesh_preview_.IsUploaded() || !workspace_.runtime_map.IsValid()) {
+        return;
+    }
+
+    const auto picked_tile = chunk_mesh_preview_.PickTile(
+        mouse,
+        layout_cache_.workspace.map_overview,
+        workspace_.runtime_map,
+        preview_camera_.Camera());
+    if (!picked_tile.has_value()) {
+        workspace_.selected_tile = TileInspectResult{};
+        workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+        layout_dirty_ = true;
+        logger_.Debug("inspect", "tile pick missed reason=" + std::string(reason));
+        return;
+    }
+
+    workspace_.selected_tile = InspectTile(
+        workspace_.runtime_map,
+        workspace_.chunk_grid,
+        workspace_.transition_features,
+        *picked_tile);
+    workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+    layout_dirty_ = true;
+    logger_.Info("inspect", "reason=" + std::string(reason) + " " + ToLogString(workspace_.selected_tile));
 }
 
 void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)

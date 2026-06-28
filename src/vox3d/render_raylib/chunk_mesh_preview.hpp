@@ -9,6 +9,7 @@
 #include <raylib.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -91,6 +92,15 @@ struct RaylibTransitionOverlayOptions {
     bool show_bridges = true;
     bool show_drops = true;
 };
+
+/**
+ * @brief Selected tile overlay options used by the 3D preview.
+ */
+struct RaylibTileSelectionOverlayOptions {
+    bool show = false;
+    TileCoord tile;
+};
+
 
 /**
  * @brief Last measured visibility and draw-culling counters.
@@ -210,6 +220,7 @@ public:
      * @param terrain_passes Terrain render-pass visibility flags.
      * @param transition_features Optional transition feature set drawn as debug markers.
      * @param transitions Transition feature overlay visibility flags.
+     * @param selected_tile Selected tile overlay visibility options.
      */
     void Draw(
         Rectangle viewport,
@@ -221,7 +232,27 @@ public:
         RaylibChunkVisibilityOptions visibility = {},
         RaylibTerrainPassOptions terrain_passes = {},
         const TransitionFeatureSet* transition_features = nullptr,
-        RaylibTransitionOverlayOptions transitions = {}) const;
+        RaylibTransitionOverlayOptions transitions = {},
+        RaylibTileSelectionOverlayOptions selected_tile = {}) const;
+
+    /**
+     * @brief Picks a runtime-map tile under a screen-space cursor position.
+     *
+     * The pick ray is built against the supplied viewport rather than the full
+     * window. The first pass ray-marches against the height grid; when height
+     * data is unavailable, the method falls back to the y=0 map plane.
+     *
+     * @param screen_position Mouse position in screen coordinates.
+     * @param viewport Screen-space 3D viewport rectangle.
+     * @param runtime_map Runtime map containing dimensions and optional height grid.
+     * @param camera Camera used for the current 3D preview.
+     * @return Picked tile coordinate, or std::nullopt when the ray misses the map.
+     */
+    [[nodiscard]] std::optional<TileCoord> PickTile(
+        Vector2 screen_position,
+        Rectangle viewport,
+        const RuntimeMap& runtime_map,
+        const Camera3D& camera) const;
 
     /**
      * @brief Calculates visibility counters for the current camera and options.
