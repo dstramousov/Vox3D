@@ -407,6 +407,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  F10  Dirty rebuild probe",
         "  F11  Color mode",
         "  F12  Visibility mode",
+        "  T    Toggle transitions",
         "  F    Fit view",
         "  R    Reset camera",
         "  Esc  Release mouse first, then exit",
@@ -1057,12 +1058,20 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     layout.tool_info = layout.tool_menu;
 
     const auto selected_items = BuildWorkspacePanelItems(workspace_state);
+    layout.panel_total_rows = static_cast<int>(selected_items.size());
+    layout.panel_visible_rows = static_cast<int>(std::max(0.0F, std::floor((row_bottom - content_y) / item_height)));
+    const int max_scroll_rows = std::max(0, layout.panel_total_rows - layout.panel_visible_rows);
+    layout.panel_first_visible_row = std::clamp(workspace_state.menu_scroll_rows, 0, max_scroll_rows);
+    layout.panel_can_scroll_up = layout.panel_first_visible_row > 0;
+    layout.panel_can_scroll_down = layout.panel_first_visible_row < max_scroll_rows;
+
     float row_y = content_y;
-    layout.panel_items.reserve(selected_items.size());
-    for (const WorkspacePanelItemState& item : selected_items) {
+    layout.panel_items.reserve(static_cast<std::size_t>(std::max(0, layout.panel_visible_rows)));
+    for (int row = layout.panel_first_visible_row; row < layout.panel_total_rows; ++row) {
         if (row_y + item_height > row_bottom) {
             break;
         }
+        const WorkspacePanelItemState& item = selected_items[static_cast<std::size_t>(row)];
         const float indent = subitem_indent * static_cast<float>(std::max(0, item.depth));
         const Rectangle item_bounds{
             tool_x + indent,
@@ -1356,6 +1365,31 @@ void DrawWorkspace(
                 metrics.workspace_tool_font_size,
                 spacing,
                 color);
+        }
+        if (workspace.panel_can_scroll_up || workspace.panel_can_scroll_down) {
+            const float hint_size = std::max(10.0F, metrics.workspace_status_font_size - 2.0F);
+            const float hint_spacing = FontSpacing(hint_size);
+            if (workspace.panel_can_scroll_up) {
+                DrawTextEx(
+                    fonts.text,
+                    "^ more",
+                    Vector2{workspace.tool_menu.x + metrics.workspace_tool_gap, workspace.tool_menu.y},
+                    hint_size,
+                    hint_spacing,
+                    kAccent);
+            }
+            if (workspace.panel_can_scroll_down) {
+                DrawTextEx(
+                    fonts.text,
+                    "v more",
+                    Vector2{
+                        workspace.tool_menu.x + metrics.workspace_tool_gap,
+                        workspace.tool_menu.y + workspace.tool_menu.height - hint_size - metrics.workspace_tool_gap,
+                    },
+                    hint_size,
+                    hint_spacing,
+                    kAccent);
+            }
         }
     } else {
         std::vector<std::string> lines;

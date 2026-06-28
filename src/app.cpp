@@ -603,6 +603,32 @@ void App::HandleWorkspaceInput(float dt)
         RebuildLayout();
     }
 
+    const Vector2 panel_mouse = GetMousePosition();
+    const bool mouse_over_workspace_menu = workspace_.selected_panel_tab == WorkspacePanelTab::kMenu
+        && PointInRect(panel_mouse, layout_cache_.workspace.tool_menu);
+    if (!preview_camera_.IsCursorCaptured() && mouse_over_workspace_menu) {
+        const float wheel = GetMouseWheelMove();
+        if (wheel > 0.0001F) {
+            ScrollWorkspaceMenu(-3, "wheel");
+        } else if (wheel < -0.0001F) {
+            ScrollWorkspaceMenu(3, "wheel");
+        }
+    }
+    if (workspace_.selected_panel_tab == WorkspacePanelTab::kMenu) {
+        if (IsKeyPressed(KEY_PAGE_UP)) {
+            ScrollWorkspaceMenu(-6, "page_up");
+        }
+        if (IsKeyPressed(KEY_PAGE_DOWN)) {
+            ScrollWorkspaceMenu(6, "page_down");
+        }
+        if (IsKeyPressed(KEY_HOME)) {
+            ScrollWorkspaceMenu(-1000000, "home");
+        }
+        if (IsKeyPressed(KEY_END)) {
+            ScrollWorkspaceMenu(1000000, "end");
+        }
+    }
+
     const bool camera_mode = workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded() && preview_camera_.IsInitialized();
     if (camera_mode) {
         if (IsKeyPressed(KEY_R)) {
@@ -664,6 +690,9 @@ void App::HandleWorkspaceInput(float dt)
         }
         if (IsKeyPressed(KEY_F12)) {
             CycleVisibilityMode("hotkey");
+        }
+        if (IsKeyPressed(KEY_T)) {
+            ToggleTransitionOverlay("hotkey");
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
@@ -1341,6 +1370,44 @@ void App::ToggleWorkspaceTool(WorkspaceTool tool)
             + " expanded=" + std::string(workspace_.selected_tool_expanded ? "true" : "false"));
 }
 
+void App::ToggleTransitionOverlay(std::string_view reason)
+{
+    if (!workspace_.transition_features.IsValid() || workspace_.transition_features.features.empty()) {
+        logger_.Debug("transitions", "overlay toggle ignored because no transition features are available");
+        return;
+    }
+
+    workspace_.show_transition_overlay = !workspace_.show_transition_overlay;
+    layout_dirty_ = true;
+    logger_.Info("transitions", std::string("overlay=")
+        + (workspace_.show_transition_overlay ? "on" : "off")
+        + " reason=" + std::string(reason));
+}
+
+void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
+{
+    if (workspace_.selected_panel_tab != WorkspacePanelTab::kMenu || delta_rows == 0) {
+        return;
+    }
+
+    const WorkspaceLayout& workspace_layout = layout_cache_.workspace;
+    const int max_scroll_rows = std::max(
+        0,
+        workspace_layout.panel_total_rows - workspace_layout.panel_visible_rows);
+    const int next_scroll = std::clamp(
+        workspace_.menu_scroll_rows + delta_rows,
+        0,
+        max_scroll_rows);
+    if (next_scroll == workspace_.menu_scroll_rows) {
+        return;
+    }
+
+    workspace_.menu_scroll_rows = next_scroll;
+    layout_dirty_ = true;
+    logger_.Debug("workspace", "menu_scroll=" + std::to_string(workspace_.menu_scroll_rows)
+        + " reason=" + std::string(reason));
+}
+
 void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
 {
     bool activatable = false;
@@ -1489,27 +1556,29 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
                 + (workspace_.show_terrain_cliffs ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DShowTransitions:
-            workspace_.show_transition_overlay = !workspace_.show_transition_overlay;
-            logger_.Info("transitions", std::string("overlay=")
-                + (workspace_.show_transition_overlay ? "on" : "off"));
+            ToggleTransitionOverlay("panel");
             break;
         case WorkspacePanelItem::k3DTransitionRamps:
             workspace_.show_transition_ramps = !workspace_.show_transition_ramps;
+            layout_dirty_ = true;
             logger_.Info("transitions", std::string("ramps=")
                 + (workspace_.show_transition_ramps ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DTransitionStairs:
             workspace_.show_transition_stairs = !workspace_.show_transition_stairs;
+            layout_dirty_ = true;
             logger_.Info("transitions", std::string("stairs=")
                 + (workspace_.show_transition_stairs ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DTransitionBridges:
             workspace_.show_transition_bridges = !workspace_.show_transition_bridges;
+            layout_dirty_ = true;
             logger_.Info("transitions", std::string("bridges=")
                 + (workspace_.show_transition_bridges ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DTransitionDrops:
             workspace_.show_transition_drops = !workspace_.show_transition_drops;
+            layout_dirty_ = true;
             logger_.Info("transitions", std::string("drops=")
                 + (workspace_.show_transition_drops ? "on" : "off"));
             break;

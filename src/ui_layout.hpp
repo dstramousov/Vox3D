@@ -155,6 +155,11 @@ struct WorkspaceLayout {
     std::vector<WorkspaceToolBounds> tools;
     std::vector<WorkspacePanelTabBounds> panel_tabs;
     std::vector<WorkspacePanelItemBounds> panel_items;
+    int panel_total_rows = 0;
+    int panel_first_visible_row = 0;
+    int panel_visible_rows = 0;
+    bool panel_can_scroll_up = false;
+    bool panel_can_scroll_down = false;
 };
 
 /**

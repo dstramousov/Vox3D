@@ -79,6 +79,8 @@ private:
     void SelectNextWorkspaceTool();
     void ToggleWorkspaceTool(WorkspaceTool tool);
     void ActivateWorkspacePanelItem(WorkspacePanelItem item);
+    void ToggleTransitionOverlay(std::string_view reason);
+    void ScrollWorkspaceMenu(int delta_rows, std::string_view reason);
     void SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason);
     void SetColorMode(WorkspaceColorMode mode, std::string_view reason);
     void CycleColorMode(std::string_view reason);

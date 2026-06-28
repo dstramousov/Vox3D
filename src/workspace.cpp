@@ -401,13 +401,6 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Action(Item::k3DVisibilityFadePlus, 1, workspace.chunk_meshes.IsValid()));
         items.push_back(Checkbox(Item::k3DShowHiddenBounds, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_hidden_chunk_bounds));
 
-        const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
-            && workspace.terrain_chunk_meshes.IsValid();
-        items.push_back(Group(Item::k3DTerrainPassGroup, 0));
-        items.push_back(Checkbox(Item::k3DTerrainPassTops, 1, terrain_passes_enabled, workspace.show_terrain_tops));
-        items.push_back(Checkbox(Item::k3DTerrainPassWalls, 1, terrain_passes_enabled, workspace.show_terrain_walls));
-        items.push_back(Checkbox(Item::k3DTerrainPassCliffs, 1, terrain_passes_enabled, workspace.show_terrain_cliffs));
-
         const bool transition_features_enabled = workspace.transition_features.IsValid()
             && !workspace.transition_features.features.empty();
         items.push_back(Group(Item::k3DTransitionGroup, 0));
@@ -416,6 +409,13 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Checkbox(Item::k3DTransitionStairs, 1, transition_features_enabled, workspace.show_transition_stairs));
         items.push_back(Checkbox(Item::k3DTransitionBridges, 1, transition_features_enabled, workspace.show_transition_bridges));
         items.push_back(Checkbox(Item::k3DTransitionDrops, 1, transition_features_enabled, workspace.show_transition_drops));
+
+        const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
+            && workspace.terrain_chunk_meshes.IsValid();
+        items.push_back(Group(Item::k3DTerrainPassGroup, 0));
+        items.push_back(Checkbox(Item::k3DTerrainPassTops, 1, terrain_passes_enabled, workspace.show_terrain_tops));
+        items.push_back(Checkbox(Item::k3DTerrainPassWalls, 1, terrain_passes_enabled, workspace.show_terrain_walls));
+        items.push_back(Checkbox(Item::k3DTerrainPassCliffs, 1, terrain_passes_enabled, workspace.show_terrain_cliffs));
 
         items.push_back(Group(Item::k3DMeshGroup, 0));
         items.push_back(Radio(Item::k3DMeshSimple, 1, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));

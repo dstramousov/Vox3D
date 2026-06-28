@@ -302,6 +302,7 @@ struct WorkspaceState {
     bool show_terrain_walls = true;
     bool show_terrain_cliffs = true;
     bool show_transition_overlay = false;
+    int menu_scroll_rows = 0;
     bool show_transition_ramps = true;
     bool show_transition_stairs = true;
     bool show_transition_bridges = true;

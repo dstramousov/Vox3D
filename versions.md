@@ -231,3 +231,9 @@
 - Added a renderer-independent transition feature foundation in `vox3d_core` that derives ramp, stair, bridge-reserved, and drop markers from runtime height/collision grids.
 - Wired transition diagnostics into the chunk pipeline logs and workspace Stats tab with total, kind, passable, and blocked counters.
 - Added 3D transition overlay toggles for ramps, stairs, bridges, and drops, drawing lightweight debug markers without changing terrain mesh, collision, pathfinding, or movement rules.
+
+## v0.4.8 -> v0.4.9
+
+- Fixed right Menu tab overflow by adding a scrollable workspace menu list.
+- Moved transition controls above terrain passes so the new overlay controls are visible earlier.
+- Added a `T` hotkey for toggling the transition overlay without using the right panel.
