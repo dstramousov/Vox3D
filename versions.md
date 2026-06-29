@@ -328,3 +328,9 @@
 
 - Increased spacing between the right-panel ASCII tabs so `[View]`, `[Stats]`, and `[Info]` no longer visually stick together.
 - Kept the existing text-tab rendering, active yellow pseudo-bold state, and tab click behaviour unchanged.
+
+## v0.5.14 -> v0.5.15
+
+- Reworked the Stats tab body into the same ASCII tree visual style as the View tab.
+- Rendered Stats sections with marker and label columns using the workspace menu font size.
+- Kept Stats content read-only while preserving existing View, Info, and tab navigation behavior.

@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -553,6 +554,53 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         lines.push_back("  Pos: " + CompactVector(camera_status.position));
     }
     return lines;
+}
+
+enum class StatsPanelRowKind {
+    kBlank,
+    kGroup,
+    kValue,
+};
+
+struct StatsPanelRow {
+    StatsPanelRowKind kind = StatsPanelRowKind::kBlank;
+    int depth = 0;
+    std::string label;
+};
+
+[[nodiscard]] std::string TrimStatsIndent(std::string_view line)
+{
+    const std::size_t first = line.find_first_not_of(' ');
+    if (first == std::string_view::npos) {
+        return {};
+    }
+    return std::string(line.substr(first));
+}
+
+[[nodiscard]] std::vector<StatsPanelRow> BuildStatsPanelRows(
+    const WorkspaceState& workspace_state,
+    FreeFlyCameraStatus camera_status,
+    const UiLabels& labels)
+{
+    const std::vector<std::string> lines = BuildStatsPanelLines(workspace_state, camera_status, labels);
+    std::vector<StatsPanelRow> rows;
+    rows.reserve(lines.size());
+
+    for (const std::string& line : lines) {
+        if (line.empty()) {
+            rows.push_back(StatsPanelRow{StatsPanelRowKind::kBlank, 0, {}});
+            continue;
+        }
+
+        const bool value_row = line.size() >= 2 && line[0] == ' ' && line[1] == ' ';
+        rows.push_back(StatsPanelRow{
+            value_row ? StatsPanelRowKind::kValue : StatsPanelRowKind::kGroup,
+            value_row ? 1 : 0,
+            value_row ? TrimStatsIndent(line) : line,
+        });
+    }
+
+    return rows;
 }
 
 [[nodiscard]] std::string TileCoordText(TileCoord tile)
@@ -1781,11 +1829,62 @@ void DrawWorkspace(
                     kAccent);
             }
         }
+    } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
+        const std::vector<StatsPanelRow> rows = BuildStatsPanelRows(workspace_state, camera_status, labels);
+        const float marker_column_width = Measure(
+            fonts.text,
+            "[x] ",
+            metrics.workspace_tool_font_size,
+            spacing)
+            .x;
+        const float item_height = metrics.workspace_tool_font_size + metrics.workspace_tool_gap * 1.05F;
+        const float indent_step = metrics.workspace_tool_gap * 3.0F;
+        const float bottom = workspace.tool_menu.y + workspace.tool_menu.height;
+        float row_y = workspace.tool_menu.y;
+
+        for (const StatsPanelRow& row : rows) {
+            if (row.kind == StatsPanelRowKind::kBlank) {
+                row_y += item_height * 0.55F;
+                continue;
+            }
+            if (row_y + item_height > bottom) {
+                break;
+            }
+
+            const bool group = row.kind == StatsPanelRowKind::kGroup;
+            const Color color = group ? kEditorViewportText : kEditorPanelText;
+            const std::string marker = group ? "-" : "";
+            const float indent = indent_step * static_cast<float>(std::max(0, row.depth));
+            const Vector2 marker_position{
+                workspace.tool_menu.x + metrics.workspace_tool_gap + indent,
+                row_y + (item_height - metrics.workspace_tool_font_size) * 0.5F,
+            };
+            const Vector2 label_position{
+                marker_position.x + marker_column_width,
+                marker_position.y,
+            };
+
+            if (!marker.empty()) {
+                DrawTextEx(
+                    fonts.text,
+                    marker.c_str(),
+                    marker_position,
+                    metrics.workspace_tool_font_size,
+                    spacing,
+                    color);
+            }
+            DrawTextEx(
+                fonts.text,
+                row.label.c_str(),
+                label_position,
+                metrics.workspace_tool_font_size,
+                spacing,
+                color);
+            row_y += item_height;
+        }
     } else {
         std::vector<std::string> lines;
-        if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
-            lines = BuildStatsPanelLines(workspace_state, camera_status, labels);
-        } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
+        if (workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
             lines = BuildInspectPanelLines(workspace_state);
         } else {
             lines = BuildHelpPanelLines();
