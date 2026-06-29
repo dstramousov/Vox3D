@@ -92,6 +92,15 @@ enum class WorkspaceValidationStatus {
 };
 
 /**
+ * @brief Current endpoint-picking tool used by the path probe.
+ */
+enum class WorkspacePathPickMode {
+    kSelect,
+    kPickStart,
+    kPickGoal,
+};
+
+/**
  * @brief Clickable item shown inside an expanded workspace tree section.
  */
 enum class WorkspacePanelItem {
@@ -158,8 +167,9 @@ enum class WorkspacePanelItem {
     k3DPathGroup,
     k3DPathProfileShortest,
     k3DPathProfileSafe,
-    k3DSetSelectedAsPathStart,
-    k3DSetSelectedAsPathGoal,
+    k3DPathToolSelect,
+    k3DPathToolPickStart,
+    k3DPathToolPickGoal,
     k3DRunPathProbe,
     k3DClearPathProbe,
     k3DShowPath,
@@ -353,6 +363,7 @@ struct WorkspaceState {
     bool show_transition_drops = true;
     bool show_movement_probe = true;
     PathProfile path_profile = PathProfile::kShortest;
+    WorkspacePathPickMode path_pick_mode = WorkspacePathPickMode::kSelect;
     bool has_path_start = false;
     bool has_path_goal = false;
     TileCoord path_start;
@@ -440,6 +451,14 @@ struct WorkspaceState {
  * @return String representation.
  */
 [[nodiscard]] std::string_view ToString(WorkspaceValidationStatus status);
+
+/**
+ * @brief Converts a path endpoint picking mode to a stable lowercase name.
+ *
+ * @param mode Path endpoint picking mode.
+ * @return String representation.
+ */
+[[nodiscard]] std::string_view ToString(WorkspacePathPickMode mode);
 
 /**
  * @brief Converts a workspace panel item identifier to a stable lowercase name.

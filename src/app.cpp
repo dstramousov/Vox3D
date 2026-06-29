@@ -711,11 +711,11 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_V)) {
             TogglePassabilityValidationOverlay("hotkey");
         }
-        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_S)) {
-            SetSelectedTileAsPathEndpoint(false, "hotkey");
+        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_ONE)) {
+            SetPathPickMode(WorkspacePathPickMode::kPickStart, "hotkey");
         }
-        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_G)) {
-            SetSelectedTileAsPathEndpoint(true, "hotkey");
+        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_TWO)) {
+            SetPathPickMode(WorkspacePathPickMode::kPickGoal, "hotkey");
         }
         if (IsKeyPressed(KEY_P)) {
             RunPathProbeFromSelection("hotkey");
@@ -1476,6 +1476,18 @@ void App::SetPathProfile(PathProfile profile, std::string_view reason)
     logger_.Info("path", "profile=" + std::string(ToString(profile)) + " reason=" + std::string(reason));
 }
 
+void App::SetPathPickMode(WorkspacePathPickMode mode, std::string_view reason)
+{
+    if (workspace_.path_pick_mode == mode) {
+        logger_.Debug("path", "pick mode unchanged mode=" + std::string(ToString(mode)));
+        return;
+    }
+
+    workspace_.path_pick_mode = mode;
+    layout_dirty_ = true;
+    logger_.Info("path", "pick_mode=" + std::string(ToString(mode)) + " reason=" + std::string(reason));
+}
+
 void App::RunPathProbeFromSelection(std::string_view reason)
 {
     if (!workspace_.runtime_map.IsValid() || !workspace_.transition_features.IsValid()) {
@@ -1508,6 +1520,7 @@ void App::ClearPathProbe(std::string_view reason)
     workspace_.path_start = TileCoord{};
     workspace_.path_goal = TileCoord{};
     workspace_.path_probe = PathProbeResult{};
+    workspace_.path_pick_mode = WorkspacePathPickMode::kSelect;
     layout_dirty_ = true;
     logger_.Info("path", "clear reason=" + std::string(reason));
 }
@@ -1666,6 +1679,14 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
     layout_dirty_ = true;
     logger_.Info("inspect", "reason=" + std::string(reason) + " " + ToLogString(workspace_.selected_tile));
     logger_.Info("movement", "reason=" + std::string(reason) + " " + ToLogString(workspace_.movement_probe));
+
+    if (workspace_.path_pick_mode == WorkspacePathPickMode::kPickStart
+        || workspace_.path_pick_mode == WorkspacePathPickMode::kPickGoal) {
+        const bool set_goal = workspace_.path_pick_mode == WorkspacePathPickMode::kPickGoal;
+        SetSelectedTileAsPathEndpoint(set_goal, "pick_tool");
+        workspace_.path_pick_mode = WorkspacePathPickMode::kSelect;
+        logger_.Info("path", "pick_mode=select reason=pick_tool_complete");
+    }
 }
 
 void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
@@ -1875,11 +1896,14 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         case WorkspacePanelItem::k3DPathProfileSafe:
             SetPathProfile(PathProfile::kSafe, "panel");
             break;
-        case WorkspacePanelItem::k3DSetSelectedAsPathStart:
-            SetSelectedTileAsPathEndpoint(false, "panel");
+        case WorkspacePanelItem::k3DPathToolSelect:
+            SetPathPickMode(WorkspacePathPickMode::kSelect, "panel");
             break;
-        case WorkspacePanelItem::k3DSetSelectedAsPathGoal:
-            SetSelectedTileAsPathEndpoint(true, "panel");
+        case WorkspacePanelItem::k3DPathToolPickStart:
+            SetPathPickMode(WorkspacePathPickMode::kPickStart, "panel");
+            break;
+        case WorkspacePanelItem::k3DPathToolPickGoal:
+            SetPathPickMode(WorkspacePathPickMode::kPickGoal, "panel");
             break;
         case WorkspacePanelItem::k3DRunPathProbe:
             RunPathProbeFromSelection("panel");

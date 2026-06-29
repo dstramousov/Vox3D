@@ -293,3 +293,9 @@
 - Reworked path endpoint selection so left click only selects a tile, while `S` assigns the selected tile as Start and `G` assigns it as Goal.
 - Added right-panel Path Probe actions for Set Selected as Start and Set Selected as Goal, removing the unreliable Shift+left-click dependency.
 - Added `X` as a Clear Path hotkey and updated Help text for the new endpoint workflow without changing the weighted A* pathfinding algorithm.
+
+## v0.5.8 -> v0.5.9
+
+- Replaced the conflicting `S`/`G` path endpoint hotkeys with a path pick tool mode driven by `1` for Pick Start and `2` for Pick Goal.
+- Made left click apply the active path pick tool once and then return to normal Select mode, so endpoint picking no longer depends on Shift or WASD-adjacent keys.
+- Updated Path Probe menu rows, Stats/Inspect tool reporting, Clear Path behaviour, and Help text without changing the weighted A* pathfinding algorithm or route overlay.

@@ -82,6 +82,7 @@ private:
     void ToggleTransitionOverlay(std::string_view reason);
     void ToggleMovementProbeOverlay(std::string_view reason);
     void SetPathProfile(PathProfile profile, std::string_view reason);
+    void SetPathPickMode(WorkspacePathPickMode mode, std::string_view reason);
     void RunPathProbeFromSelection(std::string_view reason);
     void ClearPathProbe(std::string_view reason);
     void SetSelectedTileAsPathEndpoint(bool set_goal, std::string_view reason);

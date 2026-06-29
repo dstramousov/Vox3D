@@ -402,6 +402,7 @@ void PushPathStats(std::vector<std::string>& lines, const WorkspaceState& worksp
 {
     lines.push_back("Path Probe");
     lines.push_back("  Profile: " + PathProfileLabel(workspace_state.path_profile));
+    lines.push_back("  Tool: " + std::string(ToString(workspace_state.path_pick_mode)));
     lines.push_back("  Start: " + (workspace_state.has_path_start ? TileCoordText(workspace_state.path_start) : std::string("none")));
     lines.push_back("  Goal: " + (workspace_state.has_path_goal ? TileCoordText(workspace_state.path_goal) : std::string("none")));
     if (!workspace_state.path_probe.IsValid()) {
@@ -673,6 +674,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     lines.push_back("");
     lines.push_back("Path");
     lines.push_back("  Profile: " + PathProfileLabel(workspace_state.path_profile));
+    lines.push_back("  Tool: " + std::string(ToString(workspace_state.path_pick_mode)));
     lines.push_back("  Start: " + (workspace_state.has_path_start ? TileCoordText(workspace_state.path_start) : std::string("none")));
     lines.push_back("  Goal: " + (workspace_state.has_path_goal ? TileCoordText(workspace_state.path_goal) : std::string("none")));
     if (workspace_state.path_probe.IsValid()) {
@@ -722,8 +724,8 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  T    Toggle transitions",
         "  M    Toggle movement probe",
         "  V    Toggle passability issues",
-        "  S    Set selected tile as path start",
-        "  G    Set selected tile as path goal",
+        "  1    Path tool: Pick Start",
+        "  2    Path tool: Pick Goal",
         "  P    Run path probe",
         "  X    Clear path probe",
         "  Menu Validation -> Run Validation",
@@ -920,10 +922,12 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Profile: Shortest";
         case WorkspacePanelItem::k3DPathProfileSafe:
             return "Profile: Safe";
-        case WorkspacePanelItem::k3DSetSelectedAsPathStart:
-            return "Set Selected as Start";
-        case WorkspacePanelItem::k3DSetSelectedAsPathGoal:
-            return "Set Selected as Goal";
+        case WorkspacePanelItem::k3DPathToolSelect:
+            return "Tool: Select";
+        case WorkspacePanelItem::k3DPathToolPickStart:
+            return "Tool: Pick Start";
+        case WorkspacePanelItem::k3DPathToolPickGoal:
+            return "Tool: Pick Goal";
         case WorkspacePanelItem::k3DRunPathProbe:
             return "Run Path";
         case WorkspacePanelItem::k3DClearPathProbe:
