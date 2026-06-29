@@ -626,9 +626,8 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     const Vector2 panel_mouse = GetMousePosition();
-    const bool mouse_over_workspace_menu = workspace_.selected_panel_tab == WorkspacePanelTab::kMenu
-        && PointInRect(panel_mouse, layout_cache_.workspace.tool_menu);
-    if (!preview_camera_.IsCursorCaptured() && mouse_over_workspace_menu) {
+    const bool mouse_over_workspace_panel = PointInRect(panel_mouse, layout_cache_.workspace.tool_menu);
+    if (!preview_camera_.IsCursorCaptured() && mouse_over_workspace_panel) {
         const float wheel = GetMouseWheelMove();
         if (wheel > 0.0001F) {
             ScrollWorkspaceMenu(-3, "wheel");
@@ -636,7 +635,9 @@ void App::HandleWorkspaceInput(float dt)
             ScrollWorkspaceMenu(3, "wheel");
         }
     }
-    if (workspace_.selected_panel_tab == WorkspacePanelTab::kMenu) {
+    if (workspace_.selected_panel_tab == WorkspacePanelTab::kMenu
+        || workspace_.selected_panel_tab == WorkspacePanelTab::kStats
+        || workspace_.selected_panel_tab == WorkspacePanelTab::kInspect) {
         if (IsKeyPressed(KEY_PAGE_UP)) {
             ScrollWorkspaceMenu(-6, "page_up");
         }
@@ -1723,7 +1724,10 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
 
 void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
 {
-    if (workspace_.selected_panel_tab != WorkspacePanelTab::kMenu || delta_rows == 0) {
+    const bool scrollable_panel = workspace_.selected_panel_tab == WorkspacePanelTab::kMenu
+        || workspace_.selected_panel_tab == WorkspacePanelTab::kStats
+        || workspace_.selected_panel_tab == WorkspacePanelTab::kInspect;
+    if (!scrollable_panel || delta_rows == 0) {
         return;
     }
 
@@ -1747,10 +1751,12 @@ void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
 
 void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
 {
-    if (workspace_.selected_panel_tab == WorkspacePanelTab::kStats && IsCollapsibleWorkspacePanelGroup(item)) {
+    const bool read_only_tree_panel = workspace_.selected_panel_tab == WorkspacePanelTab::kStats
+        || workspace_.selected_panel_tab == WorkspacePanelTab::kInspect;
+    if (read_only_tree_panel && IsCollapsibleWorkspacePanelGroup(item)) {
         ToggleWorkspacePanelGroup(&workspace_, item);
         layout_dirty_ = true;
-        logger_.Debug("workspace", "stats group toggled id=" + std::string(ToString(item)));
+        logger_.Debug("workspace", "read-only group toggled id=" + std::string(ToString(item)));
         return;
     }
 

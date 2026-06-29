@@ -402,6 +402,16 @@ std::string_view ToString(WorkspacePanelItem item)
             return "stats_dirty_cache";
         case WorkspacePanelItem::kStatsCameraGroup:
             return "stats_camera";
+        case WorkspacePanelItem::kInfoSelectionGroup:
+            return "info_selection";
+        case WorkspacePanelItem::kInfoTransitionsGroup:
+            return "info_transitions";
+        case WorkspacePanelItem::kInfoMovementGroup:
+            return "info_movement";
+        case WorkspacePanelItem::kInfoPathGroup:
+            return "info_path";
+        case WorkspacePanelItem::kInfoValidationGroup:
+            return "info_validation";
         case WorkspacePanelItem::kSelectionTileGroup:
             return "selection_tile";
         case WorkspacePanelItem::kSelectionTileInfo:
@@ -502,6 +512,11 @@ bool IsCollapsibleWorkspacePanelGroup(WorkspacePanelItem item)
         case WorkspacePanelItem::kStatsChunkProfitGroup:
         case WorkspacePanelItem::kStatsDirtyCacheGroup:
         case WorkspacePanelItem::kStatsCameraGroup:
+        case WorkspacePanelItem::kInfoSelectionGroup:
+        case WorkspacePanelItem::kInfoTransitionsGroup:
+        case WorkspacePanelItem::kInfoMovementGroup:
+        case WorkspacePanelItem::kInfoPathGroup:
+        case WorkspacePanelItem::kInfoValidationGroup:
             return true;
         default:
             return false;

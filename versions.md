@@ -339,3 +339,8 @@
 - Stats panel root rows now use the same collapsible `[-]` / `[+]` markers as View.
 - Stats sections can be collapsed and expanded by clicking their headers.
 - Stats layout uses the shared panel row hit-testing and scroll calculation.
+## v0.5.16 -> v0.5.17
+
+- Reworked the Info tab body into the same collapsible ASCII tree style used by View and Stats.
+- Added runtime-only Info section collapse state for Selection, Transitions, Movement, Path, and Validation.
+- Shared right-panel scrolling and group hit-testing across View, Stats, and Info without changing inspection data.

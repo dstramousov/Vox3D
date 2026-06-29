@@ -556,14 +556,14 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     return lines;
 }
 
-enum class StatsPanelRowKind {
+enum class TextPanelRowKind {
     kBlank,
     kGroup,
     kValue,
 };
 
-struct StatsPanelRow {
-    StatsPanelRowKind kind = StatsPanelRowKind::kBlank;
+struct TextPanelRow {
+    TextPanelRowKind kind = TextPanelRowKind::kBlank;
     WorkspacePanelItem item = WorkspacePanelItem::kStatsMapGroup;
     int depth = 0;
     std::string label;
@@ -611,7 +611,27 @@ struct StatsPanelRow {
     return WorkspacePanelItem::kStatsMapGroup;
 }
 
-[[nodiscard]] std::string TrimStatsIndent(std::string_view line)
+[[nodiscard]] WorkspacePanelItem InfoGroupItemForLabel(std::string_view label)
+{
+    if (label == "Selection") {
+        return WorkspacePanelItem::kInfoSelectionGroup;
+    }
+    if (label == "Transitions") {
+        return WorkspacePanelItem::kInfoTransitionsGroup;
+    }
+    if (label == "Movement") {
+        return WorkspacePanelItem::kInfoMovementGroup;
+    }
+    if (label == "Path") {
+        return WorkspacePanelItem::kInfoPathGroup;
+    }
+    if (label == "Validation") {
+        return WorkspacePanelItem::kInfoValidationGroup;
+    }
+    return WorkspacePanelItem::kInfoSelectionGroup;
+}
+
+[[nodiscard]] std::string TrimTextPanelIndent(std::string_view line)
 {
     const std::size_t first = line.find_first_not_of(' ');
     if (first == std::string_view::npos) {
@@ -620,32 +640,32 @@ struct StatsPanelRow {
     return std::string(line.substr(first));
 }
 
-[[nodiscard]] std::vector<StatsPanelRow> BuildStatsPanelRows(
+[[nodiscard]] std::vector<TextPanelRow> BuildTextPanelRowsFromLines(
+    const std::vector<std::string>& lines,
     const WorkspaceState& workspace_state,
-    FreeFlyCameraStatus camera_status,
-    const UiLabels& labels)
+    WorkspacePanelItem fallback_group,
+    WorkspacePanelItem (*group_item_for_label)(std::string_view))
 {
-    const std::vector<std::string> lines = BuildStatsPanelLines(workspace_state, camera_status, labels);
-    std::vector<StatsPanelRow> rows;
+    std::vector<TextPanelRow> rows;
     rows.reserve(lines.size());
 
-    WorkspacePanelItem current_group = WorkspacePanelItem::kStatsMapGroup;
+    WorkspacePanelItem current_group = fallback_group;
     bool current_group_expanded = true;
 
     for (const std::string& line : lines) {
         if (line.empty()) {
             if (current_group_expanded) {
-                rows.push_back(StatsPanelRow{StatsPanelRowKind::kBlank, current_group, 0, {}, false});
+                rows.push_back(TextPanelRow{TextPanelRowKind::kBlank, current_group, 0, {}, false});
             }
             continue;
         }
 
         const bool value_row = line.size() >= 2 && line[0] == ' ' && line[1] == ' ';
         if (!value_row) {
-            current_group = StatsGroupItemForLabel(line);
+            current_group = group_item_for_label(line);
             current_group_expanded = !IsWorkspacePanelGroupCollapsed(workspace_state, current_group);
-            rows.push_back(StatsPanelRow{
-                StatsPanelRowKind::kGroup,
+            rows.push_back(TextPanelRow{
+                TextPanelRowKind::kGroup,
                 current_group,
                 0,
                 line,
@@ -658,16 +678,28 @@ struct StatsPanelRow {
             continue;
         }
 
-        rows.push_back(StatsPanelRow{
-            StatsPanelRowKind::kValue,
+        rows.push_back(TextPanelRow{
+            TextPanelRowKind::kValue,
             current_group,
             1,
-            TrimStatsIndent(line),
+            TrimTextPanelIndent(line),
             false,
         });
     }
 
     return rows;
+}
+
+[[nodiscard]] std::vector<TextPanelRow> BuildStatsTextPanelRows(
+    const WorkspaceState& workspace_state,
+    FreeFlyCameraStatus camera_status,
+    const UiLabels& labels)
+{
+    return BuildTextPanelRowsFromLines(
+        BuildStatsPanelLines(workspace_state, camera_status, labels),
+        workspace_state,
+        WorkspacePanelItem::kStatsMapGroup,
+        StatsGroupItemForLabel);
 }
 
 [[nodiscard]] std::string TileCoordText(TileCoord tile)
@@ -750,8 +782,8 @@ struct StatsPanelRow {
         lines.push_back("  Chunk: none");
         lines.push_back("  Transitions: none");
         lines.push_back("");
-        lines.push_back("Click terrain in 3D preview");
-        lines.push_back("to inspect a tile.");
+        lines.push_back("  Click terrain in 3D preview");
+        lines.push_back("  to inspect a tile.");
         return lines;
     }
 
@@ -822,6 +854,15 @@ struct StatsPanelRow {
         lines.push_back("  report not available");
     }
     return lines;
+}
+
+[[nodiscard]] std::vector<TextPanelRow> BuildInfoTextPanelRows(const WorkspaceState& workspace_state)
+{
+    return BuildTextPanelRowsFromLines(
+        BuildInspectPanelLines(workspace_state),
+        workspace_state,
+        WorkspacePanelItem::kInfoSelectionGroup,
+        InfoGroupItemForLabel);
 }
 
 [[nodiscard]] std::vector<std::string> BuildHelpPanelLines()
@@ -1150,6 +1191,16 @@ struct StatsPanelRow {
             return "Dirty Cache";
         case WorkspacePanelItem::kStatsCameraGroup:
             return "Camera";
+        case WorkspacePanelItem::kInfoSelectionGroup:
+            return "Selection";
+        case WorkspacePanelItem::kInfoTransitionsGroup:
+            return "Transitions";
+        case WorkspacePanelItem::kInfoMovementGroup:
+            return "Movement";
+        case WorkspacePanelItem::kInfoPathGroup:
+            return "Path";
+        case WorkspacePanelItem::kInfoValidationGroup:
+            return "Validation";
         case WorkspacePanelItem::kSelectionTileGroup:
             return "Selected Tile";
         case WorkspacePanelItem::kSelectionTileInfo:
@@ -1575,12 +1626,17 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     layout.tool_info = layout.tool_menu;
 
     const std::vector<WorkspacePanelItemState> selected_items = BuildWorkspacePanelItems(workspace_state);
-    const std::vector<StatsPanelRow> stats_rows = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
-        ? BuildStatsPanelRows(workspace_state, camera_status, labels)
-        : std::vector<StatsPanelRow>{};
+    const bool text_tree_panel = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
+        || workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect;
+    std::vector<TextPanelRow> text_rows;
+    if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
+        text_rows = BuildStatsTextPanelRows(workspace_state, camera_status, labels);
+    } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
+        text_rows = BuildInfoTextPanelRows(workspace_state);
+    }
 
-    layout.panel_total_rows = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
-        ? static_cast<int>(stats_rows.size())
+    layout.panel_total_rows = text_tree_panel
+        ? static_cast<int>(text_rows.size())
         : static_cast<int>(selected_items.size());
     layout.panel_visible_rows = static_cast<int>(std::max(0.0F, std::floor((row_bottom - content_y) / item_height)));
     const int max_scroll_rows = std::max(0, layout.panel_total_rows - layout.panel_visible_rows);
@@ -1590,13 +1646,13 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 
     float row_y = content_y;
     layout.panel_items.reserve(static_cast<std::size_t>(std::max(0, layout.panel_visible_rows)));
-    if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
+    if (text_tree_panel) {
         for (int row = layout.panel_first_visible_row; row < layout.panel_total_rows; ++row) {
             if (row_y + item_height > row_bottom) {
                 break;
             }
-            const StatsPanelRow& item = stats_rows[static_cast<std::size_t>(row)];
-            if (item.kind == StatsPanelRowKind::kGroup) {
+            const TextPanelRow& item = text_rows[static_cast<std::size_t>(row)];
+            if (item.kind == TextPanelRowKind::kGroup) {
                 const Rectangle item_bounds{
                     tool_x,
                     row_y,
@@ -1616,7 +1672,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
                     item.checked,
                 });
             }
-            row_y += item.kind == StatsPanelRowKind::kBlank ? item_height * 0.55F : item_height;
+            row_y += item.kind == TextPanelRowKind::kBlank ? item_height * 0.55F : item_height;
         }
     } else {
         for (int row = layout.panel_first_visible_row; row < layout.panel_total_rows; ++row) {
@@ -1959,8 +2015,11 @@ void DrawWorkspace(
                     kAccent);
             }
         }
-    } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
-        const std::vector<StatsPanelRow> rows = BuildStatsPanelRows(workspace_state, camera_status, labels);
+    } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
+        || workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
+        const std::vector<TextPanelRow> rows = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
+            ? BuildStatsTextPanelRows(workspace_state, camera_status, labels)
+            : BuildInfoTextPanelRows(workspace_state);
         const float marker_column_width = Measure(
             fonts.text,
             "[x] ",
@@ -1973,8 +2032,8 @@ void DrawWorkspace(
         float row_y = workspace.tool_menu.y;
 
         for (int index = workspace.panel_first_visible_row; index < static_cast<int>(rows.size()); ++index) {
-            const StatsPanelRow& row = rows[static_cast<std::size_t>(index)];
-            if (row.kind == StatsPanelRowKind::kBlank) {
+            const TextPanelRow& row = rows[static_cast<std::size_t>(index)];
+            if (row.kind == TextPanelRowKind::kBlank) {
                 row_y += item_height * 0.55F;
                 continue;
             }
@@ -1982,7 +2041,7 @@ void DrawWorkspace(
                 break;
             }
 
-            const bool group = row.kind == StatsPanelRowKind::kGroup;
+            const bool group = row.kind == TextPanelRowKind::kGroup;
             const Color color = group ? kEditorViewportText : kEditorPanelText;
             const std::string marker = group
                 ? WorkspacePanelItemMarker(WorkspacePanelItemState{
@@ -2047,12 +2106,7 @@ void DrawWorkspace(
             }
         }
     } else {
-        std::vector<std::string> lines;
-        if (workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
-            lines = BuildInspectPanelLines(workspace_state);
-        } else {
-            lines = BuildHelpPanelLines();
-        }
+        const std::vector<std::string> lines = BuildHelpPanelLines();
 
         const float compact_size = std::max(10.0F, metrics.workspace_status_font_size - 1.0F);
         const float compact_spacing = FontSpacing(compact_size);
