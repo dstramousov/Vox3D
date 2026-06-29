@@ -1748,12 +1748,20 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         activatable = state.enabled
             && (state.kind == WorkspacePanelItemKind::kAction
                 || state.kind == WorkspacePanelItemKind::kCheckbox
-                || state.kind == WorkspacePanelItemKind::kRadio);
+                || state.kind == WorkspacePanelItemKind::kRadio
+                || (state.kind == WorkspacePanelItemKind::kGroup && IsCollapsibleWorkspacePanelGroup(state.item)));
         break;
     }
 
     if (!activatable) {
         logger_.Debug("workspace", "inactive panel item ignored id=" + std::string(ToString(item)));
+        return;
+    }
+
+    if (IsCollapsibleWorkspacePanelGroup(item)) {
+        ToggleWorkspacePanelGroup(&workspace_, item);
+        layout_dirty_ = true;
+        logger_.Debug("workspace", "panel group toggled id=" + std::string(ToString(item)));
         return;
     }
 

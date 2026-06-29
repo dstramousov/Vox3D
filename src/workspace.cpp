@@ -1,14 +1,16 @@
 #include "workspace.hpp"
 
+#include <algorithm>
+
 namespace vox3d {
 namespace {
 
 using Item = WorkspacePanelItem;
 using Kind = WorkspacePanelItemKind;
 
-[[nodiscard]] WorkspacePanelItemState Group(Item item, int depth)
+[[nodiscard]] WorkspacePanelItemState Group(Item item, int depth, bool expanded = true)
 {
-    return {item, Kind::kGroup, depth, false, false};
+    return {item, Kind::kGroup, depth, true, expanded};
 }
 
 [[nodiscard]] WorkspacePanelItemState Action(Item item, int depth, bool enabled)
@@ -236,6 +238,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_color_chunk_id";
         case WorkspacePanelItem::k3DColorFaceType:
             return "3d_color_face_type";
+        case WorkspacePanelItem::k3DDebugOverlaysGroup:
+            return "3d_debug_overlays";
         case WorkspacePanelItem::k3DVisibilityGroup:
             return "3d_visibility";
         case WorkspacePanelItem::k3DVisibilityAllChunks:
@@ -446,72 +450,216 @@ std::string_view ToString(WorkspacePanelItem item)
     return "unknown";
 }
 
+bool IsCollapsibleWorkspacePanelGroup(WorkspacePanelItem item)
+{
+    switch (item) {
+        case WorkspacePanelItem::kMenuModeGroup:
+        case WorkspacePanelItem::k2DNavigationGroup:
+        case WorkspacePanelItem::k2DBaseLayerGroup:
+        case WorkspacePanelItem::k2DOverlayGroup:
+        case WorkspacePanelItem::k3DCameraGroup:
+        case WorkspacePanelItem::k3DRenderGroup:
+        case WorkspacePanelItem::k3DVisibilityGroup:
+        case WorkspacePanelItem::k3DTerrainPassGroup:
+        case WorkspacePanelItem::k3DTransitionGroup:
+        case WorkspacePanelItem::k3DMovementGroup:
+        case WorkspacePanelItem::k3DPathGroup:
+        case WorkspacePanelItem::k3DValidationGroup:
+        case WorkspacePanelItem::k3DMeshGroup:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IsWorkspacePanelGroupCollapsed(const WorkspaceState& workspace, WorkspacePanelItem item)
+{
+    if (!IsCollapsibleWorkspacePanelGroup(item)) {
+        return false;
+    }
+    return std::find(
+        workspace.collapsed_panel_groups.begin(),
+        workspace.collapsed_panel_groups.end(),
+        item) != workspace.collapsed_panel_groups.end();
+}
+
+void ToggleWorkspacePanelGroup(WorkspaceState* workspace, WorkspacePanelItem item)
+{
+    if (workspace == nullptr || !IsCollapsibleWorkspacePanelGroup(item)) {
+        return;
+    }
+
+    auto& groups = workspace->collapsed_panel_groups;
+    const auto it = std::find(groups.begin(), groups.end(), item);
+    if (it == groups.end()) {
+        groups.push_back(item);
+        return;
+    }
+    groups.erase(it);
+}
+
 std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceState& workspace)
 {
     if (workspace.selected_panel_tab != WorkspacePanelTab::kMenu) {
         return {};
     }
 
-    std::vector<WorkspacePanelItemState> items{
-        Group(Item::kMenuModeGroup, 0),
-        Radio(Item::kMode2DMap, 1, true, !workspace.show_3d_preview),
-        Radio(Item::kMode3DWorld, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_preview),
+    std::vector<WorkspacePanelItemState> items;
+    auto AddGroup = [&](Item item, int depth = 0) -> bool {
+        const bool expanded = !IsWorkspacePanelGroupCollapsed(workspace, item);
+        items.push_back(Group(item, depth, expanded));
+        return expanded;
     };
 
+    if (AddGroup(Item::kMenuModeGroup)) {
+        items.push_back(Radio(Item::kMode2DMap, 1, true, !workspace.show_3d_preview));
+        items.push_back(Radio(Item::kMode3DWorld, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_preview));
+    }
+
     if (workspace.show_3d_preview) {
-        items.push_back(Group(Item::k3DCameraGroup, 0));
-        items.push_back(Action(Item::kViewFitMap, 1, workspace.chunk_meshes.IsValid()));
-        items.push_back(Action(Item::kViewResetView, 1, workspace.chunk_meshes.IsValid()));
+        if (AddGroup(Item::k3DCameraGroup)) {
+            items.push_back(Action(Item::kViewResetView, 1, workspace.chunk_meshes.IsValid()));
+        }
 
-        items.push_back(Group(Item::k3DRenderGroup, 0));
-        items.push_back(Checkbox(Item::kRenderChunkBounds, 1, workspace.chunk_grid.IsValid(), workspace.show_3d_chunk_bounds));
-        items.push_back(Checkbox(Item::kRenderWorldGrid, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_world_grid));
-        items.push_back(Checkbox(Item::kRenderCollision, 1, workspace.runtime_map.info.collision_loaded, workspace.show_3d_collision_overlay));
-        items.push_back(Checkbox(Item::kRenderHeight, 1, workspace.runtime_map.info.elevation_loaded, workspace.show_3d_height_overlay));
+        if (AddGroup(Item::k3DRenderGroup)) {
+            items.push_back(Group(Item::k3DColorModeGroup, 1));
+            items.push_back(Radio(
+                Item::k3DColorMaterial,
+                2,
+                workspace.chunk_meshes.IsValid(),
+                workspace.color_mode == WorkspaceColorMode::kMaterial));
+            items.push_back(Radio(
+                Item::k3DColorGeographic,
+                2,
+                workspace.chunk_meshes.IsValid(),
+                workspace.color_mode == WorkspaceColorMode::kGeographic));
+            items.push_back(Radio(
+                Item::k3DColorChunkId,
+                2,
+                workspace.chunk_meshes.IsValid(),
+                workspace.color_mode == WorkspaceColorMode::kChunkId));
+            items.push_back(Radio(
+                Item::k3DColorFaceType,
+                2,
+                workspace.chunk_meshes.IsValid(),
+                workspace.color_mode == WorkspaceColorMode::kFaceType));
 
-        items.push_back(Group(Item::k3DColorModeGroup, 0));
-        items.push_back(Radio(Item::k3DColorMaterial, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kMaterial));
-        items.push_back(Radio(Item::k3DColorGeographic, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kGeographic));
-        items.push_back(Radio(Item::k3DColorChunkId, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kChunkId));
-        items.push_back(Radio(Item::k3DColorFaceType, 1, workspace.chunk_meshes.IsValid(), workspace.color_mode == WorkspaceColorMode::kFaceType));
+            items.push_back(Group(Item::k3DDebugOverlaysGroup, 1));
+            items.push_back(Checkbox(
+                Item::kRenderChunkBounds,
+                2,
+                workspace.chunk_grid.IsValid(),
+                workspace.show_3d_chunk_bounds));
+            items.push_back(Checkbox(
+                Item::kRenderWorldGrid,
+                2,
+                workspace.chunk_meshes.IsValid(),
+                workspace.show_3d_world_grid));
+            items.push_back(Checkbox(
+                Item::kRenderCollision,
+                2,
+                workspace.runtime_map.info.collision_loaded,
+                workspace.show_3d_collision_overlay));
+            items.push_back(Checkbox(
+                Item::kRenderHeight,
+                2,
+                workspace.runtime_map.info.elevation_loaded,
+                workspace.show_3d_height_overlay));
+        }
 
-        items.push_back(Group(Item::k3DVisibilityGroup, 0));
-        items.push_back(Radio(Item::k3DVisibilityAllChunks, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kAllChunks));
-        items.push_back(Radio(Item::k3DVisibilityRadiusFade, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kRadiusFade));
-        items.push_back(Radio(Item::k3DVisibilityHardCull, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kHardCull));
-        items.push_back(Radio(Item::k3DVisibilityFrustumCull, 1, workspace.chunk_meshes.IsValid(), workspace.visibility_mode == WorkspaceVisibilityMode::kFrustumCull));
-        items.push_back(Action(Item::k3DVisibilityRadiusMinus, 1, workspace.chunk_meshes.IsValid()));
-        items.push_back(Action(Item::k3DVisibilityRadiusPlus, 1, workspace.chunk_meshes.IsValid()));
-        items.push_back(Action(Item::k3DVisibilityFadeMinus, 1, workspace.chunk_meshes.IsValid()));
-        items.push_back(Action(Item::k3DVisibilityFadePlus, 1, workspace.chunk_meshes.IsValid()));
-        items.push_back(Checkbox(Item::k3DShowHiddenBounds, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_hidden_chunk_bounds));
+        if (AddGroup(Item::k3DVisibilityGroup)) {
+            items.push_back(Radio(
+                Item::k3DVisibilityAllChunks,
+                1,
+                workspace.chunk_meshes.IsValid(),
+                workspace.visibility_mode == WorkspaceVisibilityMode::kAllChunks));
+            items.push_back(Radio(
+                Item::k3DVisibilityRadiusFade,
+                1,
+                workspace.chunk_meshes.IsValid(),
+                workspace.visibility_mode == WorkspaceVisibilityMode::kRadiusFade));
+            items.push_back(Radio(
+                Item::k3DVisibilityHardCull,
+                1,
+                workspace.chunk_meshes.IsValid(),
+                workspace.visibility_mode == WorkspaceVisibilityMode::kHardCull));
+            items.push_back(Radio(
+                Item::k3DVisibilityFrustumCull,
+                1,
+                workspace.chunk_meshes.IsValid(),
+                workspace.visibility_mode == WorkspaceVisibilityMode::kFrustumCull));
+            items.push_back(Action(Item::k3DVisibilityRadiusMinus, 1, workspace.chunk_meshes.IsValid()));
+            items.push_back(Action(Item::k3DVisibilityRadiusPlus, 1, workspace.chunk_meshes.IsValid()));
+            items.push_back(Action(Item::k3DVisibilityFadeMinus, 1, workspace.chunk_meshes.IsValid()));
+            items.push_back(Action(Item::k3DVisibilityFadePlus, 1, workspace.chunk_meshes.IsValid()));
+            items.push_back(Checkbox(
+                Item::k3DShowHiddenBounds,
+                1,
+                workspace.chunk_meshes.IsValid(),
+                workspace.show_3d_hidden_chunk_bounds));
+        }
+
+        const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
+            && workspace.terrain_chunk_meshes.IsValid();
+        if (AddGroup(Item::k3DTerrainPassGroup)) {
+            items.push_back(Checkbox(Item::k3DTerrainPassTops, 1, terrain_passes_enabled, workspace.show_terrain_tops));
+            items.push_back(Checkbox(Item::k3DTerrainPassWalls, 1, terrain_passes_enabled, workspace.show_terrain_walls));
+            items.push_back(Checkbox(Item::k3DTerrainPassCliffs, 1, terrain_passes_enabled, workspace.show_terrain_cliffs));
+        }
 
         const bool transition_features_enabled = workspace.transition_features.IsValid()
             && !workspace.transition_features.features.empty();
-        items.push_back(Group(Item::k3DTransitionGroup, 0));
-        items.push_back(Checkbox(Item::k3DShowTransitions, 1, transition_features_enabled, workspace.show_transition_overlay));
-        items.push_back(Checkbox(Item::k3DTransitionRamps, 1, transition_features_enabled, workspace.show_transition_ramps));
-        items.push_back(Checkbox(Item::k3DTransitionStairs, 1, transition_features_enabled, workspace.show_transition_stairs));
-        items.push_back(Checkbox(Item::k3DTransitionBridges, 1, transition_features_enabled, workspace.show_transition_bridges));
-        items.push_back(Checkbox(Item::k3DTransitionDrops, 1, transition_features_enabled, workspace.show_transition_drops));
+        if (AddGroup(Item::k3DTransitionGroup)) {
+            items.push_back(Checkbox(
+                Item::k3DShowTransitions,
+                1,
+                transition_features_enabled,
+                workspace.show_transition_overlay));
+            items.push_back(Checkbox(
+                Item::k3DTransitionRamps,
+                1,
+                transition_features_enabled,
+                workspace.show_transition_ramps));
+            items.push_back(Checkbox(
+                Item::k3DTransitionStairs,
+                1,
+                transition_features_enabled,
+                workspace.show_transition_stairs));
+            items.push_back(Checkbox(
+                Item::k3DTransitionBridges,
+                1,
+                transition_features_enabled,
+                workspace.show_transition_bridges));
+            items.push_back(Checkbox(
+                Item::k3DTransitionDrops,
+                1,
+                transition_features_enabled,
+                workspace.show_transition_drops));
+        }
 
         const bool movement_probe_enabled = workspace.selected_tile.IsValid() && workspace.movement_probe.IsValid();
-        items.push_back(Group(Item::k3DMovementGroup, 0));
-        items.push_back(Checkbox(Item::k3DShowMovementProbe, 1, movement_probe_enabled, workspace.show_movement_probe));
+        if (AddGroup(Item::k3DMovementGroup)) {
+            items.push_back(Checkbox(
+                Item::k3DShowMovementProbe,
+                1,
+                movement_probe_enabled,
+                workspace.show_movement_probe));
+        }
 
         const bool path_can_run = workspace.runtime_map.IsValid() && workspace.transition_features.IsValid()
             && workspace.has_path_start && workspace.has_path_goal;
         const bool path_available = workspace.path_probe.IsValid();
-        items.push_back(Group(Item::k3DPathGroup, 0));
-        items.push_back(Radio(Item::k3DPathProfileShortest, 1, true, workspace.path_profile == PathProfile::kShortest));
-        items.push_back(Radio(Item::k3DPathProfileSafe, 1, true, workspace.path_profile == PathProfile::kSafe));
-        const bool path_pick_active = workspace.path_pick_mode != WorkspacePathPickMode::kSelect;
-        items.push_back(Action(Item::k3DPathToolPickStart, 1, workspace.runtime_map.IsValid()));
-        items.push_back(Action(Item::k3DPathToolSelect, 1, path_pick_active));
-        items.push_back(Action(Item::k3DRunPathProbe, 1, path_can_run));
-        items.push_back(Action(Item::k3DClearPathProbe, 1, path_available || workspace.has_path_start || workspace.has_path_goal));
-        items.push_back(Checkbox(Item::k3DShowPath, 1, path_available, workspace.show_path_overlay));
-        items.push_back(Checkbox(Item::k3DShowPathVisited, 1, path_available, workspace.show_path_visited));
+        if (AddGroup(Item::k3DPathGroup)) {
+            items.push_back(Radio(Item::k3DPathProfileShortest, 1, true, workspace.path_profile == PathProfile::kShortest));
+            items.push_back(Radio(Item::k3DPathProfileSafe, 1, true, workspace.path_profile == PathProfile::kSafe));
+            const bool path_pick_active = workspace.path_pick_mode != WorkspacePathPickMode::kSelect;
+            items.push_back(Action(Item::k3DPathToolPickStart, 1, workspace.runtime_map.IsValid()));
+            items.push_back(Action(Item::k3DPathToolSelect, 1, path_pick_active));
+            items.push_back(Action(Item::k3DRunPathProbe, 1, path_can_run));
+            items.push_back(Action(Item::k3DClearPathProbe, 1, path_available || workspace.has_path_start || workspace.has_path_goal));
+            items.push_back(Checkbox(Item::k3DShowPath, 1, path_available, workspace.show_path_overlay));
+            items.push_back(Checkbox(Item::k3DShowPathVisited, 1, path_available, workspace.show_path_visited));
+        }
 
         const bool validation_report_available = workspace.passability_validation.IsValid();
         const bool validation_enabled = validation_report_available && !workspace.passability_validation.issues.empty();
@@ -519,68 +667,96 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             && workspace.validation_mode != WorkspaceValidationMode::kOff;
         const bool validation_can_clear = validation_report_available
             || workspace.passability_validation_status == WorkspaceValidationStatus::kDone;
-        items.push_back(Group(Item::k3DValidationGroup, 0));
-        items.push_back(Radio(
-            Item::k3DValidationModeOff,
-            1,
-            true,
-            workspace.validation_mode == WorkspaceValidationMode::kOff));
-        items.push_back(Radio(
-            Item::k3DValidationModeManual,
-            1,
-            true,
-            workspace.validation_mode == WorkspaceValidationMode::kManual));
-        items.push_back(Radio(
-            Item::k3DValidationModeOnLoad,
-            1,
-            true,
-            workspace.validation_mode == WorkspaceValidationMode::kOnLoad));
-        items.push_back(Action(Item::k3DRunPassabilityValidation, 1, validation_can_run));
-        items.push_back(Action(Item::k3DClearPassabilityValidation, 1, validation_can_clear));
-        items.push_back(Checkbox(Item::k3DShowPassabilityIssues, 1, validation_enabled, workspace.show_passability_issues));
-        items.push_back(Checkbox(Item::k3DValidationInvalidTransitions, 1, validation_enabled, workspace.show_passability_invalid_transitions));
-        items.push_back(Checkbox(Item::k3DValidationBlockedTransitions, 1, validation_enabled, workspace.show_passability_blocked_transitions));
-        items.push_back(Checkbox(Item::k3DValidationSuspiciousDrops, 1, validation_enabled, workspace.show_passability_suspicious_drops));
-        items.push_back(Checkbox(Item::k3DValidationIsolatedTiles, 1, validation_enabled, workspace.show_passability_isolated_tiles));
+        if (AddGroup(Item::k3DValidationGroup)) {
+            items.push_back(Radio(
+                Item::k3DValidationModeOff,
+                1,
+                true,
+                workspace.validation_mode == WorkspaceValidationMode::kOff));
+            items.push_back(Radio(
+                Item::k3DValidationModeManual,
+                1,
+                true,
+                workspace.validation_mode == WorkspaceValidationMode::kManual));
+            items.push_back(Radio(
+                Item::k3DValidationModeOnLoad,
+                1,
+                true,
+                workspace.validation_mode == WorkspaceValidationMode::kOnLoad));
+            items.push_back(Action(Item::k3DRunPassabilityValidation, 1, validation_can_run));
+            items.push_back(Action(Item::k3DClearPassabilityValidation, 1, validation_can_clear));
+            items.push_back(Checkbox(Item::k3DShowPassabilityIssues, 1, validation_enabled, workspace.show_passability_issues));
+            items.push_back(Checkbox(
+                Item::k3DValidationInvalidTransitions,
+                1,
+                validation_enabled,
+                workspace.show_passability_invalid_transitions));
+            items.push_back(Checkbox(
+                Item::k3DValidationBlockedTransitions,
+                1,
+                validation_enabled,
+                workspace.show_passability_blocked_transitions));
+            items.push_back(Checkbox(
+                Item::k3DValidationSuspiciousDrops,
+                1,
+                validation_enabled,
+                workspace.show_passability_suspicious_drops));
+            items.push_back(Checkbox(
+                Item::k3DValidationIsolatedTiles,
+                1,
+                validation_enabled,
+                workspace.show_passability_isolated_tiles));
+        }
 
-        const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
-            && workspace.terrain_chunk_meshes.IsValid();
-        items.push_back(Group(Item::k3DTerrainPassGroup, 0));
-        items.push_back(Checkbox(Item::k3DTerrainPassTops, 1, terrain_passes_enabled, workspace.show_terrain_tops));
-        items.push_back(Checkbox(Item::k3DTerrainPassWalls, 1, terrain_passes_enabled, workspace.show_terrain_walls));
-        items.push_back(Checkbox(Item::k3DTerrainPassCliffs, 1, terrain_passes_enabled, workspace.show_terrain_cliffs));
+        if (AddGroup(Item::k3DMeshGroup)) {
+            items.push_back(Radio(
+                Item::k3DMeshSimple,
+                1,
+                workspace.simple_chunk_meshes.IsValid(),
+                workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));
+            items.push_back(Radio(
+                Item::k3DMeshGreedy,
+                1,
+                workspace.greedy_chunk_meshes.IsValid(),
+                workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces));
+            items.push_back(Radio(
+                Item::k3DMeshTerrainSurface,
+                1,
+                workspace.terrain_chunk_meshes.IsValid(),
+                workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface));
 
-        items.push_back(Group(Item::k3DMeshGroup, 0));
-        items.push_back(Radio(Item::k3DMeshSimple, 1, workspace.simple_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));
-        items.push_back(Radio(Item::k3DMeshGreedy, 1, workspace.greedy_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces));
-        items.push_back(Radio(Item::k3DMeshTerrainSurface, 1, workspace.terrain_chunk_meshes.IsValid(), workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface));
-
-        items.push_back(Group(Item::k3DChunkSizeGroup, 0));
-        items.push_back(Radio(Item::k3DChunkSize16, 1, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 16));
-        items.push_back(Radio(Item::k3DChunkSize32, 1, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 32));
-        items.push_back(Action(Item::k3DDirtyRebuildProbe, 1, workspace.chunk_mesh_cache.IsValid() && workspace.mesh_mode != ChunkMeshBuildMode::kTerrainSurface));
+            items.push_back(Group(Item::k3DChunkSizeGroup, 1));
+            items.push_back(Radio(Item::k3DChunkSize16, 2, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 16));
+            items.push_back(Radio(Item::k3DChunkSize32, 2, workspace.runtime_map.IsValid(), workspace.chunk_size_tiles == 32));
+            items.push_back(Action(
+                Item::k3DDirtyRebuildProbe,
+                1,
+                workspace.chunk_mesh_cache.IsValid() && workspace.mesh_mode != ChunkMeshBuildMode::kTerrainSurface));
+        }
         return items;
     }
 
-    items.push_back(Group(Item::k2DNavigationGroup, 0));
-    items.push_back(Action(Item::k2DFitView, 1, false));
-    items.push_back(Action(Item::k2DResetView, 1, false));
-    items.push_back(Action(Item::k2DZoomIn, 1, false));
-    items.push_back(Action(Item::k2DZoomOut, 1, false));
+    if (AddGroup(Item::k2DNavigationGroup)) {
+        items.push_back(Action(Item::k2DResetView, 1, false));
+        items.push_back(Action(Item::k2DZoomIn, 1, false));
+        items.push_back(Action(Item::k2DZoomOut, 1, false));
+    }
 
-    items.push_back(Group(Item::k2DBaseLayerGroup, 0));
-    items.push_back(Checkbox(Item::kLayerTerrain, 1, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer));
-    items.push_back(Checkbox(Item::kLayerElevation, 1, workspace.runtime_map.info.elevation_loaded, workspace.show_elevation_layer));
-    items.push_back(Checkbox(Item::kLayerCollision, 1, workspace.runtime_map.info.collision_loaded, workspace.show_collision_layer));
+    if (AddGroup(Item::k2DBaseLayerGroup)) {
+        items.push_back(Checkbox(Item::kLayerTerrain, 1, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer));
+        items.push_back(Checkbox(Item::kLayerElevation, 1, workspace.runtime_map.info.elevation_loaded, workspace.show_elevation_layer));
+        items.push_back(Checkbox(Item::kLayerCollision, 1, workspace.runtime_map.info.collision_loaded, workspace.show_collision_layer));
+    }
 
-    items.push_back(Group(Item::k2DOverlayGroup, 0));
-    items.push_back(Checkbox(Item::kLayerGrid, 1, true, workspace.show_grid_layer));
-    items.push_back(Checkbox(Item::k2DChunks, 1, false, false));
-    items.push_back(Checkbox(Item::k2DStartGoal, 1, false, false));
-    items.push_back(Checkbox(Item::k2DObjects, 1, false, false));
-    items.push_back(Checkbox(Item::k2DPlaces, 1, false, false));
-    items.push_back(Checkbox(Item::k2DMarkers, 1, false, false));
-    items.push_back(Checkbox(Item::k2DRoutes, 1, false, false));
+    if (AddGroup(Item::k2DOverlayGroup)) {
+        items.push_back(Checkbox(Item::kLayerGrid, 1, true, workspace.show_grid_layer));
+        items.push_back(Checkbox(Item::k2DChunks, 1, false, false));
+        items.push_back(Checkbox(Item::k2DStartGoal, 1, false, false));
+        items.push_back(Checkbox(Item::k2DObjects, 1, false, false));
+        items.push_back(Checkbox(Item::k2DPlaces, 1, false, false));
+        items.push_back(Checkbox(Item::k2DMarkers, 1, false, false));
+        items.push_back(Checkbox(Item::k2DRoutes, 1, false, false));
+    }
     return items;
 }
 

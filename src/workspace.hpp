@@ -142,6 +142,7 @@ enum class WorkspacePanelItem {
     k3DColorGeographic,
     k3DColorChunkId,
     k3DColorFaceType,
+    k3DDebugOverlaysGroup,
     k3DVisibilityGroup,
     k3DVisibilityAllChunks,
     k3DVisibilityRadiusFade,
@@ -338,6 +339,7 @@ struct WorkspaceState {
     WorkspacePanelTab selected_panel_tab = WorkspacePanelTab::kMenu;
     WorkspaceTool selected_tool = WorkspaceTool::kMode;
     bool selected_tool_expanded = true;
+    std::vector<WorkspacePanelItem> collapsed_panel_groups;
     bool show_terrain_layer = true;
     bool show_elevation_layer = false;
     bool show_collision_layer = false;
@@ -467,6 +469,40 @@ struct WorkspaceState {
  * @return String representation.
  */
 [[nodiscard]] std::string_view ToString(WorkspacePanelItem item);
+
+/**
+ * @brief Checks whether a workspace panel row is a collapsible top-level group.
+ *
+ * Only top-level menu groups can be collapsed by the user. Nested group rows are
+ * visual separators and are intentionally not interactive.
+ *
+ * @param item Workspace panel item identifier.
+ * @return True when the item is a collapsible top-level group.
+ */
+[[nodiscard]] bool IsCollapsibleWorkspacePanelGroup(WorkspacePanelItem item);
+
+/**
+ * @brief Checks whether a collapsible workspace panel group is currently closed.
+ *
+ * Unknown or non-collapsible items are treated as expanded. The state is
+ * runtime-only and is not persisted in user configuration.
+ *
+ * @param workspace Workspace runtime state.
+ * @param item Workspace panel group identifier.
+ * @return True when the group is collapsed.
+ */
+[[nodiscard]] bool IsWorkspacePanelGroupCollapsed(const WorkspaceState& workspace, WorkspacePanelItem item);
+
+/**
+ * @brief Toggles a collapsible workspace panel group in runtime state.
+ *
+ * Non-collapsible items are ignored. Collapsed state is stored only for the
+ * current application run.
+ *
+ * @param workspace Workspace runtime state to mutate. Must not be nullptr.
+ * @param item Workspace panel group identifier.
+ */
+void ToggleWorkspacePanelGroup(WorkspaceState* workspace, WorkspacePanelItem item);
 
 /**
  * @brief Builds the visible tree rows for the currently selected workspace section.

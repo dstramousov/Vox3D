@@ -848,7 +848,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         case WorkspacePanelItem::k2DElevationTransitions:
             return "Elevation Transitions";
         case WorkspacePanelItem::k3DCameraGroup:
-            return "Camera";
+            return "View";
         case WorkspacePanelItem::kViewFitMap:
             return labels.workspace_subitem_fit_view;
         case WorkspacePanelItem::kViewResetView:
@@ -858,11 +858,11 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         case WorkspacePanelItem::k3DReleaseMouse:
             return "Release Mouse";
         case WorkspacePanelItem::k3DRenderGroup:
-            return labels.workspace_tool_render;
+            return "Display";
         case WorkspacePanelItem::kRenderTerrainMesh:
             return "Terrain Mesh";
         case WorkspacePanelItem::k3DColorModeGroup:
-            return "Color Mode";
+            return "Color";
         case WorkspacePanelItem::k3DColorMaterial:
             return "Material";
         case WorkspacePanelItem::k3DColorGeographic:
@@ -871,6 +871,8 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Chunk Id";
         case WorkspacePanelItem::k3DColorFaceType:
             return "Face Type";
+        case WorkspacePanelItem::k3DDebugOverlaysGroup:
+            return "Debug Overlays";
         case WorkspacePanelItem::k3DVisibilityGroup:
             return "Visibility";
         case WorkspacePanelItem::k3DVisibilityAllChunks:
@@ -892,7 +894,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         case WorkspacePanelItem::k3DShowHiddenBounds:
             return "Hidden Bounds";
         case WorkspacePanelItem::k3DTerrainPassGroup:
-            return "Terrain Passes";
+            return "Terrain";
         case WorkspacePanelItem::k3DTerrainPassTops:
             return "Tops";
         case WorkspacePanelItem::k3DTerrainPassWalls:
@@ -912,19 +914,19 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         case WorkspacePanelItem::k3DTransitionDrops:
             return "Drops";
         case WorkspacePanelItem::k3DMovementGroup:
-            return "Movement Debug";
+            return "Probes";
         case WorkspacePanelItem::k3DShowMovementProbe:
-            return "Show Movement Probe";
+            return "Movement Probe";
         case WorkspacePanelItem::k3DPathGroup:
-            return "Path Probe";
+            return "Path";
         case WorkspacePanelItem::k3DPathProfileShortest:
-            return "Profile: Shortest";
+            return "Shortest";
         case WorkspacePanelItem::k3DPathProfileSafe:
-            return "Profile: Safe";
+            return "Safe";
         case WorkspacePanelItem::k3DPathToolSelect:
-            return "Cancel Path Pick";
+            return "Cancel Pick";
         case WorkspacePanelItem::k3DPathToolPickStart:
-            return "Start Path Pick";
+            return "Pick Start";
         case WorkspacePanelItem::k3DPathToolPickGoal:
             return "Pick Goal";
         case WorkspacePanelItem::k3DRunPathProbe:
@@ -938,21 +940,21 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         case WorkspacePanelItem::k3DValidationGroup:
             return "Validation";
         case WorkspacePanelItem::k3DValidationModeOff:
-            return "Mode: Off";
+            return "Off";
         case WorkspacePanelItem::k3DValidationModeManual:
-            return "Mode: Manual";
+            return "Manual";
         case WorkspacePanelItem::k3DValidationModeOnLoad:
-            return "Mode: On Load";
+            return "On Load";
         case WorkspacePanelItem::k3DRunPassabilityValidation:
             return "Run Validation";
         case WorkspacePanelItem::k3DClearPassabilityValidation:
-            return "Clear Report";
+            return "Clear Validation";
         case WorkspacePanelItem::k3DShowPassabilityIssues:
-            return "Show Passability Issues";
+            return "Show Issues";
         case WorkspacePanelItem::k3DValidationInvalidTransitions:
             return "Invalid Transitions";
         case WorkspacePanelItem::k3DValidationBlockedTransitions:
-            return "Blocked Ramps/Stairs";
+            return "Blocked Transitions";
         case WorkspacePanelItem::k3DValidationSuspiciousDrops:
             return "Suspicious Drops";
         case WorkspacePanelItem::k3DValidationIsolatedTiles:
@@ -970,15 +972,15 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         case WorkspacePanelItem::k3DChunkSizeGroup:
             return "Chunk Size";
         case WorkspacePanelItem::k3DChunkSize16:
-            return "16x16";
+            return "16";
         case WorkspacePanelItem::k3DChunkSize32:
-            return "32x32";
+            return "32";
         case WorkspacePanelItem::k3DChunkSizeProfit:
             return "Chunk Profit";
         case WorkspacePanelItem::k3DMeshSimple:
-            return "Simple Faces";
+            return "Simple";
         case WorkspacePanelItem::k3DMeshGreedy:
-            return "Greedy Faces";
+            return "Greedy";
         case WorkspacePanelItem::k3DMeshTerrainSurface:
             return "Terrain Surface";
         case WorkspacePanelItem::k3DDrawModels:
@@ -1081,27 +1083,24 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     return labels.debug_none;
 }
 
-[[nodiscard]] std::string WorkspacePanelItemText(WorkspacePanelItemState item, const UiLabels& labels)
+[[nodiscard]] std::string WorkspacePanelItemMarker(WorkspacePanelItemState item)
 {
-    std::string prefix;
     switch (item.kind) {
         case WorkspacePanelItemKind::kGroup:
-            prefix = item.depth <= 1 ? "- " : "  ";
-            break;
+            if (item.depth == 0 && IsCollapsibleWorkspacePanelGroup(item.item)) {
+                return item.checked ? "[-]" : "[+]";
+            }
+            return "-";
         case WorkspacePanelItemKind::kAction:
-            prefix = item.enabled ? "  " : "[-] ";
-            break;
+            return item.enabled ? "" : "[-]";
         case WorkspacePanelItemKind::kCheckbox:
-            prefix = item.enabled ? (item.checked ? "[x] " : "[ ] ") : "[-] ";
-            break;
+            return item.enabled ? (item.checked ? "[x]" : "[ ]") : "[-]";
         case WorkspacePanelItemKind::kRadio:
-            prefix = item.enabled ? (item.checked ? "(x) " : "( ) ") : "(-) ";
-            break;
+            return item.enabled ? (item.checked ? "(x)" : "( )") : "(-)";
         case WorkspacePanelItemKind::kValue:
-            prefix = item.enabled ? "= " : "- ";
-            break;
+            return item.enabled ? "=" : "-";
     }
-    return prefix + WorkspacePanelItemLabel(item.item, labels);
+    return "";
 }
 
 [[nodiscard]] std::string FormatMemory(std::uint64_t bytes, const UiLabels& labels)
@@ -1380,7 +1379,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     const float row_bottom = layout.tool_panel.y + layout.tool_panel.height - padding;
     const float tab_height = metrics.workspace_tool_font_size + gap * 1.45F;
     const float item_height = metrics.workspace_tool_font_size + gap * 1.05F;
-    const float subitem_indent = gap * 2.4F;
+    const float subitem_indent = gap * 3.0F;
 
     layout.tool_header = Rectangle{
         tool_x,
@@ -1436,9 +1435,9 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         const WorkspacePanelItemState& item = selected_items[static_cast<std::size_t>(row)];
         const float indent = subitem_indent * static_cast<float>(std::max(0, item.depth));
         const Rectangle item_bounds{
-            tool_x + indent,
+            tool_x,
             row_y,
-            std::max(1.0F, tool_width - indent),
+            tool_width,
             item_height,
         };
         layout.panel_items.push_back(WorkspacePanelItemBounds{
@@ -1446,7 +1445,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
             item.kind,
             item.depth,
             item_bounds,
-            Vector2{item_bounds.x + gap, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
+            Vector2{item_bounds.x + gap + indent, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
             item.enabled,
             item.checked,
         });
@@ -1707,6 +1706,12 @@ void DrawWorkspace(
     }
 
     if (workspace_state.selected_panel_tab == WorkspacePanelTab::kMenu) {
+        const float marker_column_width = Measure(
+            fonts.text,
+            "[x] ",
+            metrics.workspace_tool_font_size,
+            spacing)
+            .x;
         for (const auto& item_bounds : workspace.panel_items) {
             const WorkspacePanelItemState item{
                 item_bounds.item,
@@ -1715,15 +1720,23 @@ void DrawWorkspace(
                 item_bounds.enabled,
                 item_bounds.checked,
             };
-            const std::string text = WorkspacePanelItemText(item, labels);
+            const std::string marker = WorkspacePanelItemMarker(item);
+            const std::string label = WorkspacePanelItemLabel(item.item, labels);
             const bool is_group = item_bounds.kind == WorkspacePanelItemKind::kGroup;
             const Color color = is_group
                 ? kEditorViewportText
                 : (!item_bounds.enabled ? Color{74, 138, 154, 255} : (item_bounds.checked ? kAccent : kEditorPanelText));
             DrawTextEx(
                 fonts.text,
-                text.c_str(),
+                marker.c_str(),
                 item_bounds.text_position,
+                metrics.workspace_tool_font_size,
+                spacing,
+                color);
+            DrawTextEx(
+                fonts.text,
+                label.c_str(),
+                Vector2{item_bounds.text_position.x + marker_column_width, item_bounds.text_position.y},
                 metrics.workspace_tool_font_size,
                 spacing,
                 color);

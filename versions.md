@@ -305,3 +305,9 @@
 - Replaced the fragile separate `1`/`2` endpoint workflow with a modal two-click path picking mode started by `P`.
 - Made the first path-pick left click set Start, the second left click set Goal, and the path probe run automatically after Goal is selected.
 - Disabled 3D camera mouse capture while path picking is active, with RMB/Escape cancelling the pick mode, so endpoint selection no longer conflicts with camera capture/release.
+
+## v0.5.10 -> v0.5.11
+
+- Reworked the right-side workspace Menu into semantic collapsible sections.
+- Kept the View section focused on Reset View by dropping the redundant 3D Fit Map menu action.
+- Added stable marker/label columns for aligned ASCII checkbox, radio, action, and group rows.
