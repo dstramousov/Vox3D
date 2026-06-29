@@ -267,6 +267,20 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_movement";
         case WorkspacePanelItem::k3DShowMovementProbe:
             return "3d_show_movement_probe";
+        case WorkspacePanelItem::k3DPathGroup:
+            return "3d_path";
+        case WorkspacePanelItem::k3DPathProfileShortest:
+            return "3d_path_profile_shortest";
+        case WorkspacePanelItem::k3DPathProfileSafe:
+            return "3d_path_profile_safe";
+        case WorkspacePanelItem::k3DRunPathProbe:
+            return "3d_run_path_probe";
+        case WorkspacePanelItem::k3DClearPathProbe:
+            return "3d_clear_path_probe";
+        case WorkspacePanelItem::k3DShowPath:
+            return "3d_show_path";
+        case WorkspacePanelItem::k3DShowPathVisited:
+            return "3d_show_path_visited";
         case WorkspacePanelItem::k3DValidationGroup:
             return "3d_validation";
         case WorkspacePanelItem::k3DValidationModeOff:
@@ -465,6 +479,17 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         const bool movement_probe_enabled = workspace.selected_tile.IsValid() && workspace.movement_probe.IsValid();
         items.push_back(Group(Item::k3DMovementGroup, 0));
         items.push_back(Checkbox(Item::k3DShowMovementProbe, 1, movement_probe_enabled, workspace.show_movement_probe));
+
+        const bool path_can_run = workspace.runtime_map.IsValid() && workspace.transition_features.IsValid()
+            && workspace.has_path_start && workspace.has_path_goal;
+        const bool path_available = workspace.path_probe.IsValid();
+        items.push_back(Group(Item::k3DPathGroup, 0));
+        items.push_back(Radio(Item::k3DPathProfileShortest, 1, true, workspace.path_profile == PathProfile::kShortest));
+        items.push_back(Radio(Item::k3DPathProfileSafe, 1, true, workspace.path_profile == PathProfile::kSafe));
+        items.push_back(Action(Item::k3DRunPathProbe, 1, path_can_run));
+        items.push_back(Action(Item::k3DClearPathProbe, 1, path_available || workspace.has_path_start || workspace.has_path_goal));
+        items.push_back(Checkbox(Item::k3DShowPath, 1, path_available, workspace.show_path_overlay));
+        items.push_back(Checkbox(Item::k3DShowPathVisited, 1, path_available, workspace.show_path_visited));
 
         const bool validation_report_available = workspace.passability_validation.IsValid();
         const bool validation_enabled = validation_report_available && !workspace.passability_validation.issues.empty();

@@ -8,6 +8,7 @@
 #include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/face_visibility.hpp"
 #include "vox3d/mesh/terrain_mesh_builder.hpp"
+#include "vox3d/path/path_probe.hpp"
 #include "vox3d/transition/transition_feature.hpp"
 #include "vox3d/validation/passability_validator.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
@@ -710,10 +711,14 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_V)) {
             TogglePassabilityValidationOverlay("hotkey");
         }
+        if (IsKeyPressed(KEY_P)) {
+            RunPathProbeFromSelection("hotkey");
+        }
         const Vector2 pick_mouse = GetMousePosition();
         if (!preview_camera_.IsCursorCaptured() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
             && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
-            SelectTileAtMouse(pick_mouse, "mouse");
+            const bool set_goal = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+            SetPathEndpointAtMouse(pick_mouse, set_goal, set_goal ? "shift_mouse" : "mouse");
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
@@ -1448,6 +1453,82 @@ void App::ToggleMovementProbeOverlay(std::string_view reason)
         + " reason=" + std::string(reason));
 }
 
+void App::SetPathProfile(PathProfile profile, std::string_view reason)
+{
+    if (workspace_.path_profile == profile) {
+        logger_.Debug("path", "profile unchanged profile=" + std::string(ToString(profile)));
+        return;
+    }
+
+    workspace_.path_profile = profile;
+    if (workspace_.path_probe.IsValid()) {
+        workspace_.path_probe = PathProbeResult{};
+    }
+    layout_dirty_ = true;
+    logger_.Info("path", "profile=" + std::string(ToString(profile)) + " reason=" + std::string(reason));
+}
+
+void App::RunPathProbeFromSelection(std::string_view reason)
+{
+    if (!workspace_.runtime_map.IsValid() || !workspace_.transition_features.IsValid()) {
+        logger_.Warn("path", "path probe ignored because runtime map or transition features are unavailable");
+        return;
+    }
+    if (!workspace_.has_path_start || !workspace_.has_path_goal) {
+        logger_.Debug("path", "path probe ignored because start or goal is missing");
+        return;
+    }
+
+    workspace_.path_probe = RunPathProbe(
+        workspace_.runtime_map,
+        workspace_.transition_features,
+        workspace_.path_start,
+        workspace_.path_goal,
+        PathProbeOptions{workspace_.path_profile});
+    layout_dirty_ = true;
+
+    logger_.Info("path", "reason=" + std::string(reason) + " " + ToLogString(workspace_.path_probe));
+    for (const auto& warning : workspace_.path_probe.diagnostics.warnings) {
+        logger_.Warn("path", warning);
+    }
+}
+
+void App::ClearPathProbe(std::string_view reason)
+{
+    workspace_.has_path_start = false;
+    workspace_.has_path_goal = false;
+    workspace_.path_start = TileCoord{};
+    workspace_.path_goal = TileCoord{};
+    workspace_.path_probe = PathProbeResult{};
+    layout_dirty_ = true;
+    logger_.Info("path", "clear reason=" + std::string(reason));
+}
+
+void App::SetPathEndpointAtMouse(Vector2 mouse, bool set_goal, std::string_view reason)
+{
+    SelectTileAtMouse(mouse, reason);
+    if (!workspace_.selected_tile.IsValid()) {
+        return;
+    }
+
+    if (set_goal) {
+        workspace_.path_goal = workspace_.selected_tile.tile;
+        workspace_.has_path_goal = true;
+    } else {
+        workspace_.path_start = workspace_.selected_tile.tile;
+        workspace_.has_path_start = true;
+    }
+    workspace_.path_probe = PathProbeResult{};
+    layout_dirty_ = true;
+
+    logger_.Info(
+        "path",
+        std::string(set_goal ? "goal=" : "start=")
+            + std::to_string(workspace_.selected_tile.tile.x) + ","
+            + std::to_string(workspace_.selected_tile.tile.y)
+            + " reason=" + std::string(reason));
+}
+
 void App::SetValidationMode(WorkspaceValidationMode mode, std::string_view reason)
 {
     if (workspace_.validation_mode == mode) {
@@ -1779,6 +1860,28 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DShowMovementProbe:
             ToggleMovementProbeOverlay("panel");
+            break;
+        case WorkspacePanelItem::k3DPathProfileShortest:
+            SetPathProfile(PathProfile::kShortest, "panel");
+            break;
+        case WorkspacePanelItem::k3DPathProfileSafe:
+            SetPathProfile(PathProfile::kSafe, "panel");
+            break;
+        case WorkspacePanelItem::k3DRunPathProbe:
+            RunPathProbeFromSelection("panel");
+            break;
+        case WorkspacePanelItem::k3DClearPathProbe:
+            ClearPathProbe("panel");
+            break;
+        case WorkspacePanelItem::k3DShowPath:
+            workspace_.show_path_overlay = !workspace_.show_path_overlay;
+            layout_dirty_ = true;
+            logger_.Info("path", std::string("overlay=") + (workspace_.show_path_overlay ? "on" : "off"));
+            break;
+        case WorkspacePanelItem::k3DShowPathVisited:
+            workspace_.show_path_visited = !workspace_.show_path_visited;
+            layout_dirty_ = true;
+            logger_.Info("path", std::string("visited_overlay=") + (workspace_.show_path_visited ? "on" : "off"));
             break;
         case WorkspacePanelItem::k3DValidationModeOff:
             SetValidationMode(WorkspaceValidationMode::kOff, "panel");

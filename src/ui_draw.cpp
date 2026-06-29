@@ -221,6 +221,32 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "unknown";
 }
 
+[[nodiscard]] std::string PathProfileLabel(PathProfile profile)
+{
+    switch (profile) {
+        case PathProfile::kShortest:
+            return "shortest";
+        case PathProfile::kSafe:
+            return "safe";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string PathStatusLabel(PathProbeStatus status)
+{
+    switch (status) {
+        case PathProbeStatus::kNotRun:
+            return "not run";
+        case PathProbeStatus::kFound:
+            return "found";
+        case PathProbeStatus::kNotFound:
+            return "not found";
+        case PathProbeStatus::kInvalidRequest:
+            return "invalid";
+    }
+    return "unknown";
+}
+
 [[nodiscard]] std::string MillisecondsText(double value)
 {
     std::ostringstream out;
@@ -238,6 +264,21 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 [[nodiscard]] std::string MapLevelsText(const MapPackageInfo& map, const UiLabels& labels);
 [[nodiscard]] std::string MapTileText(const MapPackageInfo& map, const UiLabels& labels);
 [[nodiscard]] std::string TileCoordText(TileCoord tile);
+
+[[nodiscard]] std::string PathStatusCompactText(const WorkspaceState& workspace_state)
+{
+    if (workspace_state.path_probe.HasPath()) {
+        return "Path " + std::to_string(workspace_state.path_probe.path.size())
+            + " / cost " + CompactFloat(static_cast<float>(workspace_state.path_probe.cost.total));
+    }
+    if (workspace_state.path_probe.IsValid()) {
+        return "Path " + PathStatusLabel(workspace_state.path_probe.status);
+    }
+    if (workspace_state.has_path_start || workspace_state.has_path_goal) {
+        return "Path endpoints";
+    }
+    return "Path none";
+}
 
 [[nodiscard]] std::string ValidationStatusCompactText(const WorkspaceState& workspace_state)
 {
@@ -263,6 +304,7 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             + std::to_string(workspace_state.visibility_stats.resident_chunks)
             + " | Drawn " + std::to_string(workspace_state.visibility_stats.drawn_models)
             + " | Faces " + std::to_string(workspace_state.visibility_stats.drawn_faces)
+            + " | " + PathStatusCompactText(workspace_state)
             + " | " + ValidationStatusCompactText(workspace_state);
     }
 
@@ -272,6 +314,7 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
         + " | Faces " + std::to_string(workspace_state.mesh_stats.active_faces)
         + " | Models " + std::to_string(workspace_state.mesh_stats.draw_models)
         + " | Saved " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio())
+        + " | " + PathStatusCompactText(workspace_state)
         + " | " + ValidationStatusCompactText(workspace_state);
 }
 
@@ -352,6 +395,39 @@ void PushMovementStats(std::vector<std::string>& lines, const WorkspaceState& wo
     lines.push_back("  Passable: " + std::to_string(probe.stats.passable));
     lines.push_back("  Blocked: " + std::to_string(probe.stats.blocked));
     lines.push_back("  Overlay: " + std::string(workspace_state.show_movement_probe ? "on" : "off"));
+    lines.push_back("");
+}
+
+void PushPathStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state)
+{
+    lines.push_back("Path Probe");
+    lines.push_back("  Profile: " + PathProfileLabel(workspace_state.path_profile));
+    lines.push_back("  Start: " + (workspace_state.has_path_start ? TileCoordText(workspace_state.path_start) : std::string("none")));
+    lines.push_back("  Goal: " + (workspace_state.has_path_goal ? TileCoordText(workspace_state.path_goal) : std::string("none")));
+    if (!workspace_state.path_probe.IsValid()) {
+        lines.push_back("  Status: not run");
+        lines.push_back("");
+        return;
+    }
+
+    const PathProbeResult& path = workspace_state.path_probe;
+    lines.push_back("  Status: " + PathStatusLabel(path.status));
+    lines.push_back("  Steps: " + std::to_string(path.path.size()));
+    lines.push_back("  Cost: " + CompactFloat(static_cast<float>(path.cost.total)));
+    lines.push_back("  Visited: " + std::to_string(path.stats.visited_nodes));
+    lines.push_back("  Expanded: " + std::to_string(path.stats.expanded_nodes));
+    lines.push_back("  Blocked edges: " + std::to_string(path.stats.blocked_edges));
+    lines.push_back("  Cost B/T/E/Tr/S: "
+        + CompactFloat(static_cast<float>(path.cost.base)) + "/"
+        + CompactFloat(static_cast<float>(path.cost.terrain)) + "/"
+        + CompactFloat(static_cast<float>(path.cost.elevation)) + "/"
+        + CompactFloat(static_cast<float>(path.cost.transition)) + "/"
+        + CompactFloat(static_cast<float>(path.cost.safety)));
+    lines.push_back("  Overlay: " + std::string(workspace_state.show_path_overlay ? "on" : "off")
+        + ", visited " + std::string(workspace_state.show_path_visited ? "on" : "off"));
+    if (path.stats.visited_storage_truncated) {
+        lines.push_back("  Visited storage: truncated");
+    }
     lines.push_back("");
 }
 
@@ -464,6 +540,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     PushVisibilityStats(lines, workspace_state);
     PushTransitionStats(lines, workspace_state);
     PushMovementStats(lines, workspace_state);
+    PushPathStats(lines, workspace_state);
     PushPassabilityStats(lines, workspace_state);
     PushMeshStats(lines, workspace_state);
     PushDirtyStats(lines, workspace_state);
@@ -594,6 +671,26 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         lines.push_back(MovementStepText(probe.steps[static_cast<std::size_t>(index)]));
     }
     lines.push_back("");
+    lines.push_back("Path");
+    lines.push_back("  Profile: " + PathProfileLabel(workspace_state.path_profile));
+    lines.push_back("  Start: " + (workspace_state.has_path_start ? TileCoordText(workspace_state.path_start) : std::string("none")));
+    lines.push_back("  Goal: " + (workspace_state.has_path_goal ? TileCoordText(workspace_state.path_goal) : std::string("none")));
+    if (workspace_state.path_probe.IsValid()) {
+        lines.push_back("  Status: " + PathStatusLabel(workspace_state.path_probe.status));
+        const int step_index = FindPathStepIndex(workspace_state.path_probe, tile.tile);
+        if (step_index >= 0) {
+            const PathStep& step = workspace_state.path_probe.path[static_cast<std::size_t>(step_index)];
+            lines.push_back("  On path: yes " + std::to_string(step_index) + "/"
+                + std::to_string(workspace_state.path_probe.path.size()));
+            lines.push_back("  Step cost: " + CompactFloat(static_cast<float>(step.step_cost)));
+            lines.push_back("  Acc cost: " + CompactFloat(static_cast<float>(step.accumulated_cost)));
+        } else {
+            lines.push_back("  On path: no");
+        }
+    } else {
+        lines.push_back("  Status: not run");
+    }
+    lines.push_back("");
     lines.push_back("Validation");
     lines.push_back("  Mode: " + ValidationModeLabel(workspace_state.validation_mode));
     lines.push_back("  Status: " + ValidationStatusLabel(workspace_state.passability_validation_status));
@@ -625,6 +722,9 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  T    Toggle transitions",
         "  M    Toggle movement probe",
         "  V    Toggle passability issues",
+        "  P    Run path probe",
+        "  LMB  Pick path start",
+        "  Shift+LMB Pick path goal",
         "  Menu Validation -> Run Validation",
         "  LMB  Pick tile",
         "  F    Fit view",
@@ -813,6 +913,20 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Movement Debug";
         case WorkspacePanelItem::k3DShowMovementProbe:
             return "Show Movement Probe";
+        case WorkspacePanelItem::k3DPathGroup:
+            return "Path Probe";
+        case WorkspacePanelItem::k3DPathProfileShortest:
+            return "Profile: Shortest";
+        case WorkspacePanelItem::k3DPathProfileSafe:
+            return "Profile: Safe";
+        case WorkspacePanelItem::k3DRunPathProbe:
+            return "Run Path";
+        case WorkspacePanelItem::k3DClearPathProbe:
+            return "Clear Path";
+        case WorkspacePanelItem::k3DShowPath:
+            return "Show Path";
+        case WorkspacePanelItem::k3DShowPathVisited:
+            return "Show Visited";
         case WorkspacePanelItem::k3DValidationGroup:
             return "Validation";
         case WorkspacePanelItem::k3DValidationModeOff:
@@ -1714,6 +1828,11 @@ void DrawWorkspace(
             workspace_state.movement_probe.IsValid() ? &workspace_state.movement_probe : nullptr,
             RaylibMovementProbeOverlayOptions{
                 workspace_state.show_movement_probe,
+            },
+            workspace_state.path_probe.IsValid() ? &workspace_state.path_probe : nullptr,
+            RaylibPathProbeOverlayOptions{
+                workspace_state.show_path_overlay,
+                workspace_state.show_path_visited,
             },
             workspace_state.passability_validation.IsValid() ? &workspace_state.passability_validation : nullptr,
             RaylibPassabilityValidationOverlayOptions{

@@ -1080,6 +1080,83 @@ void DrawMovementProbeOverlay(
     return Color{255, 255, 255, 220};
 }
 
+
+void DrawPathProbeOverlay(
+    const RuntimeMap& map,
+    const ChunkMeshBuildResult& build_result,
+    const PathProbeResult& path,
+    RaylibPathProbeOverlayOptions options)
+{
+    if (!path.IsValid()) {
+        return;
+    }
+
+    constexpr float kRouteOffset = 2.05F;
+    constexpr float kVisitedOffset = 1.82F;
+    constexpr float kRouteSize = 0.09F;
+    constexpr Color kStartColor{76, 235, 116, 245};
+    constexpr Color kGoalColor{86, 170, 255, 245};
+    constexpr Color kRouteColor{255, 222, 72, 245};
+    constexpr Color kVisitedColor{90, 210, 245, 100};
+    constexpr Color kMissingColor{245, 82, 72, 235};
+
+    if (options.show_visited) {
+        for (TileCoord tile : path.visited_tiles) {
+            if (!map.height.Contains(tile)) {
+                continue;
+            }
+            const Vector3 marker = TileCenterWorld(
+                tile.x,
+                tile.y,
+                TerrainTopLevel(map, tile) + kVisitedOffset,
+                build_result.info.map_width,
+                build_result.info.map_height);
+            DrawSphere(marker, 0.035F, kVisitedColor);
+        }
+    }
+
+    if (options.show_path && path.HasPath()) {
+        Vector3 previous{};
+        bool has_previous = false;
+        for (const PathStep& step : path.path) {
+            if (!map.height.Contains(step.tile)) {
+                continue;
+            }
+            const Vector3 current = TileCenterWorld(
+                step.tile.x,
+                step.tile.y,
+                TerrainTopLevel(map, step.tile) + kRouteOffset,
+                build_result.info.map_width,
+                build_result.info.map_height);
+            if (has_previous) {
+                DrawLine3D(previous, current, kRouteColor);
+            }
+            DrawSphere(current, kRouteSize, kRouteColor);
+            previous = current;
+            has_previous = true;
+        }
+    }
+
+    if (map.height.Contains(path.start)) {
+        const Vector3 start = TileCenterWorld(
+            path.start.x,
+            path.start.y,
+            TerrainTopLevel(map, path.start) + kRouteOffset + 0.20F,
+            build_result.info.map_width,
+            build_result.info.map_height);
+        DrawSphere(start, 0.18F, kStartColor);
+    }
+    if (map.height.Contains(path.goal)) {
+        const Vector3 goal = TileCenterWorld(
+            path.goal.x,
+            path.goal.y,
+            TerrainTopLevel(map, path.goal) + kRouteOffset + 0.20F,
+            build_result.info.map_width,
+            build_result.info.map_height);
+        DrawSphere(goal, 0.18F, path.HasPath() ? kGoalColor : kMissingColor);
+    }
+}
+
 void DrawPassabilityValidationOverlay(
     const RuntimeMap& map,
     const ChunkMeshBuildResult& build_result,
@@ -1273,6 +1350,8 @@ void RaylibChunkMeshPreview::Draw(
     RaylibTileSelectionOverlayOptions selected_tile,
     const MovementProbeResult* movement_probe,
     RaylibMovementProbeOverlayOptions movement,
+    const PathProbeResult* path_probe,
+    RaylibPathProbeOverlayOptions path_overlay,
     const PassabilityValidationReport* passability,
     RaylibPassabilityValidationOverlayOptions passability_overlay) const
 {
@@ -1315,6 +1394,9 @@ void RaylibChunkMeshPreview::Draw(
         DrawSelectedTileOverlay(*runtime_map, build_result, selected_tile);
         if (movement_probe != nullptr) {
             DrawMovementProbeOverlay(*runtime_map, build_result, *movement_probe, movement);
+        }
+        if (path_probe != nullptr) {
+            DrawPathProbeOverlay(*runtime_map, build_result, *path_probe, path_overlay);
         }
         if (passability != nullptr) {
             DrawPassabilityValidationOverlay(*runtime_map, build_result, *passability, passability_overlay);

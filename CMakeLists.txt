@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VoX3D VERSION 0.5.6 LANGUAGES CXX)
+project(VoX3D VERSION 0.5.7 LANGUAGES CXX)
 
 option(VOX3D_FETCH_RAYLIB "Fetch raylib with CMake FetchContent when no system package is found" ON)
 set(VOX3D_DEPS_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "Persistent dependency cache directory")
@@ -15,6 +15,7 @@ add_library(vox3d_core STATIC
     src/vox3d/mesh/face_visibility.cpp
     src/vox3d/mesh/terrain_mesh_builder.cpp
     src/vox3d/movement/movement_probe.cpp
+    src/vox3d/path/path_probe.cpp
     src/vox3d/render/chunk_visibility.cpp
     src/vox3d/transition/transition_feature.cpp
     src/vox3d/validation/passability_validator.cpp

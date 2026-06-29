@@ -281,3 +281,9 @@
 - Fixed the unused `BoolText` helper warning in `ui_draw.cpp` so the normal `./r` build no longer reports that dead function.
 - Added right mouse button release for captured 3D camera mouse state, matching the existing Escape/F2 release behaviour without opening the exit dialog.
 - Updated Help text to document the new RMB release shortcut without changing camera capture, picking, validation, or pathfinding behaviour.
+
+## v0.5.6 -> v0.5.7
+
+- Added a renderer-independent weighted A* path probe in `vox3d_core` with Shortest and Safe cost profiles.
+- Added start/goal path endpoint selection, Run Path, Clear Path, Show Path, and Show Visited workspace controls plus the `P` hotkey.
+- Added 3D route and visited-node overlays with Stats/Inspect cost breakdowns for base, terrain, elevation, transition, and safety cost components.

@@ -8,6 +8,7 @@
 #include "vox3d/mesh/chunk_mesh_cache.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
 #include "vox3d/movement/movement_probe.hpp"
+#include "vox3d/path/path_probe.hpp"
 #include "vox3d/transition/transition_feature.hpp"
 #include "vox3d/validation/passability_validator.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
@@ -154,6 +155,13 @@ enum class WorkspacePanelItem {
     k3DTransitionDrops,
     k3DMovementGroup,
     k3DShowMovementProbe,
+    k3DPathGroup,
+    k3DPathProfileShortest,
+    k3DPathProfileSafe,
+    k3DRunPathProbe,
+    k3DClearPathProbe,
+    k3DShowPath,
+    k3DShowPathVisited,
     k3DValidationGroup,
     k3DValidationModeOff,
     k3DValidationModeManual,
@@ -342,6 +350,14 @@ struct WorkspaceState {
     bool show_transition_bridges = true;
     bool show_transition_drops = true;
     bool show_movement_probe = true;
+    PathProfile path_profile = PathProfile::kShortest;
+    bool has_path_start = false;
+    bool has_path_goal = false;
+    TileCoord path_start;
+    TileCoord path_goal;
+    bool show_path_overlay = true;
+    bool show_path_visited = false;
+    PathProbeResult path_probe;
     WorkspaceValidationMode validation_mode = WorkspaceValidationMode::kManual;
     WorkspaceValidationStatus passability_validation_status = WorkspaceValidationStatus::kNotRun;
     double passability_validation_last_run_ms = 0.0;

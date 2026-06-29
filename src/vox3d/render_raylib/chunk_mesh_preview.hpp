@@ -4,6 +4,7 @@
 #include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
 #include "vox3d/movement/movement_probe.hpp"
+#include "vox3d/path/path_probe.hpp"
 #include "vox3d/render/chunk_visibility.hpp"
 #include "vox3d/transition/transition_feature.hpp"
 #include "vox3d/validation/passability_validator.hpp"
@@ -108,6 +109,14 @@ struct RaylibTileSelectionOverlayOptions {
  */
 struct RaylibMovementProbeOverlayOptions {
     bool show = false;
+};
+
+/**
+ * @brief Path probe overlay visibility flags used by the 3D preview.
+ */
+struct RaylibPathProbeOverlayOptions {
+    bool show_path = true;
+    bool show_visited = false;
 };
 
 /**
@@ -242,6 +251,8 @@ public:
      * @param selected_tile Selected tile overlay visibility options.
      * @param movement_probe Optional movement probe drawn as pass/block markers.
      * @param movement Movement probe overlay visibility options.
+     * @param path_probe Optional path probe drawn as route/visited markers.
+     * @param path_overlay Path probe overlay visibility options.
      * @param passability Optional map-wide passability validation report.
      * @param passability_overlay Passability validation overlay visibility flags.
      */
@@ -259,6 +270,8 @@ public:
         RaylibTileSelectionOverlayOptions selected_tile = {},
         const MovementProbeResult* movement_probe = nullptr,
         RaylibMovementProbeOverlayOptions movement = {},
+        const PathProbeResult* path_probe = nullptr,
+        RaylibPathProbeOverlayOptions path_overlay = {},
         const PassabilityValidationReport* passability = nullptr,
         RaylibPassabilityValidationOverlayOptions passability_overlay = {}) const;
 
