@@ -339,12 +339,22 @@ struct WorkspaceState {
     WorkspacePanelTab selected_panel_tab = WorkspacePanelTab::kMenu;
     WorkspaceTool selected_tool = WorkspaceTool::kMode;
     bool selected_tool_expanded = true;
-    std::vector<WorkspacePanelItem> collapsed_panel_groups;
+    std::vector<WorkspacePanelItem> collapsed_panel_groups{
+        WorkspacePanelItem::k3DCameraGroup,
+        WorkspacePanelItem::k3DRenderGroup,
+        WorkspacePanelItem::k3DVisibilityGroup,
+        WorkspacePanelItem::k3DTerrainPassGroup,
+        WorkspacePanelItem::k3DTransitionGroup,
+        WorkspacePanelItem::k3DMovementGroup,
+        WorkspacePanelItem::k3DPathGroup,
+        WorkspacePanelItem::k3DValidationGroup,
+        WorkspacePanelItem::k3DMeshGroup,
+    };
     bool show_terrain_layer = true;
     bool show_elevation_layer = false;
     bool show_collision_layer = false;
     bool show_grid_layer = false;
-    bool show_3d_preview = false;
+    bool show_3d_preview = true;
     bool show_3d_chunk_bounds = false;
     bool show_3d_world_grid = false;
     bool show_3d_collision_overlay = false;

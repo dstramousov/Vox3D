@@ -311,3 +311,9 @@
 - Reworked the right-side workspace Menu into semantic collapsible sections.
 - Kept the View section focused on Reset View by dropping the redundant 3D Fit Map menu action.
 - Added stable marker/label columns for aligned ASCII checkbox, radio, action, and group rows.
+
+## v0.5.11 -> v0.5.12
+
+- Started the workspace directly in 3D Preview mode when a mesh is available.
+- Kept the Mode menu section expanded by default while all other 3D menu sections start collapsed.
+- Tightened the initial 3D camera fit so the map starts centered and much closer to the viewport edges.

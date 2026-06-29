@@ -126,7 +126,7 @@ constexpr float kMinimumFitDistance = 24.0F;
     const float horizontal_fov = 2.0F * std::atan(std::tan(vertical_fov * 0.5F) * aspect);
     const float limiting_fov = std::clamp(std::min(vertical_fov, horizontal_fov), 0.10F, kPi - 0.10F);
     const float fit_distance = radius / std::max(0.10F, std::sin(limiting_fov * 0.5F));
-    return std::max(kMinimumFitDistance, fit_distance * std::max(1.0F, config.fit_padding));
+    return std::max(kMinimumFitDistance, fit_distance * std::clamp(config.fit_padding, 0.50F, 2.00F));
 }
 
 [[nodiscard]] Vector3 BuildFitPosition(

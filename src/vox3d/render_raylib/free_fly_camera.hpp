@@ -19,7 +19,7 @@ struct FreeFlyCameraConfig {
     float damping = 18.0F;
     float mouse_sensitivity = 0.0030F;
     float wheel_dolly_speed = 140.0F;
-    float fit_padding = 1.10F;
+    float fit_padding = 0.70F;
     float fovy_degrees = 45.0F;
     float min_pitch_radians = -1.553343F;
     float max_pitch_radians = 1.553343F;
@@ -64,7 +64,7 @@ public:
      * @brief Frames the generated mesh map and stores that frame as the reset pose.
      *
      * The camera distance is computed from the map bounds and the actual viewport
-     * aspect ratio so the whole map starts inside the 3D canvas.
+     * aspect ratio so the map starts with a tight centered frame.
      *
      * @param build_result Mesh build result used for map dimensions and level range.
      * @param viewport Screen-space viewport used to resolve aspect ratio.
