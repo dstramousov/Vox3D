@@ -573,15 +573,21 @@ void App::HandleWorkspaceInput(float dt)
 {
     const bool release_capture_by_escape = IsKeyPressed(KEY_ESCAPE);
     const bool release_capture_by_hotkey = IsKeyPressed(KEY_F2);
+    const bool release_capture_by_right_mouse = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
     if (workspace_.show_3d_preview && preview_camera_.IsCursorCaptured()
-        && (release_capture_by_escape || release_capture_by_hotkey)) {
+        && (release_capture_by_escape || release_capture_by_hotkey || release_capture_by_right_mouse)) {
         preview_camera_.ReleaseMouse();
         if (release_capture_by_escape) {
             suppress_window_close_request_this_frame_ = true;
         }
-        logger_.Debug(
-            "camera3d",
-            std::string("mouse capture released by ") + (release_capture_by_escape ? "escape" : "f2"));
+
+        std::string release_reason = "f2";
+        if (release_capture_by_escape) {
+            release_reason = "escape";
+        } else if (release_capture_by_right_mouse) {
+            release_reason = "right_mouse";
+        }
+        logger_.Debug("camera3d", "mouse capture released by " + release_reason);
         return;
     }
 

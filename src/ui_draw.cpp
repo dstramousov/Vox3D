@@ -615,6 +615,7 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     return {
         "Hotkeys",
         "  F2   Release mouse",
+        "  RMB  Release captured mouse",
         "  F3   2D / 3D",
         "  F8   Mesh mode",
         "  F9   Chunk size",
@@ -690,11 +691,6 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         return std::to_string(*map.tile_size);
     }
     return labels.workspace_map_tile_unknown;
-}
-
-[[nodiscard]] const std::string& BoolText(bool value, const UiLabels& labels)
-{
-    return value ? labels.workspace_yes : labels.workspace_no;
 }
 
 

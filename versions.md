@@ -275,3 +275,9 @@
 - Added validation execution policy controls: Off, Manual, and On Load, with Manual as the default to keep map loading responsive.
 - Added cached passability validation report state with explicit Run Validation and Clear Report actions, status text, last-run duration, and footer/Stats/Inspect reporting.
 - Stopped running full-map passability validation unconditionally during chunk pipeline rebuilds; existing reports are reused until the user clears or reruns validation.
+
+## v0.5.5 -> v0.5.6
+
+- Fixed the unused `BoolText` helper warning in `ui_draw.cpp` so the normal `./r` build no longer reports that dead function.
+- Added right mouse button release for captured 3D camera mouse state, matching the existing Escape/F2 release behaviour without opening the exit dialog.
+- Updated Help text to document the new RMB release shortcut without changing camera capture, picking, validation, or pathfinding behaviour.
