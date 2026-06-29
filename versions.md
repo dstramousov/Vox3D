@@ -323,3 +323,8 @@
 - Replaced the right-panel button-like tab row with ASCII text tabs: `[View] [Stats] [Info]`.
 - Drew inactive tabs with plain light text and the active tab with yellow pseudo-bold text.
 - Removed Help from the visible tab cycle, keeping keyboard navigation limited to View, Stats, and Info.
+
+## v0.5.13 -> v0.5.14
+
+- Increased spacing between the right-panel ASCII tabs so `[View]`, `[Stats]`, and `[Info]` no longer visually stick together.
+- Kept the existing text-tab rendering, active yellow pseudo-bold state, and tab click behaviour unchanged.

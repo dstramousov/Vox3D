@@ -1398,7 +1398,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     };
     const float tab_spacing = Measure(
         fonts.text,
-        " ",
+        "  ",
         metrics.workspace_tool_font_size,
         FontSpacing(metrics.workspace_tool_font_size))
                                   .x;
