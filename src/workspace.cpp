@@ -378,6 +378,30 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_rebuilt_chunks";
         case WorkspacePanelItem::k3DRebuildSaved:
             return "3d_rebuild_saved";
+        case WorkspacePanelItem::kStatsMapGroup:
+            return "stats_map";
+        case WorkspacePanelItem::kStatsColorGroup:
+            return "stats_color";
+        case WorkspacePanelItem::kStatsVisibilityGroup:
+            return "stats_visibility";
+        case WorkspacePanelItem::kStatsTransitionsGroup:
+            return "stats_transitions";
+        case WorkspacePanelItem::kStatsMovementGroup:
+            return "stats_movement";
+        case WorkspacePanelItem::kStatsPathGroup:
+            return "stats_path";
+        case WorkspacePanelItem::kStatsPassabilityGroup:
+            return "stats_passability";
+        case WorkspacePanelItem::kStatsMeshGroup:
+            return "stats_mesh";
+        case WorkspacePanelItem::kStatsComparisonGroup:
+            return "stats_comparison";
+        case WorkspacePanelItem::kStatsChunkProfitGroup:
+            return "stats_chunk_profit";
+        case WorkspacePanelItem::kStatsDirtyCacheGroup:
+            return "stats_dirty_cache";
+        case WorkspacePanelItem::kStatsCameraGroup:
+            return "stats_camera";
         case WorkspacePanelItem::kSelectionTileGroup:
             return "selection_tile";
         case WorkspacePanelItem::kSelectionTileInfo:
@@ -466,6 +490,18 @@ bool IsCollapsibleWorkspacePanelGroup(WorkspacePanelItem item)
         case WorkspacePanelItem::k3DPathGroup:
         case WorkspacePanelItem::k3DValidationGroup:
         case WorkspacePanelItem::k3DMeshGroup:
+        case WorkspacePanelItem::kStatsMapGroup:
+        case WorkspacePanelItem::kStatsColorGroup:
+        case WorkspacePanelItem::kStatsVisibilityGroup:
+        case WorkspacePanelItem::kStatsTransitionsGroup:
+        case WorkspacePanelItem::kStatsMovementGroup:
+        case WorkspacePanelItem::kStatsPathGroup:
+        case WorkspacePanelItem::kStatsPassabilityGroup:
+        case WorkspacePanelItem::kStatsMeshGroup:
+        case WorkspacePanelItem::kStatsComparisonGroup:
+        case WorkspacePanelItem::kStatsChunkProfitGroup:
+        case WorkspacePanelItem::kStatsDirtyCacheGroup:
+        case WorkspacePanelItem::kStatsCameraGroup:
             return true;
         default:
             return false;

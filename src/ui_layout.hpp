@@ -7,6 +7,7 @@
 #include "ui_labels.hpp"
 #include "window_config.hpp"
 #include "workspace.hpp"
+#include "vox3d/render_raylib/free_fly_camera.hpp"
 
 #include <raylib.h>
 
@@ -213,6 +214,7 @@ struct UiLayoutCache {
  * @param config Application configuration.
  * @param labels Localized labels used for measured dialog text.
  * @param workspace Workspace state used for accordion layout.
+ * @param camera_status Latest camera diagnostics used for stats panel layout.
  * @return Cached UI layout.
  */
 [[nodiscard]] UiLayoutCache RebuildUiLayout(
@@ -221,6 +223,7 @@ struct UiLayoutCache {
     const WindowConfig& window,
     const AppConfig& config,
     const UiLabels& labels,
-    const WorkspaceState& workspace);
+    const WorkspaceState& workspace,
+    FreeFlyCameraStatus camera_status);
 
 }  // namespace vox3d

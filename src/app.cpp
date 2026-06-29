@@ -954,7 +954,14 @@ void App::Draw()
 
 void App::RebuildLayout()
 {
-    layout_cache_ = RebuildUiLayout(main_menu_.State(), UiFonts(), window_config_, config_, labels_, workspace_);
+    layout_cache_ = RebuildUiLayout(
+        main_menu_.State(),
+        UiFonts(),
+        window_config_,
+        config_,
+        labels_,
+        workspace_,
+        preview_camera_.Status());
     layout_dirty_ = false;
 }
 
@@ -1740,6 +1747,13 @@ void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
 
 void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
 {
+    if (workspace_.selected_panel_tab == WorkspacePanelTab::kStats && IsCollapsibleWorkspacePanelGroup(item)) {
+        ToggleWorkspacePanelGroup(&workspace_, item);
+        layout_dirty_ = true;
+        logger_.Debug("workspace", "stats group toggled id=" + std::string(ToString(item)));
+        return;
+    }
+
     bool activatable = false;
     for (const WorkspacePanelItemState& state : BuildWorkspacePanelItems(workspace_)) {
         if (state.item != item) {

@@ -564,9 +564,52 @@ enum class StatsPanelRowKind {
 
 struct StatsPanelRow {
     StatsPanelRowKind kind = StatsPanelRowKind::kBlank;
+    WorkspacePanelItem item = WorkspacePanelItem::kStatsMapGroup;
     int depth = 0;
     std::string label;
+    bool checked = false;
 };
+
+[[nodiscard]] WorkspacePanelItem StatsGroupItemForLabel(std::string_view label)
+{
+    if (label == "Map") {
+        return WorkspacePanelItem::kStatsMapGroup;
+    }
+    if (label == "Color") {
+        return WorkspacePanelItem::kStatsColorGroup;
+    }
+    if (label == "Visibility") {
+        return WorkspacePanelItem::kStatsVisibilityGroup;
+    }
+    if (label == "Transitions") {
+        return WorkspacePanelItem::kStatsTransitionsGroup;
+    }
+    if (label == "Movement") {
+        return WorkspacePanelItem::kStatsMovementGroup;
+    }
+    if (label == "Path Probe") {
+        return WorkspacePanelItem::kStatsPathGroup;
+    }
+    if (label == "Passability Validation") {
+        return WorkspacePanelItem::kStatsPassabilityGroup;
+    }
+    if (label == "Mesh") {
+        return WorkspacePanelItem::kStatsMeshGroup;
+    }
+    if (label == "Comparison") {
+        return WorkspacePanelItem::kStatsComparisonGroup;
+    }
+    if (label == "Chunk Profit") {
+        return WorkspacePanelItem::kStatsChunkProfitGroup;
+    }
+    if (label == "Dirty Cache") {
+        return WorkspacePanelItem::kStatsDirtyCacheGroup;
+    }
+    if (label == "Camera") {
+        return WorkspacePanelItem::kStatsCameraGroup;
+    }
+    return WorkspacePanelItem::kStatsMapGroup;
+}
 
 [[nodiscard]] std::string TrimStatsIndent(std::string_view line)
 {
@@ -586,17 +629,41 @@ struct StatsPanelRow {
     std::vector<StatsPanelRow> rows;
     rows.reserve(lines.size());
 
+    WorkspacePanelItem current_group = WorkspacePanelItem::kStatsMapGroup;
+    bool current_group_expanded = true;
+
     for (const std::string& line : lines) {
         if (line.empty()) {
-            rows.push_back(StatsPanelRow{StatsPanelRowKind::kBlank, 0, {}});
+            if (current_group_expanded) {
+                rows.push_back(StatsPanelRow{StatsPanelRowKind::kBlank, current_group, 0, {}, false});
+            }
             continue;
         }
 
         const bool value_row = line.size() >= 2 && line[0] == ' ' && line[1] == ' ';
+        if (!value_row) {
+            current_group = StatsGroupItemForLabel(line);
+            current_group_expanded = !IsWorkspacePanelGroupCollapsed(workspace_state, current_group);
+            rows.push_back(StatsPanelRow{
+                StatsPanelRowKind::kGroup,
+                current_group,
+                0,
+                line,
+                current_group_expanded,
+            });
+            continue;
+        }
+
+        if (!current_group_expanded) {
+            continue;
+        }
+
         rows.push_back(StatsPanelRow{
-            value_row ? StatsPanelRowKind::kValue : StatsPanelRowKind::kGroup,
-            value_row ? 1 : 0,
-            value_row ? TrimStatsIndent(line) : line,
+            StatsPanelRowKind::kValue,
+            current_group,
+            1,
+            TrimStatsIndent(line),
+            false,
         });
     }
 
@@ -1059,6 +1126,30 @@ struct StatsPanelRow {
             return "Rebuilt Chunks";
         case WorkspacePanelItem::k3DRebuildSaved:
             return "Rebuild Saved";
+        case WorkspacePanelItem::kStatsMapGroup:
+            return "Map";
+        case WorkspacePanelItem::kStatsColorGroup:
+            return "Color";
+        case WorkspacePanelItem::kStatsVisibilityGroup:
+            return "Visibility";
+        case WorkspacePanelItem::kStatsTransitionsGroup:
+            return "Transitions";
+        case WorkspacePanelItem::kStatsMovementGroup:
+            return "Movement";
+        case WorkspacePanelItem::kStatsPathGroup:
+            return "Path Probe";
+        case WorkspacePanelItem::kStatsPassabilityGroup:
+            return "Passability Validation";
+        case WorkspacePanelItem::kStatsMeshGroup:
+            return "Mesh";
+        case WorkspacePanelItem::kStatsComparisonGroup:
+            return "Comparison";
+        case WorkspacePanelItem::kStatsChunkProfitGroup:
+            return "Chunk Profit";
+        case WorkspacePanelItem::kStatsDirtyCacheGroup:
+            return "Dirty Cache";
+        case WorkspacePanelItem::kStatsCameraGroup:
+            return "Camera";
         case WorkspacePanelItem::kSelectionTileGroup:
             return "Selected Tile";
         case WorkspacePanelItem::kSelectionTileInfo:
@@ -1386,7 +1477,9 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 [[nodiscard]] WorkspaceLayout BuildWorkspaceLayout(
     const UiFontSet& fonts,
     const UiMetrics& metrics,
-    const WorkspaceState& workspace_state)
+    const WorkspaceState& workspace_state,
+    FreeFlyCameraStatus camera_status,
+    const UiLabels& labels)
 {
     WorkspaceLayout layout;
     layout.panel_tabs.reserve(3);
@@ -1481,8 +1574,14 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     };
     layout.tool_info = layout.tool_menu;
 
-    const auto selected_items = BuildWorkspacePanelItems(workspace_state);
-    layout.panel_total_rows = static_cast<int>(selected_items.size());
+    const std::vector<WorkspacePanelItemState> selected_items = BuildWorkspacePanelItems(workspace_state);
+    const std::vector<StatsPanelRow> stats_rows = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
+        ? BuildStatsPanelRows(workspace_state, camera_status, labels)
+        : std::vector<StatsPanelRow>{};
+
+    layout.panel_total_rows = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
+        ? static_cast<int>(stats_rows.size())
+        : static_cast<int>(selected_items.size());
     layout.panel_visible_rows = static_cast<int>(std::max(0.0F, std::floor((row_bottom - content_y) / item_height)));
     const int max_scroll_rows = std::max(0, layout.panel_total_rows - layout.panel_visible_rows);
     layout.panel_first_visible_row = std::clamp(workspace_state.menu_scroll_rows, 0, max_scroll_rows);
@@ -1491,28 +1590,58 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 
     float row_y = content_y;
     layout.panel_items.reserve(static_cast<std::size_t>(std::max(0, layout.panel_visible_rows)));
-    for (int row = layout.panel_first_visible_row; row < layout.panel_total_rows; ++row) {
-        if (row_y + item_height > row_bottom) {
-            break;
+    if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
+        for (int row = layout.panel_first_visible_row; row < layout.panel_total_rows; ++row) {
+            if (row_y + item_height > row_bottom) {
+                break;
+            }
+            const StatsPanelRow& item = stats_rows[static_cast<std::size_t>(row)];
+            if (item.kind == StatsPanelRowKind::kGroup) {
+                const Rectangle item_bounds{
+                    tool_x,
+                    row_y,
+                    tool_width,
+                    item_height,
+                };
+                layout.panel_items.push_back(WorkspacePanelItemBounds{
+                    item.item,
+                    WorkspacePanelItemKind::kGroup,
+                    item.depth,
+                    item_bounds,
+                    Vector2{
+                        item_bounds.x + gap,
+                        item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F,
+                    },
+                    true,
+                    item.checked,
+                });
+            }
+            row_y += item.kind == StatsPanelRowKind::kBlank ? item_height * 0.55F : item_height;
         }
-        const WorkspacePanelItemState& item = selected_items[static_cast<std::size_t>(row)];
-        const float indent = subitem_indent * static_cast<float>(std::max(0, item.depth));
-        const Rectangle item_bounds{
-            tool_x,
-            row_y,
-            tool_width,
-            item_height,
-        };
-        layout.panel_items.push_back(WorkspacePanelItemBounds{
-            item.item,
-            item.kind,
-            item.depth,
-            item_bounds,
-            Vector2{item_bounds.x + gap + indent, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
-            item.enabled,
-            item.checked,
-        });
-        row_y += item_height;
+    } else {
+        for (int row = layout.panel_first_visible_row; row < layout.panel_total_rows; ++row) {
+            if (row_y + item_height > row_bottom) {
+                break;
+            }
+            const WorkspacePanelItemState& item = selected_items[static_cast<std::size_t>(row)];
+            const float indent = subitem_indent * static_cast<float>(std::max(0, item.depth));
+            const Rectangle item_bounds{
+                tool_x,
+                row_y,
+                tool_width,
+                item_height,
+            };
+            layout.panel_items.push_back(WorkspacePanelItemBounds{
+                item.item,
+                item.kind,
+                item.depth,
+                item_bounds,
+                Vector2{item_bounds.x + gap + indent, item_bounds.y + (item_bounds.height - metrics.workspace_tool_font_size) * 0.5F},
+                item.enabled,
+                item.checked,
+            });
+            row_y += item_height;
+        }
     }
 
     return layout;
@@ -1621,13 +1750,14 @@ UiLayoutCache RebuildUiLayout(
     const WindowConfig& window,
     const AppConfig& config,
     const UiLabels& labels,
-    const WorkspaceState& workspace)
+    const WorkspaceState& workspace,
+    FreeFlyCameraStatus camera_status)
 {
     UiLayoutCache layout;
     layout.metrics = CalculateUiMetrics(window, config);
     layout.main_menu = BuildMainMenuLayout(menu, fonts, layout.metrics);
     layout.placeholder = BuildPlaceholderLayout(fonts, layout.metrics, labels);
-    layout.workspace = BuildWorkspaceLayout(fonts, layout.metrics, workspace);
+    layout.workspace = BuildWorkspaceLayout(fonts, layout.metrics, workspace, camera_status, labels);
     layout.exit_dialog = BuildExitDialogLayout(fonts, layout.metrics, labels);
     return layout;
 }
@@ -1842,7 +1972,8 @@ void DrawWorkspace(
         const float bottom = workspace.tool_menu.y + workspace.tool_menu.height;
         float row_y = workspace.tool_menu.y;
 
-        for (const StatsPanelRow& row : rows) {
+        for (int index = workspace.panel_first_visible_row; index < static_cast<int>(rows.size()); ++index) {
+            const StatsPanelRow& row = rows[static_cast<std::size_t>(index)];
             if (row.kind == StatsPanelRowKind::kBlank) {
                 row_y += item_height * 0.55F;
                 continue;
@@ -1853,7 +1984,15 @@ void DrawWorkspace(
 
             const bool group = row.kind == StatsPanelRowKind::kGroup;
             const Color color = group ? kEditorViewportText : kEditorPanelText;
-            const std::string marker = group ? "-" : "";
+            const std::string marker = group
+                ? WorkspacePanelItemMarker(WorkspacePanelItemState{
+                      row.item,
+                      WorkspacePanelItemKind::kGroup,
+                      row.depth,
+                      true,
+                      row.checked,
+                  })
+                : "";
             const float indent = indent_step * static_cast<float>(std::max(0, row.depth));
             const Vector2 marker_position{
                 workspace.tool_menu.x + metrics.workspace_tool_gap + indent,
@@ -1881,6 +2020,31 @@ void DrawWorkspace(
                 spacing,
                 color);
             row_y += item_height;
+        }
+        if (workspace.panel_can_scroll_up || workspace.panel_can_scroll_down) {
+            const float hint_size = std::max(10.0F, metrics.workspace_status_font_size - 2.0F);
+            const float hint_spacing = FontSpacing(hint_size);
+            if (workspace.panel_can_scroll_up) {
+                DrawTextEx(
+                    fonts.text,
+                    "^ more",
+                    Vector2{workspace.tool_menu.x + metrics.workspace_tool_gap, workspace.tool_menu.y},
+                    hint_size,
+                    hint_spacing,
+                    kAccent);
+            }
+            if (workspace.panel_can_scroll_down) {
+                DrawTextEx(
+                    fonts.text,
+                    "v more",
+                    Vector2{
+                        workspace.tool_menu.x + metrics.workspace_tool_gap,
+                        workspace.tool_menu.y + workspace.tool_menu.height - hint_size - metrics.workspace_tool_gap,
+                    },
+                    hint_size,
+                    hint_spacing,
+                    kAccent);
+            }
         }
     } else {
         std::vector<std::string> lines;

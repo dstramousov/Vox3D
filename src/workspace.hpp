@@ -213,6 +213,19 @@ enum class WorkspacePanelItem {
     k3DRebuiltChunks,
     k3DRebuildSaved,
 
+    kStatsMapGroup,
+    kStatsColorGroup,
+    kStatsVisibilityGroup,
+    kStatsTransitionsGroup,
+    kStatsMovementGroup,
+    kStatsPathGroup,
+    kStatsPassabilityGroup,
+    kStatsMeshGroup,
+    kStatsComparisonGroup,
+    kStatsChunkProfitGroup,
+    kStatsDirtyCacheGroup,
+    kStatsCameraGroup,
+
     kSelectionTileGroup,
     kSelectionTileInfo,
     kSelectionVoxelGroup,
@@ -349,6 +362,17 @@ struct WorkspaceState {
         WorkspacePanelItem::k3DPathGroup,
         WorkspacePanelItem::k3DValidationGroup,
         WorkspacePanelItem::k3DMeshGroup,
+        WorkspacePanelItem::kStatsColorGroup,
+        WorkspacePanelItem::kStatsVisibilityGroup,
+        WorkspacePanelItem::kStatsTransitionsGroup,
+        WorkspacePanelItem::kStatsMovementGroup,
+        WorkspacePanelItem::kStatsPathGroup,
+        WorkspacePanelItem::kStatsPassabilityGroup,
+        WorkspacePanelItem::kStatsMeshGroup,
+        WorkspacePanelItem::kStatsComparisonGroup,
+        WorkspacePanelItem::kStatsChunkProfitGroup,
+        WorkspacePanelItem::kStatsDirtyCacheGroup,
+        WorkspacePanelItem::kStatsCameraGroup,
     };
     bool show_terrain_layer = true;
     bool show_elevation_layer = false;

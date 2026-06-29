@@ -334,3 +334,8 @@
 - Reworked the Stats tab body into the same ASCII tree visual style as the View tab.
 - Rendered Stats sections with marker and label columns using the workspace menu font size.
 - Kept Stats content read-only while preserving existing View, Info, and tab navigation behavior.
+## v0.5.15 -> v0.5.16
+
+- Stats panel root rows now use the same collapsible `[-]` / `[+]` markers as View.
+- Stats sections can be collapsed and expanded by clicking their headers.
+- Stats layout uses the shared panel row hit-testing and scroll calculation.
