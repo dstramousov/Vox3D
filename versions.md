@@ -299,3 +299,9 @@
 - Replaced the conflicting `S`/`G` path endpoint hotkeys with a path pick tool mode driven by `1` for Pick Start and `2` for Pick Goal.
 - Made left click apply the active path pick tool once and then return to normal Select mode, so endpoint picking no longer depends on Shift or WASD-adjacent keys.
 - Updated Path Probe menu rows, Stats/Inspect tool reporting, Clear Path behaviour, and Help text without changing the weighted A* pathfinding algorithm or route overlay.
+
+## v0.5.9 -> v0.5.10
+
+- Replaced the fragile separate `1`/`2` endpoint workflow with a modal two-click path picking mode started by `P`.
+- Made the first path-pick left click set Start, the second left click set Goal, and the path probe run automatically after Goal is selected.
+- Disabled 3D camera mouse capture while path picking is active, with RMB/Escape cancelling the pick mode, so endpoint selection no longer conflicts with camera capture/release.

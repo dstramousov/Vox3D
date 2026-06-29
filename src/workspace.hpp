@@ -92,7 +92,7 @@ enum class WorkspaceValidationStatus {
 };
 
 /**
- * @brief Current endpoint-picking tool used by the path probe.
+ * @brief Current modal state of the two-click path picking workflow.
  */
 enum class WorkspacePathPickMode {
     kSelect,

@@ -134,9 +134,9 @@ std::string_view ToString(WorkspacePathPickMode mode)
         case WorkspacePathPickMode::kSelect:
             return "select";
         case WorkspacePathPickMode::kPickStart:
-            return "pick_start";
+            return "waiting_start";
         case WorkspacePathPickMode::kPickGoal:
-            return "pick_goal";
+            return "waiting_goal";
     }
     return "unknown";
 }
@@ -505,9 +505,9 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Group(Item::k3DPathGroup, 0));
         items.push_back(Radio(Item::k3DPathProfileShortest, 1, true, workspace.path_profile == PathProfile::kShortest));
         items.push_back(Radio(Item::k3DPathProfileSafe, 1, true, workspace.path_profile == PathProfile::kSafe));
-        items.push_back(Radio(Item::k3DPathToolSelect, 1, true, workspace.path_pick_mode == WorkspacePathPickMode::kSelect));
-        items.push_back(Radio(Item::k3DPathToolPickStart, 1, workspace.runtime_map.IsValid(), workspace.path_pick_mode == WorkspacePathPickMode::kPickStart));
-        items.push_back(Radio(Item::k3DPathToolPickGoal, 1, workspace.runtime_map.IsValid(), workspace.path_pick_mode == WorkspacePathPickMode::kPickGoal));
+        const bool path_pick_active = workspace.path_pick_mode != WorkspacePathPickMode::kSelect;
+        items.push_back(Action(Item::k3DPathToolPickStart, 1, workspace.runtime_map.IsValid()));
+        items.push_back(Action(Item::k3DPathToolSelect, 1, path_pick_active));
         items.push_back(Action(Item::k3DRunPathProbe, 1, path_can_run));
         items.push_back(Action(Item::k3DClearPathProbe, 1, path_available || workspace.has_path_start || workspace.has_path_goal));
         items.push_back(Checkbox(Item::k3DShowPath, 1, path_available, workspace.show_path_overlay));

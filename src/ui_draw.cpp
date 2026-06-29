@@ -714,7 +714,6 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
     return {
         "Hotkeys",
         "  F2   Release mouse",
-        "  RMB  Release captured mouse",
         "  F3   2D / 3D",
         "  F8   Mesh mode",
         "  F9   Chunk size",
@@ -724,12 +723,12 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  T    Toggle transitions",
         "  M    Toggle movement probe",
         "  V    Toggle passability issues",
-        "  1    Path tool: Pick Start",
-        "  2    Path tool: Pick Goal",
-        "  P    Run path probe",
+        "  P    Start two-click path pick",
+        "  LMB  Pick start / goal in path pick",
         "  X    Clear path probe",
+        "  RMB  Cancel path pick / release mouse",
         "  Menu Validation -> Run Validation",
-        "  LMB  Pick tile",
+        "  LMB  Pick tile in Select mode",
         "  F    Fit view",
         "  R    Reset camera",
         "  Esc  Release mouse first, then exit",
@@ -923,11 +922,11 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         case WorkspacePanelItem::k3DPathProfileSafe:
             return "Profile: Safe";
         case WorkspacePanelItem::k3DPathToolSelect:
-            return "Tool: Select";
+            return "Cancel Path Pick";
         case WorkspacePanelItem::k3DPathToolPickStart:
-            return "Tool: Pick Start";
+            return "Start Path Pick";
         case WorkspacePanelItem::k3DPathToolPickGoal:
-            return "Tool: Pick Goal";
+            return "Pick Goal";
         case WorkspacePanelItem::k3DRunPathProbe:
             return "Run Path";
         case WorkspacePanelItem::k3DClearPathProbe:

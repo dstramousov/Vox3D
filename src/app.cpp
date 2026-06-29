@@ -575,6 +575,17 @@ void App::HandleWorkspaceInput(float dt)
     const bool release_capture_by_escape = IsKeyPressed(KEY_ESCAPE);
     const bool release_capture_by_hotkey = IsKeyPressed(KEY_F2);
     const bool release_capture_by_right_mouse = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+    const bool path_pick_active_before_input = workspace_.path_pick_mode != WorkspacePathPickMode::kSelect;
+    if (path_pick_active_before_input && (release_capture_by_escape || release_capture_by_right_mouse)) {
+        preview_camera_.ReleaseMouse();
+        SetPathPickMode(WorkspacePathPickMode::kSelect, release_capture_by_escape ? "escape" : "right_mouse");
+        if (release_capture_by_escape) {
+            suppress_window_close_request_this_frame_ = true;
+        }
+        logger_.Debug("path", "path pick cancelled");
+        return;
+    }
+
     if (workspace_.show_3d_preview && preview_camera_.IsCursorCaptured()
         && (release_capture_by_escape || release_capture_by_hotkey || release_capture_by_right_mouse)) {
         preview_camera_.ReleaseMouse();
@@ -711,24 +722,19 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_V)) {
             TogglePassabilityValidationOverlay("hotkey");
         }
-        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_ONE)) {
-            SetPathPickMode(WorkspacePathPickMode::kPickStart, "hotkey");
-        }
-        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_TWO)) {
-            SetPathPickMode(WorkspacePathPickMode::kPickGoal, "hotkey");
-        }
         if (IsKeyPressed(KEY_P)) {
-            RunPathProbeFromSelection("hotkey");
+            BeginPathPickMode("hotkey");
         }
         if (IsKeyPressed(KEY_X)) {
             ClearPathProbe("hotkey");
         }
         const Vector2 pick_mouse = GetMousePosition();
+        const bool path_pick_active_before_click = workspace_.path_pick_mode != WorkspacePathPickMode::kSelect;
         if (!preview_camera_.IsCursorCaptured() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
             && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
             SelectTileAtMouse(pick_mouse, "mouse");
         }
-        preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
+        preview_camera_.Update(dt, layout_cache_.workspace.map_overview, !path_pick_active_before_click);
     } else {
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
     }
@@ -1476,6 +1482,18 @@ void App::SetPathProfile(PathProfile profile, std::string_view reason)
     logger_.Info("path", "profile=" + std::string(ToString(profile)) + " reason=" + std::string(reason));
 }
 
+void App::BeginPathPickMode(std::string_view reason)
+{
+    preview_camera_.ReleaseMouse();
+    workspace_.has_path_start = false;
+    workspace_.has_path_goal = false;
+    workspace_.path_start = TileCoord{};
+    workspace_.path_goal = TileCoord{};
+    workspace_.path_probe = PathProbeResult{};
+    layout_dirty_ = true;
+    SetPathPickMode(WorkspacePathPickMode::kPickStart, reason);
+}
+
 void App::SetPathPickMode(WorkspacePathPickMode mode, std::string_view reason)
 {
     if (workspace_.path_pick_mode == mode) {
@@ -1483,6 +1501,9 @@ void App::SetPathPickMode(WorkspacePathPickMode mode, std::string_view reason)
         return;
     }
 
+    if (mode != WorkspacePathPickMode::kSelect) {
+        preview_camera_.ReleaseMouse();
+    }
     workspace_.path_pick_mode = mode;
     layout_dirty_ = true;
     logger_.Info("path", "pick_mode=" + std::string(ToString(mode)) + " reason=" + std::string(reason));
@@ -1684,8 +1705,12 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
         || workspace_.path_pick_mode == WorkspacePathPickMode::kPickGoal) {
         const bool set_goal = workspace_.path_pick_mode == WorkspacePathPickMode::kPickGoal;
         SetSelectedTileAsPathEndpoint(set_goal, "pick_tool");
-        workspace_.path_pick_mode = WorkspacePathPickMode::kSelect;
-        logger_.Info("path", "pick_mode=select reason=pick_tool_complete");
+        if (set_goal) {
+            SetPathPickMode(WorkspacePathPickMode::kSelect, "pick_tool_complete");
+            RunPathProbeFromSelection("pick_tool_complete");
+        } else {
+            SetPathPickMode(WorkspacePathPickMode::kPickGoal, "pick_tool_next_goal");
+        }
     }
 }
 
@@ -1900,7 +1925,7 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             SetPathPickMode(WorkspacePathPickMode::kSelect, "panel");
             break;
         case WorkspacePanelItem::k3DPathToolPickStart:
-            SetPathPickMode(WorkspacePathPickMode::kPickStart, "panel");
+            BeginPathPickMode("panel");
             break;
         case WorkspacePanelItem::k3DPathToolPickGoal:
             SetPathPickMode(WorkspacePathPickMode::kPickGoal, "panel");
