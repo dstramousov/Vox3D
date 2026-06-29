@@ -158,6 +158,8 @@ enum class WorkspacePanelItem {
     k3DPathGroup,
     k3DPathProfileShortest,
     k3DPathProfileSafe,
+    k3DSetSelectedAsPathStart,
+    k3DSetSelectedAsPathGoal,
     k3DRunPathProbe,
     k3DClearPathProbe,
     k3DShowPath,

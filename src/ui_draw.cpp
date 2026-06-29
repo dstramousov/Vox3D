@@ -722,9 +722,10 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
         "  T    Toggle transitions",
         "  M    Toggle movement probe",
         "  V    Toggle passability issues",
+        "  S    Set selected tile as path start",
+        "  G    Set selected tile as path goal",
         "  P    Run path probe",
-        "  LMB  Pick path start",
-        "  Shift+LMB Pick path goal",
+        "  X    Clear path probe",
         "  Menu Validation -> Run Validation",
         "  LMB  Pick tile",
         "  F    Fit view",
@@ -919,6 +920,10 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
             return "Profile: Shortest";
         case WorkspacePanelItem::k3DPathProfileSafe:
             return "Profile: Safe";
+        case WorkspacePanelItem::k3DSetSelectedAsPathStart:
+            return "Set Selected as Start";
+        case WorkspacePanelItem::k3DSetSelectedAsPathGoal:
+            return "Set Selected as Goal";
         case WorkspacePanelItem::k3DRunPathProbe:
             return "Run Path";
         case WorkspacePanelItem::k3DClearPathProbe:

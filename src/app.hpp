@@ -84,7 +84,7 @@ private:
     void SetPathProfile(PathProfile profile, std::string_view reason);
     void RunPathProbeFromSelection(std::string_view reason);
     void ClearPathProbe(std::string_view reason);
-    void SetPathEndpointAtMouse(Vector2 mouse, bool set_goal, std::string_view reason);
+    void SetSelectedTileAsPathEndpoint(bool set_goal, std::string_view reason);
     void SetValidationMode(WorkspaceValidationMode mode, std::string_view reason);
     void RunPassabilityValidation(std::string_view reason);
     void ClearPassabilityValidation(std::string_view reason);

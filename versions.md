@@ -287,3 +287,9 @@
 - Added a renderer-independent weighted A* path probe in `vox3d_core` with Shortest and Safe cost profiles.
 - Added start/goal path endpoint selection, Run Path, Clear Path, Show Path, and Show Visited workspace controls plus the `P` hotkey.
 - Added 3D route and visited-node overlays with Stats/Inspect cost breakdowns for base, terrain, elevation, transition, and safety cost components.
+
+## v0.5.7 -> v0.5.8
+
+- Reworked path endpoint selection so left click only selects a tile, while `S` assigns the selected tile as Start and `G` assigns it as Goal.
+- Added right-panel Path Probe actions for Set Selected as Start and Set Selected as Goal, removing the unreliable Shift+left-click dependency.
+- Added `X` as a Clear Path hotkey and updated Help text for the new endpoint workflow without changing the weighted A* pathfinding algorithm.

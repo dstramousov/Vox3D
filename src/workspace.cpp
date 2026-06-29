@@ -273,6 +273,10 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_path_profile_shortest";
         case WorkspacePanelItem::k3DPathProfileSafe:
             return "3d_path_profile_safe";
+        case WorkspacePanelItem::k3DSetSelectedAsPathStart:
+            return "3d_path_set_selected_start";
+        case WorkspacePanelItem::k3DSetSelectedAsPathGoal:
+            return "3d_path_set_selected_goal";
         case WorkspacePanelItem::k3DRunPathProbe:
             return "3d_run_path_probe";
         case WorkspacePanelItem::k3DClearPathProbe:
@@ -486,6 +490,8 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Group(Item::k3DPathGroup, 0));
         items.push_back(Radio(Item::k3DPathProfileShortest, 1, true, workspace.path_profile == PathProfile::kShortest));
         items.push_back(Radio(Item::k3DPathProfileSafe, 1, true, workspace.path_profile == PathProfile::kSafe));
+        items.push_back(Action(Item::k3DSetSelectedAsPathStart, 1, workspace.selected_tile.IsValid()));
+        items.push_back(Action(Item::k3DSetSelectedAsPathGoal, 1, workspace.selected_tile.IsValid()));
         items.push_back(Action(Item::k3DRunPathProbe, 1, path_can_run));
         items.push_back(Action(Item::k3DClearPathProbe, 1, path_available || workspace.has_path_start || workspace.has_path_goal));
         items.push_back(Checkbox(Item::k3DShowPath, 1, path_available, workspace.show_path_overlay));

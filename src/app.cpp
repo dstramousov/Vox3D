@@ -711,14 +711,22 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_V)) {
             TogglePassabilityValidationOverlay("hotkey");
         }
+        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_S)) {
+            SetSelectedTileAsPathEndpoint(false, "hotkey");
+        }
+        if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_G)) {
+            SetSelectedTileAsPathEndpoint(true, "hotkey");
+        }
         if (IsKeyPressed(KEY_P)) {
             RunPathProbeFromSelection("hotkey");
+        }
+        if (IsKeyPressed(KEY_X)) {
+            ClearPathProbe("hotkey");
         }
         const Vector2 pick_mouse = GetMousePosition();
         if (!preview_camera_.IsCursorCaptured() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
             && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
-            const bool set_goal = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-            SetPathEndpointAtMouse(pick_mouse, set_goal, set_goal ? "shift_mouse" : "mouse");
+            SelectTileAtMouse(pick_mouse, "mouse");
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, true);
     } else {
@@ -1504,10 +1512,10 @@ void App::ClearPathProbe(std::string_view reason)
     logger_.Info("path", "clear reason=" + std::string(reason));
 }
 
-void App::SetPathEndpointAtMouse(Vector2 mouse, bool set_goal, std::string_view reason)
+void App::SetSelectedTileAsPathEndpoint(bool set_goal, std::string_view reason)
 {
-    SelectTileAtMouse(mouse, reason);
     if (!workspace_.selected_tile.IsValid()) {
+        logger_.Debug("path", "endpoint assignment ignored because no tile is selected");
         return;
     }
 
@@ -1866,6 +1874,12 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DPathProfileSafe:
             SetPathProfile(PathProfile::kSafe, "panel");
+            break;
+        case WorkspacePanelItem::k3DSetSelectedAsPathStart:
+            SetSelectedTileAsPathEndpoint(false, "panel");
+            break;
+        case WorkspacePanelItem::k3DSetSelectedAsPathGoal:
+            SetSelectedTileAsPathEndpoint(true, "panel");
             break;
         case WorkspacePanelItem::k3DRunPathProbe:
             RunPathProbeFromSelection("panel");
