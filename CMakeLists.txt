@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VoX3D VERSION 0.5.12 LANGUAGES CXX)
+project(VoX3D VERSION 0.5.13 LANGUAGES CXX)
 
 option(VOX3D_FETCH_RAYLIB "Fetch raylib with CMake FetchContent when no system package is found" ON)
 set(VOX3D_DEPS_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "Persistent dependency cache directory")

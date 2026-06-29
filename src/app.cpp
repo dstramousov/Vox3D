@@ -1388,7 +1388,7 @@ void App::SelectPreviousWorkspaceTool()
 {
     switch (workspace_.selected_panel_tab) {
         case WorkspacePanelTab::kMenu:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kHelp;
+            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
             break;
         case WorkspacePanelTab::kStats:
             workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
@@ -1414,7 +1414,7 @@ void App::SelectNextWorkspaceTool()
             workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
             break;
         case WorkspacePanelTab::kInspect:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kHelp;
+            workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
             break;
         case WorkspacePanelTab::kHelp:
             workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;

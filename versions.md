@@ -317,3 +317,9 @@
 - Started the workspace directly in 3D Preview mode when a mesh is available.
 - Kept the Mode menu section expanded by default while all other 3D menu sections start collapsed.
 - Tightened the initial 3D camera fit so the map starts centered and much closer to the viewport edges.
+
+## v0.5.12 -> v0.5.13
+
+- Replaced the right-panel button-like tab row with ASCII text tabs: `[View] [Stats] [Info]`.
+- Drew inactive tabs with plain light text and the active tab with yellow pseudo-bold text.
+- Removed Help from the visible tab cycle, keeping keyboard navigation limited to View, Stats, and Info.

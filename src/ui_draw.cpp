@@ -745,11 +745,11 @@ void PushDirtyStats(std::vector<std::string>& lines, const WorkspaceState& works
 {
     switch (tab) {
         case WorkspacePanelTab::kMenu:
-            return "Menu";
+            return "View";
         case WorkspacePanelTab::kStats:
             return "Stats";
         case WorkspacePanelTab::kInspect:
-            return "Inspect";
+            return "Info";
         case WorkspacePanelTab::kHelp:
             return "Help";
     }
@@ -1335,10 +1335,13 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 }
 
 
-[[nodiscard]] WorkspaceLayout BuildWorkspaceLayout(const UiMetrics& metrics, const WorkspaceState& workspace_state)
+[[nodiscard]] WorkspaceLayout BuildWorkspaceLayout(
+    const UiFontSet& fonts,
+    const UiMetrics& metrics,
+    const WorkspaceState& workspace_state)
 {
     WorkspaceLayout layout;
-    layout.panel_tabs.reserve(4);
+    layout.panel_tabs.reserve(3);
 
     const float status_height = metrics.workspace_status_height;
     const float panel_width = metrics.workspace_panel_width;
@@ -1388,25 +1391,37 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         tab_height,
     };
 
-    constexpr std::array<WorkspacePanelTab, 4> tabs{
+    constexpr std::array<WorkspacePanelTab, 3> tabs{
         WorkspacePanelTab::kMenu,
         WorkspacePanelTab::kStats,
         WorkspacePanelTab::kInspect,
-        WorkspacePanelTab::kHelp,
     };
-    const float tab_width = tool_width / static_cast<float>(tabs.size());
-    for (std::size_t index = 0; index < tabs.size(); ++index) {
+    const float tab_spacing = Measure(
+        fonts.text,
+        " ",
+        metrics.workspace_tool_font_size,
+        FontSpacing(metrics.workspace_tool_font_size))
+                                  .x;
+    float tab_x = tool_x;
+    for (const WorkspacePanelTab tab : tabs) {
+        const std::string tab_label = "[" + WorkspacePanelTabLabel(tab) + "]";
+        const Vector2 label_size = Measure(
+            fonts.text,
+            tab_label,
+            metrics.workspace_tool_font_size,
+            FontSpacing(metrics.workspace_tool_font_size));
         const Rectangle bounds{
-            tool_x + static_cast<float>(index) * tab_width,
+            tab_x,
             layout.tool_header.y,
-            tab_width,
+            label_size.x,
             tab_height,
         };
         layout.panel_tabs.push_back(WorkspacePanelTabBounds{
-            tabs[index],
+            tab,
             bounds,
-            Vector2{bounds.x + gap * 0.55F, bounds.y + (bounds.height - metrics.workspace_tool_font_size) * 0.5F},
+            Vector2{bounds.x, bounds.y + (bounds.height - metrics.workspace_tool_font_size) * 0.5F},
         });
+        tab_x += label_size.x + tab_spacing;
     }
 
     const float content_y = layout.tool_header.y + layout.tool_header.height + gap;
@@ -1564,7 +1579,7 @@ UiLayoutCache RebuildUiLayout(
     layout.metrics = CalculateUiMetrics(window, config);
     layout.main_menu = BuildMainMenuLayout(menu, fonts, layout.metrics);
     layout.placeholder = BuildPlaceholderLayout(fonts, layout.metrics, labels);
-    layout.workspace = BuildWorkspaceLayout(layout.metrics, workspace);
+    layout.workspace = BuildWorkspaceLayout(fonts, layout.metrics, workspace);
     layout.exit_dialog = BuildExitDialogLayout(fonts, layout.metrics, labels);
     return layout;
 }
@@ -1685,24 +1700,24 @@ void DrawWorkspace(
     const float spacing = FontSpacing(metrics.workspace_tool_font_size);
     for (const auto& tab_bounds : workspace.panel_tabs) {
         const bool selected = workspace_state.selected_panel_tab == tab_bounds.tab;
-        if (selected) {
-            DrawRectangleRec(tab_bounds.bounds, Color{4, 92, 120, 255});
-        }
-        DrawRectangleLinesEx(tab_bounds.bounds, 1.0F, Color{7, 88, 112, 255});
-        const std::string tab_label = WorkspacePanelTabLabel(tab_bounds.tab);
-        const float tab_font_size = FitTextToWidth(
-            fonts.text,
-            tab_label,
-            metrics.workspace_tool_font_size,
-            10.0F,
-            std::max(1.0F, tab_bounds.bounds.width - metrics.workspace_tool_gap));
+        const std::string tab_label = "[" + WorkspacePanelTabLabel(tab_bounds.tab) + "]";
+        const Color tab_color = selected ? kAccent : kEditorViewportText;
         DrawTextEx(
             fonts.text,
             tab_label.c_str(),
-            Vector2{tab_bounds.text_position.x, tab_bounds.bounds.y + (tab_bounds.bounds.height - tab_font_size) * 0.5F},
-            tab_font_size,
-            FontSpacing(tab_font_size),
-            selected ? kAccent : kEditorPanelText);
+            tab_bounds.text_position,
+            metrics.workspace_tool_font_size,
+            spacing,
+            tab_color);
+        if (selected) {
+            DrawTextEx(
+                fonts.text,
+                tab_label.c_str(),
+                Vector2{tab_bounds.text_position.x + 1.0F, tab_bounds.text_position.y},
+                metrics.workspace_tool_font_size,
+                spacing,
+                tab_color);
+        }
     }
 
     if (workspace_state.selected_panel_tab == WorkspacePanelTab::kMenu) {
