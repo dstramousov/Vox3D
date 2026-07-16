@@ -405,10 +405,23 @@ bool App::Initialize()
         config_);
     window_config_.monitor_index = monitor_index;
 
-    if (GetScreenWidth() != window_config_.window_width || GetScreenHeight() != window_config_.window_height) {
-        SetWindowSize(window_config_.window_width, window_config_.window_height);
+    if (config_.window_fullscreen) {
+        SetWindowSize(monitor_width, monitor_height);
+        SetWindowPosition(static_cast<int>(monitor_position.x), static_cast<int>(monitor_position.y));
+        if (!IsWindowFullscreen()) {
+            ToggleFullscreen();
+        }
+        window_config_.window_width = GetScreenWidth();
+        window_config_.window_height = GetScreenHeight();
+        window_config_.window_x = static_cast<int>(monitor_position.x);
+        window_config_.window_y = static_cast<int>(monitor_position.y);
+        window_config_.ui_scale = CalculateUiScale(window_config_.window_width, window_config_.window_height, config_);
+    } else {
+        if (GetScreenWidth() != window_config_.window_width || GetScreenHeight() != window_config_.window_height) {
+            SetWindowSize(window_config_.window_width, window_config_.window_height);
+        }
+        SetWindowPosition(window_config_.window_x, window_config_.window_y);
     }
-    SetWindowPosition(window_config_.window_x, window_config_.window_y);
     SetTargetFPS(config_.target_fps);
 
     workspace_.map = LoadMapPackageInfo(config_.map_package_path);
@@ -428,12 +441,14 @@ bool App::Initialize()
     RefreshProcessMemoryInfo();
     RebuildLayout();
     if (chunk_mesh_preview_.IsUploaded()) {
-        FitPreviewCameraToViewport("initial");
+        preview_camera_.StartFlyInToMap(workspace_.chunk_meshes, layout_cache_.workspace.map_overview);
+        logger_.Info("camera3d", "startup fly-in " + ToLogString(preview_camera_.Status()));
     }
 
     {
         std::ostringstream out;
-        out << "monitor=" << window_config_.monitor_width << 'x' << window_config_.monitor_height << " window="
+        out << "monitor=" << window_config_.monitor_width << 'x' << window_config_.monitor_height << " fullscreen="
+            << (config_.window_fullscreen ? "yes" : "no") << " window="
             << window_config_.window_width << 'x' << window_config_.window_height << " pos=" << window_config_.window_x
             << ',' << window_config_.window_y << " ui_scale=" << window_config_.ui_scale;
         logger_.Info("window", out.str());
@@ -942,7 +957,7 @@ void App::Draw()
             break;
     }
 
-    DrawFpsCounter(UiFonts(), labels_, layout_cache_, process_memory_);
+    DrawFpsCounter(UiFonts(), labels_, layout_cache_, process_memory_, config_.version);
     if (config_.debug_ui) {
         DrawDebugOverlay(UiFonts(), config_, window_config_, screen_, dialog_.type, main_menu_.State(), workspace_, hovered_item_, labels_, layout_cache_);
     }

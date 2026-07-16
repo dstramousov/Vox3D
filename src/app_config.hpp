@@ -7,7 +7,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.17-dev"
+#define VOX3D_VERSION "0.5.18-dev"
 #endif
 
 namespace vox3d {
@@ -29,6 +29,7 @@ struct AppConfig {
     int fallback_height = 576;
     float max_monitor_fraction = 0.90F;
     bool window_resizable = false;
+    bool window_fullscreen = false;
     bool window_vsync = true;
     int target_fps = 60;
 

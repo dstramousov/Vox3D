@@ -16,6 +16,7 @@
     "fallback_height": 576,
     "max_monitor_fraction": 0.9,
     "resizable": true,
+    "fullscreen": true,
     "vsync": true,
     "target_fps": 60
   },

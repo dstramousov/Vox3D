@@ -495,6 +495,7 @@ bool LoadAppConfigFromFile(
     AssignPositiveInt(*root, {"window", "fallback_height"}, config.fallback_height, "window.fallback_height", diagnostics);
     AssignPositiveFloat(*root, {"window", "max_monitor_fraction"}, config.max_monitor_fraction, "window.max_monitor_fraction", diagnostics);
     AssignBool(*root, {"window", "resizable"}, config.window_resizable, "window.resizable", diagnostics);
+    AssignBool(*root, {"window", "fullscreen"}, config.window_fullscreen, "window.fullscreen", diagnostics);
     AssignBool(*root, {"window", "vsync"}, config.window_vsync, "window.vsync", diagnostics);
     AssignPositiveInt(*root, {"window", "target_fps"}, config.target_fps, "window.target_fps", diagnostics);
 

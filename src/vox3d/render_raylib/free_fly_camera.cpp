@@ -15,6 +15,8 @@ constexpr float kHalfPi = kPi * 0.5F;
 constexpr float kDegreesPerRadian = 180.0F / kPi;
 constexpr float kDefaultFitYaw = -kPi * 0.25F;
 constexpr float kDefaultFitPitch = -kPi / 3.0F;
+constexpr float kOverviewYaw = -0.78F;
+constexpr float kOverviewPitch = -0.34F;
 constexpr float kMinimumFitDistance = 24.0F;
 
 [[nodiscard]] float Length(Vector3 value)
@@ -44,6 +46,13 @@ constexpr float kMinimumFitDistance = 24.0F;
         return Vector3{0.0F, 0.0F, 0.0F};
     }
     return Scale(value, 1.0F / length);
+}
+
+
+[[nodiscard]] float SmoothStep(float value)
+{
+    const float t = std::clamp(value, 0.0F, 1.0F);
+    return t * t * (3.0F - 2.0F * t);
 }
 
 [[nodiscard]] Vector3 Lerp(Vector3 from, Vector3 to, float amount)
@@ -129,15 +138,48 @@ constexpr float kMinimumFitDistance = 24.0F;
     return std::max(kMinimumFitDistance, fit_distance * std::clamp(config.fit_padding, 0.50F, 2.00F));
 }
 
+[[nodiscard]] Vector3 BuildOverviewTarget(const ChunkMeshBuildResult& build_result)
+{
+    Vector3 target = BuildMapCenter(build_result);
+    const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
+    const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
+    target.x -= map_width * 0.08F;
+    target.z += map_height * 0.06F;
+    return target;
+}
+
+[[nodiscard]] float BuildOverviewDistance(const ChunkMeshBuildResult& build_result)
+{
+    const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
+    const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
+    return std::max(kMinimumFitDistance, std::max(map_width, map_height) * 0.92F);
+}
+
+[[nodiscard]] Vector3 BuildOverviewPosition(const ChunkMeshBuildResult& build_result)
+{
+    const Vector3 target = BuildOverviewTarget(build_result);
+    const Vector3 forward = ForwardFromAngles(kOverviewYaw, kOverviewPitch);
+    return Subtract(target, Scale(forward, BuildOverviewDistance(build_result)));
+}
+
 [[nodiscard]] Vector3 BuildFitPosition(
+    const ChunkMeshBuildResult& build_result,
+    Rectangle /*viewport*/,
+    const FreeFlyCameraConfig& /*config*/)
+{
+    return BuildOverviewPosition(build_result);
+}
+
+[[nodiscard]] Vector3 BuildFlyInStartPosition(
     const ChunkMeshBuildResult& build_result,
     Rectangle viewport,
     const FreeFlyCameraConfig& config)
 {
     const Vector3 target = BuildMapCenter(build_result);
     const Vector3 forward = ForwardFromAngles(kDefaultFitYaw, kDefaultFitPitch);
-    return Subtract(target, Scale(forward, BuildFitDistance(build_result, viewport, config)));
+    return Subtract(target, Scale(forward, BuildFitDistance(build_result, viewport, config) * 1.10F));
 }
+
 
 [[nodiscard]] float CurrentMoveSpeed(const FreeFlyCameraConfig& config)
 {
@@ -174,11 +216,11 @@ FreeFlyCameraController::FreeFlyCameraController(FreeFlyCameraConfig config)
 
 void FreeFlyCameraController::FitToMap(const ChunkMeshBuildResult& build_result, Rectangle viewport)
 {
-    SetPose(BuildFitPosition(build_result, viewport, config_), BuildMapCenter(build_result));
-    reset_position_ = camera_.position;
-    reset_target_ = camera_.target;
-    reset_yaw_ = yaw_;
-    reset_pitch_ = pitch_;
+    const Vector3 target = BuildOverviewTarget(build_result);
+    const Vector3 position = BuildFitPosition(build_result, viewport, config_);
+    SetPose(position, target);
+    StoreResetPose(position, target);
+    fly_in_active_ = false;
     velocity_ = Vector3{};
     wheel_velocity_ = 0.0F;
 }
@@ -186,6 +228,21 @@ void FreeFlyCameraController::FitToMap(const ChunkMeshBuildResult& build_result,
 void FreeFlyCameraController::FitToMap(const ChunkMeshBuildResult& build_result)
 {
     FitToMap(build_result, Rectangle{0.0F, 0.0F, 1.0F, 1.0F});
+}
+
+void FreeFlyCameraController::StartFlyInToMap(const ChunkMeshBuildResult& build_result, Rectangle viewport)
+{
+    fly_in_start_target_ = BuildMapCenter(build_result);
+    fly_in_start_position_ = BuildFlyInStartPosition(build_result, viewport, config_);
+    fly_in_end_target_ = BuildOverviewTarget(build_result);
+    fly_in_end_position_ = BuildOverviewPosition(build_result);
+    fly_in_elapsed_ = 0.0F;
+    fly_in_duration_ = 1.65F;
+    fly_in_active_ = true;
+    velocity_ = Vector3{};
+    wheel_velocity_ = 0.0F;
+    StoreResetPose(fly_in_end_position_, fly_in_end_target_);
+    SetPose(fly_in_start_position_, fly_in_start_target_);
 }
 
 void FreeFlyCameraController::ResetView()
@@ -208,6 +265,18 @@ void FreeFlyCameraController::ResetView()
 
 void FreeFlyCameraController::Update(float dt, Rectangle viewport, bool enabled)
 {
+    if (fly_in_active_ && enabled && dt > 0.0F) {
+        ReleaseMouse();
+        fly_in_elapsed_ += dt;
+        const float t = SmoothStep(fly_in_elapsed_ / std::max(0.001F, fly_in_duration_));
+        SetPose(Lerp(fly_in_start_position_, fly_in_end_position_, t), Lerp(fly_in_start_target_, fly_in_end_target_, t));
+        if (fly_in_elapsed_ >= fly_in_duration_) {
+            fly_in_active_ = false;
+            SetPose(fly_in_end_position_, fly_in_end_target_);
+        }
+        return;
+    }
+
     if (!initialized_ || dt <= 0.0F || !enabled || !IsWindowFocused()) {
         ReleaseMouse();
         velocity_ = Lerp(velocity_, Vector3{}, LerpFactor(config_.damping, dt));
@@ -338,6 +407,15 @@ void FreeFlyCameraController::CaptureMouse()
     cursor_captured_ = true;
     mouse_look_active_ = true;
     discard_next_mouse_delta_ = true;
+}
+
+void FreeFlyCameraController::StoreResetPose(Vector3 position, Vector3 target)
+{
+    const Vector3 forward = Normalize(Subtract(target, position));
+    reset_position_ = position;
+    reset_target_ = target;
+    reset_yaw_ = std::atan2(forward.x, forward.z);
+    reset_pitch_ = std::asin(std::clamp(forward.y, -1.0F, 1.0F));
 }
 
 void FreeFlyCameraController::SetPose(Vector3 position, Vector3 target)

@@ -2225,11 +2225,13 @@ void DrawFpsCounter(
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout,
-    const ProcessMemoryInfo& memory)
+    const ProcessMemoryInfo& memory,
+    std::string_view version)
 {
     const UiMetrics& metrics = layout.metrics;
     const Font font = fonts.text;
-    const std::string text = labels.fps_label + ": " + std::to_string(GetFPS()) + " | " + labels.memory_label + ": "
+    const std::string text = "v" + std::string(version) + " | " + labels.fps_label + ": " + std::to_string(GetFPS())
+        + " | " + labels.memory_label + ": "
         + (memory.available ? FormatMemory(memory.resident_bytes, labels) : labels.debug_none);
     const float spacing = FontSpacing(metrics.fps_font_size);
     const Vector2 size = Measure(font, text, metrics.fps_font_size, spacing);

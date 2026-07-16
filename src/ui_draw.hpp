@@ -15,6 +15,7 @@
 #include <raylib.h>
 
 #include <string>
+#include <string_view>
 
 namespace vox3d {
 
@@ -71,12 +72,14 @@ void DrawWorkspace(
  * @param labels Localized labels used for the FPS and memory prefixes.
  * @param layout Cached UI layout.
  * @param memory Latest cached process memory snapshot.
+ * @param version Application version shown in the status bar.
  */
 void DrawFpsCounter(
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout,
-    const ProcessMemoryInfo& memory);
+    const ProcessMemoryInfo& memory,
+    std::string_view version);
 
 /**
  * @brief Draws optional debug information.

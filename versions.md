@@ -344,3 +344,9 @@
 - Reworked the Info tab body into the same collapsible ASCII tree style used by View and Stats.
 - Added runtime-only Info section collapse state for Selection, Transitions, Movement, Path, and Validation.
 - Shared right-panel scrolling and group hit-testing across View, Stats, and Info without changing inspection data.
+
+## v0.5.17 -> v0.5.18
+
+- Set the startup workspace to 3D Preview with geographic coloring and frustum culling.
+- Added a one-shot startup camera fly-in from an overhead frame into the default overview pose.
+- Added `window.fullscreen` config support and displayed the application version in the status bar.

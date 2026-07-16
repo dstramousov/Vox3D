@@ -79,6 +79,18 @@ public:
     void FitToMap(const ChunkMeshBuildResult& build_result);
 
     /**
+     * @brief Starts a one-shot cinematic fly-in from an overhead map frame.
+     *
+     * The final pose is stored as the reset pose. User driven camera updates are
+     * ignored while the fly-in is active. The animation is intended for initial
+     * application startup only.
+     *
+     * @param build_result Mesh build result used for map dimensions and level range.
+     * @param viewport Screen-space viewport used to resolve aspect ratio.
+     */
+    void StartFlyInToMap(const ChunkMeshBuildResult& build_result, Rectangle viewport);
+
+    /**
      * @brief Restores the last stored reset pose and clears camera velocity.
      */
     void ResetView();
@@ -133,18 +145,26 @@ private:
     void ApplyOrientation();
     void CaptureMouse();
     void SetPose(Vector3 position, Vector3 target);
+    void StoreResetPose(Vector3 position, Vector3 target);
 
     FreeFlyCameraConfig config_{};
     Camera3D camera_{};
     Vector3 velocity_{};
     Vector3 reset_position_{};
     Vector3 reset_target_{};
+    Vector3 fly_in_start_position_{};
+    Vector3 fly_in_start_target_{};
+    Vector3 fly_in_end_position_{};
+    Vector3 fly_in_end_target_{};
     float yaw_ = 0.0F;
     float pitch_ = 0.0F;
     float reset_yaw_ = 0.0F;
     float reset_pitch_ = 0.0F;
     float current_speed_ = 0.0F;
     float wheel_velocity_ = 0.0F;
+    float fly_in_elapsed_ = 0.0F;
+    float fly_in_duration_ = 1.65F;
+    bool fly_in_active_ = false;
     bool initialized_ = false;
     bool cursor_captured_ = false;
     bool mouse_look_active_ = false;

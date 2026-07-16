@@ -393,8 +393,8 @@ struct WorkspaceState {
     bool show_3d_world_grid = false;
     bool show_3d_collision_overlay = false;
     bool show_3d_height_overlay = false;
-    WorkspaceColorMode color_mode = WorkspaceColorMode::kMaterial;
-    WorkspaceVisibilityMode visibility_mode = WorkspaceVisibilityMode::kAllChunks;
+    WorkspaceColorMode color_mode = WorkspaceColorMode::kGeographic;
+    WorkspaceVisibilityMode visibility_mode = WorkspaceVisibilityMode::kFrustumCull;
     int visibility_radius_chunks = 2;
     int visibility_fade_ring_chunks = 1;
     bool show_3d_hidden_chunk_bounds = false;
