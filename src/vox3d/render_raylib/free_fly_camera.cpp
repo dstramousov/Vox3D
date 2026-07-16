@@ -16,7 +16,7 @@ constexpr float kDegreesPerRadian = 180.0F / kPi;
 constexpr float kDefaultFitYaw = -kPi * 0.25F;
 constexpr float kDefaultFitPitch = -kPi / 3.0F;
 constexpr float kOverviewYaw = -0.78F;
-constexpr float kOverviewPitch = -0.34F;
+constexpr float kOverviewPitch = -0.29F;
 constexpr float kMinimumFitDistance = 24.0F;
 
 [[nodiscard]] float Length(Vector3 value)
@@ -143,8 +143,8 @@ constexpr float kMinimumFitDistance = 24.0F;
     Vector3 target = BuildMapCenter(build_result);
     const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
     const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
-    target.x -= map_width * 0.08F;
-    target.z += map_height * 0.06F;
+    target.x += map_width * 0.02F;
+    target.z += map_height * 0.02F;
     return target;
 }
 
@@ -152,7 +152,7 @@ constexpr float kMinimumFitDistance = 24.0F;
 {
     const float map_width = static_cast<float>(std::max(1, build_result.info.map_width));
     const float map_height = static_cast<float>(std::max(1, build_result.info.map_height));
-    return std::max(kMinimumFitDistance, std::max(map_width, map_height) * 0.92F);
+    return std::max(kMinimumFitDistance, std::max(map_width, map_height) * 0.78F);
 }
 
 [[nodiscard]] Vector3 BuildOverviewPosition(const ChunkMeshBuildResult& build_result)
@@ -237,7 +237,8 @@ void FreeFlyCameraController::StartFlyInToMap(const ChunkMeshBuildResult& build_
     fly_in_end_target_ = BuildOverviewTarget(build_result);
     fly_in_end_position_ = BuildOverviewPosition(build_result);
     fly_in_elapsed_ = 0.0F;
-    fly_in_duration_ = 1.65F;
+    fly_in_hold_elapsed_ = 0.0F;
+    fly_in_duration_ = 2.35F;
     fly_in_active_ = true;
     velocity_ = Vector3{};
     wheel_velocity_ = 0.0F;
@@ -267,9 +268,26 @@ void FreeFlyCameraController::Update(float dt, Rectangle viewport, bool enabled)
 {
     if (fly_in_active_ && enabled && dt > 0.0F) {
         ReleaseMouse();
-        fly_in_elapsed_ += dt;
+        if (IsAnyViewportCaptureButtonPressed() || std::abs(GetMouseWheelMove()) > 0.0001F
+            || IsKeyPressed(KEY_W) || IsKeyPressed(KEY_A) || IsKeyPressed(KEY_S)
+            || IsKeyPressed(KEY_D) || IsKeyPressed(KEY_Q) || IsKeyPressed(KEY_E)) {
+            fly_in_active_ = false;
+            SetPose(fly_in_end_position_, fly_in_end_target_);
+            return;
+        }
+
+        const float frame_dt = std::clamp(dt, 0.0F, 1.0F / 30.0F);
+        if (fly_in_hold_elapsed_ < fly_in_hold_duration_) {
+            fly_in_hold_elapsed_ += frame_dt;
+            SetPose(fly_in_start_position_, fly_in_start_target_);
+            return;
+        }
+
+        fly_in_elapsed_ += frame_dt;
         const float t = SmoothStep(fly_in_elapsed_ / std::max(0.001F, fly_in_duration_));
-        SetPose(Lerp(fly_in_start_position_, fly_in_end_position_, t), Lerp(fly_in_start_target_, fly_in_end_target_, t));
+        SetPose(
+            Lerp(fly_in_start_position_, fly_in_end_position_, t),
+            Lerp(fly_in_start_target_, fly_in_end_target_, t));
         if (fly_in_elapsed_ >= fly_in_duration_) {
             fly_in_active_ = false;
             SetPose(fly_in_end_position_, fly_in_end_target_);

@@ -350,3 +350,9 @@
 - Set the startup workspace to 3D Preview with geographic coloring and frustum culling.
 - Added a one-shot startup camera fly-in from an overhead frame into the default overview pose.
 - Added `window.fullscreen` config support and displayed the application version in the status bar.
+
+## v0.5.18 -> v0.5.19
+
+- Tuned the startup cinematic final 3D pose toward the closer corner-focused overview.
+- Delayed the fly-in briefly on the overhead frame and clamped its first-frame delta so slow startup loading no longer skips the animation.
+- Let early camera input cancel the startup cinematic while keeping Reset View as an immediate jump to the final overview pose.

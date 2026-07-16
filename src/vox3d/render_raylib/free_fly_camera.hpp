@@ -163,7 +163,9 @@ private:
     float current_speed_ = 0.0F;
     float wheel_velocity_ = 0.0F;
     float fly_in_elapsed_ = 0.0F;
-    float fly_in_duration_ = 1.65F;
+    float fly_in_hold_elapsed_ = 0.0F;
+    float fly_in_hold_duration_ = 0.45F;
+    float fly_in_duration_ = 2.35F;
     bool fly_in_active_ = false;
     bool initialized_ = false;
     bool cursor_captured_ = false;
