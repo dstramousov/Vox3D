@@ -54,6 +54,7 @@ struct UiMetrics {
     float workspace_border_width = 2.0F;
     float workspace_tool_gap = 6.0F;
     float workspace_tool_font_size = 18.0F;
+    float workspace_tab_font_size = 20.0F;
     float workspace_status_font_size = 16.0F;
     float workspace_panel_padding = 10.0F;
 };

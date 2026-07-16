@@ -28,6 +28,8 @@ constexpr Color kEditorViewport{152, 152, 149, 255};
 constexpr Color kEditorViewportText{244, 244, 238, 255};
 constexpr Color kEditorPanelText{155, 203, 218, 255};
 constexpr Color kEditorHotkeyText{226, 58, 48, 255};
+constexpr Color kEditorTooltipBackground{10, 18, 24, 242};
+constexpr Color kEditorTooltipBorder{225, 232, 238, 255};
 constexpr Color kEditorStatus{130, 198, 211, 255};
 constexpr Color kEditorStatusText{6, 24, 32, 255};
 constexpr Color kEditorBorder{8, 12, 16, 255};
@@ -1588,7 +1590,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     const float tool_x = layout.tool_panel.x + padding;
     const float tool_width = std::max(1.0F, layout.tool_panel.width - padding * 2.0F);
     const float row_bottom = layout.tool_panel.y + layout.tool_panel.height - padding;
-    const float tab_height = metrics.workspace_tool_font_size + gap * 1.45F;
+    const float tab_height = metrics.workspace_tab_font_size + gap * 1.55F;
     const float item_height = metrics.workspace_tool_font_size + gap * 1.05F;
     const float subitem_indent = gap * 3.0F;
 
@@ -1604,20 +1606,26 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         WorkspacePanelTab::kStats,
         WorkspacePanelTab::kInspect,
     };
+    const float tab_font_size = metrics.workspace_tab_font_size;
     const float tab_spacing = Measure(
         fonts.text,
-        "  ",
-        metrics.workspace_tool_font_size,
-        FontSpacing(metrics.workspace_tool_font_size))
+        "   ",
+        tab_font_size,
+        FontSpacing(tab_font_size))
                                   .x;
-    float tab_x = tool_x;
-    for (const WorkspacePanelTab tab : tabs) {
-        const std::string tab_label = "[" + WorkspacePanelTabLabel(tab) + "]";
-        const Vector2 label_size = Measure(
-            fonts.text,
-            tab_label,
-            metrics.workspace_tool_font_size,
-            FontSpacing(metrics.workspace_tool_font_size));
+    float tabs_total_width = 0.0F;
+    std::array<Vector2, tabs.size()> tab_label_sizes{};
+    for (std::size_t index = 0; index < tabs.size(); ++index) {
+        const std::string tab_label = "[" + WorkspacePanelTabLabel(tabs[index]) + "]";
+        tab_label_sizes[index] = Measure(fonts.text, tab_label, tab_font_size, FontSpacing(tab_font_size));
+        tabs_total_width += tab_label_sizes[index].x;
+    }
+    tabs_total_width += tab_spacing * static_cast<float>(tabs.size() - 1U);
+
+    float tab_x = tool_x + std::max(0.0F, (tool_width - tabs_total_width) * 0.5F);
+    for (std::size_t index = 0; index < tabs.size(); ++index) {
+        const WorkspacePanelTab tab = tabs[index];
+        const Vector2 label_size = tab_label_sizes[index];
         const Rectangle bounds{
             tab_x,
             layout.tool_header.y,
@@ -1627,7 +1635,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         layout.panel_tabs.push_back(WorkspacePanelTabBounds{
             tab,
             bounds,
-            Vector2{bounds.x, bounds.y + (bounds.height - metrics.workspace_tool_font_size) * 0.5F},
+            Vector2{bounds.x, bounds.y + (bounds.height - tab_font_size) * 0.5F},
         });
         tab_x += label_size.x + tab_spacing;
     }
@@ -1795,6 +1803,7 @@ UiMetrics CalculateUiMetrics(const WindowConfig& window, const AppConfig& config
     metrics.dialog_text_font_size = Scaled(kBaseDialogTextFontSize, text_scale, 14.0F, 26.0F);
     metrics.dialog_button_font_size = Scaled(kBaseDialogButtonFontSize, text_scale, 14.0F, 26.0F);
     metrics.workspace_tool_font_size = Scaled(kBaseWorkspaceToolFontSize, text_scale, 13.0F, 26.0F);
+    metrics.workspace_tab_font_size = Scaled(kBaseWorkspaceToolFontSize + 2.0F, text_scale, 15.0F, 29.0F);
     metrics.workspace_status_font_size = Scaled(kBaseWorkspaceStatusFontSize, text_scale, 12.0F, 22.0F);
 
     metrics.text_spacing = FontSpacing(metrics.menu_font_size);
@@ -1960,6 +1969,48 @@ void DrawWorkspacePanelTab(
     }
 }
 
+void DrawWorkspaceTooltip(
+    Font font,
+    const std::string& text,
+    Vector2 mouse,
+    const UiMetrics& metrics,
+    float font_size,
+    float spacing)
+{
+    if (text.empty()) {
+        return;
+    }
+
+    const float padding_x = std::max(8.0F, metrics.workspace_tool_gap * 1.5F);
+    const float padding_y = std::max(6.0F, metrics.workspace_tool_gap);
+    const Vector2 text_size = Measure(font, text, font_size, spacing);
+    const float max_width = static_cast<float>(metrics.window_width) - padding_x * 2.0F - 8.0F;
+    const float tooltip_width = std::min(text_size.x + padding_x * 2.0F, max_width);
+    const float tooltip_height = text_size.y + padding_y * 2.0F;
+    float x = mouse.x + 14.0F;
+    float y = mouse.y + 18.0F;
+
+    if (x + tooltip_width > static_cast<float>(metrics.window_width) - 4.0F) {
+        x = mouse.x - tooltip_width - 14.0F;
+    }
+    if (y + tooltip_height > static_cast<float>(metrics.window_height) - 4.0F) {
+        y = mouse.y - tooltip_height - 14.0F;
+    }
+    x = std::clamp(x, 4.0F, std::max(4.0F, static_cast<float>(metrics.window_width) - tooltip_width - 4.0F));
+    y = std::clamp(y, 4.0F, std::max(4.0F, static_cast<float>(metrics.window_height) - tooltip_height - 4.0F));
+
+    const Rectangle bounds{x, y, tooltip_width, tooltip_height};
+    DrawRectangleRounded(bounds, 0.08F, 8, kEditorTooltipBackground);
+    DrawRectangleRoundedLinesEx(bounds, 0.08F, 8, 1.0F, kEditorTooltipBorder);
+    DrawTextEx(
+        font,
+        text.c_str(),
+        Vector2{bounds.x + padding_x, bounds.y + padding_y},
+        font_size,
+        spacing,
+        kEditorViewportText);
+}
+
 void DrawWorkspace(
     const WorkspaceState& workspace_state,
     const RaylibChunkMeshPreview* mesh_preview,
@@ -1982,6 +2033,7 @@ void DrawWorkspace(
     DrawRectangleLinesEx(workspace.status_bar, metrics.workspace_border_width, kEditorBorder);
 
     const float spacing = FontSpacing(metrics.workspace_tool_font_size);
+    const float tab_spacing = FontSpacing(metrics.workspace_tab_font_size);
     for (const auto& tab_bounds : workspace.panel_tabs) {
         const bool selected = workspace_state.selected_panel_tab == tab_bounds.tab;
         DrawWorkspacePanelTab(
@@ -1989,8 +2041,8 @@ void DrawWorkspace(
             tab_bounds.tab,
             selected,
             tab_bounds.text_position,
-            metrics.workspace_tool_font_size,
-            spacing);
+            metrics.workspace_tab_font_size,
+            tab_spacing);
     }
 
     if (workspace_state.selected_panel_tab == WorkspacePanelTab::kMenu) {
@@ -2066,7 +2118,11 @@ void DrawWorkspace(
             spacing)
             .x;
         const float item_height = metrics.workspace_tool_font_size + metrics.workspace_tool_gap * 1.05F;
-        const float indent_step = metrics.workspace_tool_gap * 3.0F;
+        const float indent_step = metrics.workspace_tool_gap * 1.35F;
+        const float text_panel_left_padding = metrics.workspace_tool_gap * 0.35F;
+        const float text_panel_right = workspace.tool_menu.x + workspace.tool_menu.width;
+        const Vector2 mouse = GetMousePosition();
+        std::string hovered_overflow_text;
         const float bottom = workspace.tool_menu.y + workspace.tool_menu.height;
         float row_y = workspace.tool_menu.y;
 
@@ -2093,7 +2149,7 @@ void DrawWorkspace(
                 : "";
             const float indent = indent_step * static_cast<float>(std::max(0, row.depth));
             const Vector2 marker_position{
-                workspace.tool_menu.x + metrics.workspace_tool_gap + indent,
+                workspace.tool_menu.x + text_panel_left_padding + indent,
                 row_y + (item_height - metrics.workspace_tool_font_size) * 0.5F,
             };
             const Vector2 label_position{
@@ -2117,6 +2173,12 @@ void DrawWorkspace(
                 metrics.workspace_tool_font_size,
                 spacing,
                 color);
+
+            const Rectangle row_bounds{workspace.tool_menu.x, row_y, workspace.tool_menu.width, item_height};
+            const float label_width = Measure(fonts.text, row.label, metrics.workspace_tool_font_size, spacing).x;
+            if (label_position.x + label_width > text_panel_right && CheckCollisionPointRec(mouse, row_bounds)) {
+                hovered_overflow_text = row.label;
+            }
             row_y += item_height;
         }
         if (workspace.panel_can_scroll_up || workspace.panel_can_scroll_down) {
@@ -2143,6 +2205,15 @@ void DrawWorkspace(
                     hint_spacing,
                     kAccent);
             }
+        }
+        if (!hovered_overflow_text.empty()) {
+            DrawWorkspaceTooltip(
+                fonts.text,
+                hovered_overflow_text,
+                mouse,
+                metrics,
+                metrics.workspace_tool_font_size,
+                spacing);
         }
     } else {
         const std::vector<std::string> lines = BuildHelpPanelLines();

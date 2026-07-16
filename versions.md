@@ -362,3 +362,10 @@
 - Added red V/S/I hotkey hints to the right-panel `[View]`, `[Stats]`, and `[Info]` tabs.
 - Added direct V/S/I keyboard shortcuts for switching the right-panel tabs when the 3D camera cursor is not captured.
 - Kept tab switching from resetting 2D/3D view state, collapsed groups, and scroll state.
+
+
+## v0.5.20 -> v0.5.21
+
+- Enlarged and centered the right-panel View/Stats/Info tab header while preserving red V/S/I hotkey hints.
+- Reduced Stats and Info value-row indentation so values start closer to their section headers.
+- Added hover tooltips for Stats/Info rows whose full text does not fit in the right panel.
