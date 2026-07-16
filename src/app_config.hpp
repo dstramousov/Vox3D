@@ -7,7 +7,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.19-dev"
+#define VOX3D_VERSION "0.5.20-dev"
 #endif
 
 namespace vox3d {

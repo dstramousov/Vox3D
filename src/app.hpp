@@ -75,6 +75,7 @@ private:
     void RebuildLayout();
     void ActivateSelectedMenuItem();
     void ActivatePlaceholderAction();
+    bool SetWorkspacePanelTab(WorkspacePanelTab tab, std::string_view reason);
     void SelectPreviousWorkspaceTool();
     void SelectNextWorkspaceTool();
     void ToggleWorkspaceTool(WorkspaceTool tool);

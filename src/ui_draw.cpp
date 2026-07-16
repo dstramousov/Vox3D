@@ -27,6 +27,7 @@ constexpr Color kEditorBackground{7, 118, 151, 255};
 constexpr Color kEditorViewport{152, 152, 149, 255};
 constexpr Color kEditorViewportText{244, 244, 238, 255};
 constexpr Color kEditorPanelText{155, 203, 218, 255};
+constexpr Color kEditorHotkeyText{226, 58, 48, 255};
 constexpr Color kEditorStatus{130, 198, 211, 255};
 constexpr Color kEditorStatusText{6, 24, 32, 255};
 constexpr Color kEditorBorder{8, 12, 16, 255};
@@ -910,6 +911,21 @@ struct TextPanelRow {
             return "Help";
     }
     return "Unknown";
+}
+
+[[nodiscard]] char WorkspacePanelTabHotkey(WorkspacePanelTab tab)
+{
+    switch (tab) {
+        case WorkspacePanelTab::kMenu:
+            return 'V';
+        case WorkspacePanelTab::kStats:
+            return 'S';
+        case WorkspacePanelTab::kInspect:
+            return 'I';
+        case WorkspacePanelTab::kHelp:
+            return 'H';
+    }
+    return '?';
 }
 
 [[nodiscard]] std::string MapStatusLabel(const MapPackageInfo& map, const UiLabels& labels)
@@ -1910,6 +1926,40 @@ void DrawPlaceholderScreen(
 
 
 
+
+void DrawWorkspacePanelTab(
+    Font font,
+    WorkspacePanelTab tab,
+    bool selected,
+    Vector2 position,
+    float font_size,
+    float spacing)
+{
+    const std::string label = WorkspacePanelTabLabel(tab);
+    if (label.empty()) {
+        return;
+    }
+
+    const Color base_color = selected ? kAccent : kEditorViewportText;
+    const std::string prefix = "[";
+    const std::string hotkey(1, WorkspacePanelTabHotkey(tab));
+    const std::string suffix = label.substr(1) + "]";
+
+    const auto draw_segments = [&](Vector2 draw_position) {
+        float x = draw_position.x;
+        DrawTextEx(font, prefix.c_str(), Vector2{x, draw_position.y}, font_size, spacing, base_color);
+        x += Measure(font, prefix, font_size, spacing).x;
+        DrawTextEx(font, hotkey.c_str(), Vector2{x, draw_position.y}, font_size, spacing, kEditorHotkeyText);
+        x += Measure(font, hotkey, font_size, spacing).x;
+        DrawTextEx(font, suffix.c_str(), Vector2{x, draw_position.y}, font_size, spacing, base_color);
+    };
+
+    draw_segments(position);
+    if (selected) {
+        draw_segments(Vector2{position.x + 1.0F, position.y});
+    }
+}
+
 void DrawWorkspace(
     const WorkspaceState& workspace_state,
     const RaylibChunkMeshPreview* mesh_preview,
@@ -1934,24 +1984,13 @@ void DrawWorkspace(
     const float spacing = FontSpacing(metrics.workspace_tool_font_size);
     for (const auto& tab_bounds : workspace.panel_tabs) {
         const bool selected = workspace_state.selected_panel_tab == tab_bounds.tab;
-        const std::string tab_label = "[" + WorkspacePanelTabLabel(tab_bounds.tab) + "]";
-        const Color tab_color = selected ? kAccent : kEditorViewportText;
-        DrawTextEx(
+        DrawWorkspacePanelTab(
             fonts.text,
-            tab_label.c_str(),
+            tab_bounds.tab,
+            selected,
             tab_bounds.text_position,
             metrics.workspace_tool_font_size,
-            spacing,
-            tab_color);
-        if (selected) {
-            DrawTextEx(
-                fonts.text,
-                tab_label.c_str(),
-                Vector2{tab_bounds.text_position.x + 1.0F, tab_bounds.text_position.y},
-                metrics.workspace_tool_font_size,
-                spacing,
-                tab_color);
-        }
+            spacing);
     }
 
     if (workspace_state.selected_panel_tab == WorkspacePanelTab::kMenu) {

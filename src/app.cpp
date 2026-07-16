@@ -668,6 +668,24 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     const bool camera_mode = workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded() && preview_camera_.IsInitialized();
+    bool panel_tab_hotkey_pressed = false;
+    if (!preview_camera_.IsCursorCaptured()) {
+        if (IsKeyPressed(KEY_V)) {
+            SetWorkspacePanelTab(WorkspacePanelTab::kMenu, "hotkey_v");
+            panel_tab_hotkey_pressed = true;
+        } else if (IsKeyPressed(KEY_S)) {
+            SetWorkspacePanelTab(WorkspacePanelTab::kStats, "hotkey_s");
+            panel_tab_hotkey_pressed = true;
+        } else if (IsKeyPressed(KEY_I)) {
+            SetWorkspacePanelTab(WorkspacePanelTab::kInspect, "hotkey_i");
+            panel_tab_hotkey_pressed = true;
+        }
+    }
+
+    if (layout_dirty_) {
+        RebuildLayout();
+    }
+
     if (camera_mode) {
         if (IsKeyPressed(KEY_R)) {
             preview_camera_.ResetView();
@@ -735,7 +753,7 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_M)) {
             ToggleMovementProbeOverlay("hotkey");
         }
-        if (IsKeyPressed(KEY_V)) {
+        if (IsKeyPressed(KEY_V) && !panel_tab_hotkey_pressed) {
             TogglePassabilityValidationOverlay("hotkey");
         }
         if (IsKeyPressed(KEY_P)) {
@@ -755,25 +773,25 @@ void App::HandleWorkspaceInput(float dt)
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
     }
 
-    if (camera_mode) {
-        if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_LEFT)) {
-            SelectPreviousWorkspaceTool();
-        }
-        if (IsKeyPressedAny({KEY_DOWN, KEY_RIGHT, KEY_TAB})) {
-            SelectNextWorkspaceTool();
-        }
-    } else {
-        if (IsKeyPressedAny({KEY_UP, KEY_W, KEY_LEFT, KEY_A})) {
-            SelectPreviousWorkspaceTool();
-        }
-        if (IsKeyPressedAny({KEY_DOWN, KEY_S, KEY_RIGHT, KEY_D, KEY_TAB})) {
-            SelectNextWorkspaceTool();
+    if (!panel_tab_hotkey_pressed) {
+        if (camera_mode) {
+            if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_LEFT)) {
+                SelectPreviousWorkspaceTool();
+            }
+            if (IsKeyPressedAny({KEY_DOWN, KEY_RIGHT, KEY_TAB})) {
+                SelectNextWorkspaceTool();
+            }
+        } else {
+            if (IsKeyPressedAny({KEY_UP, KEY_W, KEY_LEFT, KEY_A})) {
+                SelectPreviousWorkspaceTool();
+            }
+            if (IsKeyPressedAny({KEY_DOWN, KEY_S, KEY_RIGHT, KEY_D, KEY_TAB})) {
+                SelectNextWorkspaceTool();
+            }
         }
     }
     if (IsKeyPressed(KEY_ENTER) && workspace_.selected_panel_tab != WorkspacePanelTab::kMenu) {
-        workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
-        layout_dirty_ = true;
-        logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
+        SetWorkspacePanelTab(WorkspacePanelTab::kMenu, "enter");
     }
 
     if (layout_dirty_) {
@@ -787,10 +805,8 @@ void App::HandleWorkspaceInput(float dt)
         }
 
         hovered_item_ = "workspace_tab_" + std::string(ToString(tab_bounds.tab));
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && workspace_.selected_panel_tab != tab_bounds.tab) {
-            workspace_.selected_panel_tab = tab_bounds.tab;
-            layout_dirty_ = true;
-            logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            SetWorkspacePanelTab(tab_bounds.tab, "mouse");
         }
         return;
     }
@@ -1406,6 +1422,21 @@ void App::ActivatePlaceholderAction()
     }
 }
 
+
+bool App::SetWorkspacePanelTab(WorkspacePanelTab tab, std::string_view reason)
+{
+    if (workspace_.selected_panel_tab == tab) {
+        return false;
+    }
+
+    workspace_.selected_panel_tab = tab;
+    layout_dirty_ = true;
+    logger_.Debug(
+        "workspace",
+        "panel tab=" + std::string(ToString(workspace_.selected_panel_tab))
+            + " reason=" + std::string(reason));
+    return true;
+}
 
 void App::SelectPreviousWorkspaceTool()
 {

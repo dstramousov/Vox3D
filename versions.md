@@ -356,3 +356,9 @@
 - Tuned the startup cinematic final 3D pose toward the closer corner-focused overview.
 - Delayed the fly-in briefly on the overhead frame and clamped its first-frame delta so slow startup loading no longer skips the animation.
 - Let early camera input cancel the startup cinematic while keeping Reset View as an immediate jump to the final overview pose.
+
+## v0.5.19 -> v0.5.20
+
+- Added red V/S/I hotkey hints to the right-panel `[View]`, `[Stats]`, and `[Info]` tabs.
+- Added direct V/S/I keyboard shortcuts for switching the right-panel tabs when the 3D camera cursor is not captured.
+- Kept tab switching from resetting 2D/3D view state, collapsed groups, and scroll state.
