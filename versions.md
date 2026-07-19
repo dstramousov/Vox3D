@@ -369,3 +369,9 @@
 - Enlarged and centered the right-panel View/Stats/Info tab header while preserving red V/S/I hotkey hints.
 - Reduced Stats and Info value-row indentation so values start closer to their section headers.
 - Added hover tooltips for Stats/Info rows whose full text does not fit in the right panel.
+
+## v0.5.21 -> v0.5.22
+
+- Added camera-centered GPU chunk streaming for large maps, with a bounded resident radius, unload hysteresis, and a two-chunk-per-frame upload budget.
+- Changed mesh-mode preparation to build only the active mode initially and construct Simple, Greedy, or Terrain meshes lazily when selected; transition data is now reused across chunk-size rebuilds.
+- Added pipeline/streaming timings to Stats and removed the unused per-tile terrain string from voxel columns to reduce large-map memory usage.

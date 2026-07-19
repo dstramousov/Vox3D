@@ -6,15 +6,16 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
-#include <cstdlib>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iomanip>
 #include <limits>
 #include <optional>
-#include <string_view>
 #include <sstream>
+#include <string_view>
 
 namespace vox3d {
 
@@ -211,6 +212,41 @@ struct RgbaColor {
         0,
         std::max(0, info.chunks_y - 1));
     return ChunkCoord{chunk_x, chunk_y};
+}
+
+[[nodiscard]] ChunkCoord StreamingCameraChunkCoord(
+    const Camera3D& camera,
+    const ChunkMeshBuildInfo& info)
+{
+    const int chunk_size_x = std::max(1, info.chunk_size_x);
+    const int chunk_size_y = std::max(1, info.chunk_size_y);
+    const float tile_x = camera.target.x + static_cast<float>(info.map_width) * 0.5F;
+    const float tile_y = static_cast<float>(info.map_height) * 0.5F - camera.target.z;
+    const int chunk_x = ClampInt(
+        static_cast<int>(std::floor(tile_x / static_cast<float>(chunk_size_x))),
+        0,
+        std::max(0, info.chunks_x - 1));
+    const int chunk_y = ClampInt(
+        static_cast<int>(std::floor(tile_y / static_cast<float>(chunk_size_y))),
+        0,
+        std::max(0, info.chunks_y - 1));
+    return ChunkCoord{chunk_x, chunk_y};
+}
+
+[[nodiscard]] std::optional<std::size_t> SourceChunkIndex(
+    ChunkCoord coord,
+    const ChunkMeshBuildInfo& info)
+{
+    if (coord.x < 0 || coord.y < 0 || coord.x >= info.chunks_x || coord.y >= info.chunks_y) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(coord.y) * static_cast<std::size_t>(info.chunks_x)
+        + static_cast<std::size_t>(coord.x);
+}
+
+[[nodiscard]] int ChunkDistance(ChunkCoord lhs, ChunkCoord rhs)
+{
+    return std::max(std::abs(lhs.x - rhs.x), std::abs(lhs.y - rhs.y));
 }
 
 
@@ -744,15 +780,6 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     return result;
 }
 
-void AccumulateUploadStats(const ChunkMeshData& mesh, RaylibChunkMeshPreviewStats& stats)
-{
-    ++stats.models;
-    stats.faces += static_cast<std::uint64_t>(mesh.faces.size());
-    stats.vertices += static_cast<std::uint64_t>(mesh.vertices.size());
-    stats.indices += static_cast<std::uint64_t>(mesh.indices.size());
-}
-
-
 [[nodiscard]] Vector3 TileCenterWorld(int tile_x, int tile_y, float level, int map_width, int map_height)
 {
     return Vector3{
@@ -1258,7 +1285,11 @@ RaylibChunkMeshPreview::~RaylibChunkMeshPreview()
     Unload();
 }
 
-bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode)
+bool RaylibChunkMeshPreview::SetSource(
+    const ChunkMeshBuildResult& build_result,
+    RaylibChunkMeshColorMode color_mode,
+    const Camera3D& camera,
+    RaylibChunkStreamingOptions options)
 {
     Unload();
 
@@ -1266,74 +1297,268 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
         return false;
     }
 
+    source_ = &build_result;
+    source_color_mode_ = color_mode;
+    resident_chunks_.assign(build_result.chunks.size(), 0);
+    streaming_stats_.source_chunks = build_result.info.total_chunks;
+    streaming_stats_.enabled = options.enabled
+        && build_result.info.total_chunks > std::max(0, options.activation_threshold_chunks);
+
     const bool split_terrain_passes = build_result.info.mode == ChunkMeshBuildMode::kTerrainSurface;
-    chunks_.reserve(build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL));
-    visibility_items_.reserve(build_result.chunks.size());
-    for (const ChunkMeshData& chunk : build_result.chunks) {
-        if (chunk.faces.empty()) {
-            continue;
+    const std::size_t expected_models = streaming_stats_.enabled
+        ? static_cast<std::size_t>(std::max(1, options.resident_radius_chunks * 2 + 1))
+            * static_cast<std::size_t>(std::max(1, options.resident_radius_chunks * 2 + 1))
+            * (split_terrain_passes ? 3ULL : 1ULL)
+        : build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL);
+    chunks_.reserve(expected_models);
+
+    if (!streaming_stats_.enabled) {
+        for (std::size_t index = 0; index < build_result.chunks.size(); ++index) {
+            (void)UploadSourceChunk(index);
         }
-
-        const Aabb3f world_bounds = ComputeWorldBounds(chunk, build_result.info.map_width, build_result.info.map_height);
-        const auto visibility_item_index = visibility_items_.size();
-        visibility_items_.push_back(ChunkVisibilityItem{chunk.coord, world_bounds, chunk.FaceCount()});
-
-        if (split_terrain_passes) {
-            for (TerrainRenderPass pass : TerrainDrawPasses()) {
-                ChunkMeshData pass_mesh = ExtractTerrainPassMesh(chunk, pass);
-                if (pass_mesh.faces.empty()) {
-                    continue;
-                }
-                if (!CanUploadChunk(pass_mesh)) {
-                    ++stats_.skipped_chunks;
-                    continue;
-                }
-
-                Model model = LoadChunkModel(pass_mesh, build_result.info.map_width, build_result.info.map_height, color_mode);
-                if (model.meshCount <= 0 || model.meshes == nullptr) {
-                    ++stats_.skipped_chunks;
-                    continue;
-                }
-
-                chunks_.push_back(RaylibUploadedChunkModel{
-                    model,
-                    chunk.coord,
-                    chunk.bounds,
-                    world_bounds,
-                    pass,
-                    visibility_item_index,
-                    pass_mesh.FaceCount(),
-                });
-                AccumulateUploadStats(pass_mesh, stats_);
-            }
-            continue;
-        }
-
-        if (!CanUploadChunk(chunk)) {
-            ++stats_.skipped_chunks;
-            continue;
-        }
-
-        Model model = LoadChunkModel(chunk, build_result.info.map_width, build_result.info.map_height, color_mode);
-        if (model.meshCount <= 0 || model.meshes == nullptr) {
-            ++stats_.skipped_chunks;
-            continue;
-        }
-
-        chunks_.push_back(RaylibUploadedChunkModel{
-            model,
-            chunk.coord,
-            chunk.bounds,
-            world_bounds,
-            TerrainRenderPass::kBody,
-            visibility_item_index,
-            chunk.FaceCount(),
-        });
-        AccumulateUploadStats(chunk, stats_);
+        RebuildResidentMetadata();
+        RecalculateUploadStats();
+        streaming_stats_.resident_chunks = static_cast<int>(build_result.chunks.size());
+        return stats_.uploaded;
     }
 
-    stats_.uploaded = !chunks_.empty();
+    UpdateStreaming(camera, options);
     return stats_.uploaded;
+}
+
+void RaylibChunkMeshPreview::UpdateStreaming(
+    const Camera3D& camera,
+    RaylibChunkStreamingOptions options)
+{
+    if (source_ == nullptr || !source_->IsValid() || !streaming_stats_.enabled) {
+        return;
+    }
+
+    const auto started_at = std::chrono::steady_clock::now();
+    streaming_stats_.uploaded_chunks_last_update = 0;
+    streaming_stats_.unloaded_chunks_last_update = 0;
+    streaming_stats_.resident_radius_chunks = std::max(0, options.resident_radius_chunks);
+    streaming_stats_.unload_radius_chunks = streaming_stats_.resident_radius_chunks
+        + std::max(0, options.unload_margin_chunks);
+    streaming_stats_.upload_budget_chunks = std::max(1, options.upload_budget_chunks);
+
+    const ChunkCoord center = StreamingCameraChunkCoord(camera, source_->info);
+    bool residency_changed = false;
+    for (std::size_t index = 0; index < resident_chunks_.size(); ++index) {
+        if (resident_chunks_[index] == 0 || index >= source_->chunks.size()) {
+            continue;
+        }
+        if (ChunkDistance(source_->chunks[index].coord, center) <= streaming_stats_.unload_radius_chunks) {
+            continue;
+        }
+        UnloadSourceChunk(index);
+        ++streaming_stats_.unloaded_chunks_last_update;
+        residency_changed = true;
+    }
+
+    struct Candidate {
+        int distance = 0;
+        std::size_t source_index = 0;
+    };
+    std::vector<Candidate> candidates;
+    const int min_x = std::max(0, center.x - streaming_stats_.resident_radius_chunks);
+    const int max_x = std::min(source_->info.chunks_x - 1, center.x + streaming_stats_.resident_radius_chunks);
+    const int min_y = std::max(0, center.y - streaming_stats_.resident_radius_chunks);
+    const int max_y = std::min(source_->info.chunks_y - 1, center.y + streaming_stats_.resident_radius_chunks);
+    candidates.reserve(static_cast<std::size_t>(std::max(0, max_x - min_x + 1))
+        * static_cast<std::size_t>(std::max(0, max_y - min_y + 1)));
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            const ChunkCoord coord{x, y};
+            const auto source_index = SourceChunkIndex(coord, source_->info);
+            if (!source_index.has_value() || *source_index >= resident_chunks_.size()
+                || resident_chunks_[*source_index] != 0) {
+                continue;
+            }
+            candidates.push_back(Candidate{ChunkDistance(coord, center), *source_index});
+        }
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& lhs, const Candidate& rhs) {
+        if (lhs.distance != rhs.distance) {
+            return lhs.distance < rhs.distance;
+        }
+        return lhs.source_index < rhs.source_index;
+    });
+
+    const int upload_count = std::min(
+        streaming_stats_.upload_budget_chunks,
+        static_cast<int>(candidates.size()));
+    for (int index = 0; index < upload_count; ++index) {
+        if (UploadSourceChunk(candidates[static_cast<std::size_t>(index)].source_index)) {
+            ++streaming_stats_.uploaded_chunks_last_update;
+            residency_changed = true;
+        }
+    }
+
+    streaming_stats_.resident_chunks = static_cast<int>(std::count(
+        resident_chunks_.begin(),
+        resident_chunks_.end(),
+        static_cast<std::uint8_t>(1)));
+    streaming_stats_.pending_chunks = std::max(
+        0,
+        static_cast<int>(candidates.size()) - streaming_stats_.uploaded_chunks_last_update);
+
+    if (residency_changed) {
+        RebuildResidentMetadata();
+        RecalculateUploadStats();
+    }
+
+    const auto finished_at = std::chrono::steady_clock::now();
+    streaming_stats_.last_update_ms = std::chrono::duration<double, std::milli>(finished_at - started_at).count();
+    streaming_stats_.total_update_ms += streaming_stats_.last_update_ms;
+}
+
+bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode)
+{
+    Camera3D camera{};
+    RaylibChunkStreamingOptions options;
+    options.enabled = false;
+    return SetSource(build_result, color_mode, camera, options);
+}
+
+bool RaylibChunkMeshPreview::UploadSourceChunk(std::size_t source_index)
+{
+    if (source_ == nullptr || source_index >= source_->chunks.size()
+        || source_index >= resident_chunks_.size() || resident_chunks_[source_index] != 0) {
+        return false;
+    }
+
+    resident_chunks_[source_index] = 1;
+    const ChunkMeshData& chunk = source_->chunks[source_index];
+    if (chunk.faces.empty()) {
+        return true;
+    }
+
+    const Aabb3f world_bounds = ComputeWorldBounds(chunk, source_->info.map_width, source_->info.map_height);
+    const bool split_terrain_passes = source_->info.mode == ChunkMeshBuildMode::kTerrainSurface;
+    if (split_terrain_passes) {
+        for (TerrainRenderPass pass : TerrainDrawPasses()) {
+            ChunkMeshData pass_mesh = ExtractTerrainPassMesh(chunk, pass);
+            if (pass_mesh.faces.empty()) {
+                continue;
+            }
+            if (!CanUploadChunk(pass_mesh)) {
+                ++stats_.skipped_chunks;
+                continue;
+            }
+
+            Model model = LoadChunkModel(
+                pass_mesh,
+                source_->info.map_width,
+                source_->info.map_height,
+                source_color_mode_);
+            if (model.meshCount <= 0 || model.meshes == nullptr) {
+                ++stats_.skipped_chunks;
+                continue;
+            }
+            chunks_.push_back(RaylibUploadedChunkModel{
+                model,
+                chunk.coord,
+                chunk.bounds,
+                world_bounds,
+                pass,
+                0,
+                pass_mesh.FaceCount(),
+            });
+        }
+        return true;
+    }
+
+    if (!CanUploadChunk(chunk)) {
+        ++stats_.skipped_chunks;
+        return true;
+    }
+    Model model = LoadChunkModel(
+        chunk,
+        source_->info.map_width,
+        source_->info.map_height,
+        source_color_mode_);
+    if (model.meshCount <= 0 || model.meshes == nullptr) {
+        ++stats_.skipped_chunks;
+        return true;
+    }
+    chunks_.push_back(RaylibUploadedChunkModel{
+        model,
+        chunk.coord,
+        chunk.bounds,
+        world_bounds,
+        TerrainRenderPass::kBody,
+        0,
+        chunk.FaceCount(),
+    });
+    return true;
+}
+
+void RaylibChunkMeshPreview::UnloadSourceChunk(std::size_t source_index)
+{
+    if (source_ == nullptr || source_index >= source_->chunks.size()
+        || source_index >= resident_chunks_.size() || resident_chunks_[source_index] == 0) {
+        return;
+    }
+
+    const ChunkCoord coord = source_->chunks[source_index].coord;
+    for (auto it = chunks_.begin(); it != chunks_.end();) {
+        if (it->coord.x != coord.x || it->coord.y != coord.y) {
+            ++it;
+            continue;
+        }
+        UnloadModel(it->model);
+        it = chunks_.erase(it);
+    }
+    resident_chunks_[source_index] = 0;
+}
+
+void RaylibChunkMeshPreview::RebuildResidentMetadata()
+{
+    visibility_items_.clear();
+    if (source_ == nullptr) {
+        return;
+    }
+
+    std::vector<std::size_t> visibility_indices(
+        source_->chunks.size(),
+        std::numeric_limits<std::size_t>::max());
+    visibility_items_.reserve(static_cast<std::size_t>(std::max(0, streaming_stats_.resident_chunks)));
+    for (std::size_t index = 0; index < source_->chunks.size() && index < resident_chunks_.size(); ++index) {
+        if (resident_chunks_[index] == 0 || source_->chunks[index].faces.empty()) {
+            continue;
+        }
+        const ChunkMeshData& chunk = source_->chunks[index];
+        visibility_indices[index] = visibility_items_.size();
+        visibility_items_.push_back(ChunkVisibilityItem{
+            chunk.coord,
+            ComputeWorldBounds(chunk, source_->info.map_width, source_->info.map_height),
+            chunk.FaceCount(),
+        });
+    }
+
+    for (RaylibUploadedChunkModel& model : chunks_) {
+        const auto source_index = SourceChunkIndex(model.coord, source_->info);
+        if (!source_index.has_value() || *source_index >= visibility_indices.size()) {
+            model.visibility_item_index = std::numeric_limits<std::size_t>::max();
+            continue;
+        }
+        model.visibility_item_index = visibility_indices[*source_index];
+    }
+}
+
+void RaylibChunkMeshPreview::RecalculateUploadStats()
+{
+    const std::uint64_t skipped_chunks = stats_.skipped_chunks;
+    stats_ = RaylibChunkMeshPreviewStats{};
+    stats_.skipped_chunks = skipped_chunks;
+    for (const RaylibUploadedChunkModel& chunk : chunks_) {
+        ++stats_.models;
+        stats_.faces += chunk.faces;
+    }
+    stats_.vertices = stats_.faces * 4ULL;
+    stats_.indices = stats_.faces * 6ULL;
+    stats_.uploaded = !chunks_.empty();
 }
 
 void RaylibChunkMeshPreview::Draw(
@@ -1476,9 +1701,12 @@ void RaylibChunkMeshPreview::Unload()
             UnloadModel(chunk.model);
         }
     }
+    source_ = nullptr;
+    resident_chunks_.clear();
     chunks_.clear();
     visibility_items_.clear();
     stats_ = RaylibChunkMeshPreviewStats{};
+    streaming_stats_ = RaylibChunkStreamingStats{};
 }
 
 bool RaylibChunkMeshPreview::IsUploaded() const
@@ -1489,6 +1717,11 @@ bool RaylibChunkMeshPreview::IsUploaded() const
 const RaylibChunkMeshPreviewStats& RaylibChunkMeshPreview::Stats() const
 {
     return stats_;
+}
+
+const RaylibChunkStreamingStats& RaylibChunkMeshPreview::StreamingStats() const
+{
+    return streaming_stats_;
 }
 
 std::string ToLogString(const RaylibChunkMeshPreviewStats& stats)

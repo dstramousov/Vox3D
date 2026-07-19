@@ -763,17 +763,17 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             items.push_back(Radio(
                 Item::k3DMeshSimple,
                 1,
-                workspace.simple_chunk_meshes.IsValid(),
+                workspace.voxel_world.IsValid() && workspace.chunk_grid.IsValid(),
                 workspace.mesh_mode == ChunkMeshBuildMode::kSimpleFaces));
             items.push_back(Radio(
                 Item::k3DMeshGreedy,
                 1,
-                workspace.greedy_chunk_meshes.IsValid(),
+                workspace.voxel_world.IsValid() && workspace.chunk_grid.IsValid(),
                 workspace.mesh_mode == ChunkMeshBuildMode::kGreedyFaces));
             items.push_back(Radio(
                 Item::k3DMeshTerrainSurface,
                 1,
-                workspace.terrain_chunk_meshes.IsValid(),
+                workspace.runtime_map.IsValid() && workspace.chunk_grid.IsValid(),
                 workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface));
 
             items.push_back(Group(Item::k3DChunkSizeGroup, 1));

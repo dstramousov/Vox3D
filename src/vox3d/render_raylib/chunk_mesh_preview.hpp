@@ -77,6 +77,34 @@ struct RaylibChunkVisibilityOptions {
 };
 
 /**
+ * @brief GPU residency policy for large chunk-mesh sources.
+ */
+struct RaylibChunkStreamingOptions {
+    bool enabled = true;
+    int activation_threshold_chunks = 256;
+    int resident_radius_chunks = 6;
+    int unload_margin_chunks = 2;
+    int upload_budget_chunks = 2;
+};
+
+/**
+ * @brief Last measured chunk streaming and GPU residency counters.
+ */
+struct RaylibChunkStreamingStats {
+    bool enabled = false;
+    int source_chunks = 0;
+    int resident_chunks = 0;
+    int pending_chunks = 0;
+    int resident_radius_chunks = 0;
+    int unload_radius_chunks = 0;
+    int upload_budget_chunks = 0;
+    int uploaded_chunks_last_update = 0;
+    int unloaded_chunks_last_update = 0;
+    double last_update_ms = 0.0;
+    double total_update_ms = 0.0;
+};
+
+/**
  * @brief Terrain render pass visibility flags used by the 3D preview.
  */
 struct RaylibTerrainPassOptions {
@@ -223,6 +251,37 @@ public:
     RaylibChunkMeshPreview& operator=(RaylibChunkMeshPreview&&) = delete;
 
     /**
+     * @brief Sets a mesh source and initializes camera-centered GPU streaming.
+     *
+     * Small sources below the activation threshold are uploaded completely.
+     * Large sources keep only a bounded chunk window resident and upload new
+     * chunks incrementally through UpdateStreaming(). The source object must
+     * outlive the preview or remain at the same address until the next call.
+     *
+     * @param build_result Renderer-independent chunk mesh data.
+     * @param color_mode Vertex-color mode applied during upload.
+     * @param camera Camera used to choose the initial resident window.
+     * @param options Streaming thresholds, radius, hysteresis, and frame budget.
+     * @return True if the source is valid and at least one model is resident.
+     */
+    [[nodiscard]] bool SetSource(
+        const ChunkMeshBuildResult& build_result,
+        RaylibChunkMeshColorMode color_mode,
+        const Camera3D& camera,
+        RaylibChunkStreamingOptions options = {});
+
+    /**
+     * @brief Advances camera-centered chunk residency by one frame.
+     *
+     * GPU uploads are limited by upload_budget_chunks. Chunks outside the
+     * resident radius plus unload margin are released immediately.
+     *
+     * @param camera Camera whose target selects the active chunk window.
+     * @param options Current streaming policy.
+     */
+    void UpdateStreaming(const Camera3D& camera, RaylibChunkStreamingOptions options = {});
+
+    /**
      * @brief Uploads chunk mesh data into raylib Model resources.
      *
      * Existing preview resources are unloaded before the new upload attempt.
@@ -333,10 +392,26 @@ public:
      */
     [[nodiscard]] const RaylibChunkMeshPreviewStats& Stats() const;
 
+    /**
+     * @brief Returns current GPU streaming and residency statistics.
+     *
+     * @return Streaming counters for diagnostics and UI display.
+     */
+    [[nodiscard]] const RaylibChunkStreamingStats& StreamingStats() const;
+
 private:
+    [[nodiscard]] bool UploadSourceChunk(std::size_t source_index);
+    void UnloadSourceChunk(std::size_t source_index);
+    void RebuildResidentMetadata();
+    void RecalculateUploadStats();
+
+    const ChunkMeshBuildResult* source_ = nullptr;
+    RaylibChunkMeshColorMode source_color_mode_ = RaylibChunkMeshColorMode::kMaterial;
+    std::vector<std::uint8_t> resident_chunks_;
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<ChunkVisibilityItem> visibility_items_;
     RaylibChunkMeshPreviewStats stats_;
+    RaylibChunkStreamingStats streaming_stats_;
 };
 
 /**

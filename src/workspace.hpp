@@ -317,6 +317,38 @@ struct WorkspaceVisibilityStats {
 };
 
 /**
+ * @brief Last measured GPU chunk streaming state for the 3D preview.
+ */
+struct WorkspaceStreamingStats {
+    bool enabled = false;
+    int source_chunks = 0;
+    int resident_chunks = 0;
+    int pending_chunks = 0;
+    int resident_radius_chunks = 0;
+    int unload_radius_chunks = 0;
+    int upload_budget_chunks = 0;
+    int uploaded_chunks_last_update = 0;
+    int unloaded_chunks_last_update = 0;
+    double last_update_ms = 0.0;
+    double total_update_ms = 0.0;
+};
+
+/**
+ * @brief Timings for the latest map and chunk-pipeline construction.
+ */
+struct WorkspacePipelineTimings {
+    double map_package_ms = 0.0;
+    double runtime_map_ms = 0.0;
+    double chunk_grid_ms = 0.0;
+    double voxel_world_ms = 0.0;
+    double face_visibility_ms = 0.0;
+    double active_mesh_ms = 0.0;
+    double transitions_ms = 0.0;
+    double renderer_setup_ms = 0.0;
+    double total_initial_ms = 0.0;
+};
+
+/**
  * @brief Last measured comparison between two chunk-size builds.
  */
 struct WorkspaceChunkSizeComparison {
@@ -430,6 +462,8 @@ struct WorkspaceState {
     MovementProbeResult movement_probe;
     PassabilityValidationReport passability_validation;
     WorkspaceVisibilityStats visibility_stats;
+    WorkspaceStreamingStats streaming_stats;
+    WorkspacePipelineTimings pipeline_timings;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;
     MapPackageInfo map;

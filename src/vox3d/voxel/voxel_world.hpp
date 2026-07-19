@@ -24,7 +24,6 @@ struct VoxelColumn {
     TileCoord tile;
     int base_level = 0;
     int surface_level = 0;
-    std::string terrain;
     bool blocked = false;
     BlockTypeId surface_block_type = BlockTypeId::kTerrainSurface;
 

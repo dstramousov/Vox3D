@@ -330,6 +330,20 @@ void PushMapStats(std::vector<std::string>& lines, const WorkspaceState& workspa
     lines.push_back("  Size: " + MapSizeText(workspace_state.map, labels));
     lines.push_back("  Tile: " + MapTileText(workspace_state.map, labels));
     lines.push_back("  Levels: " + MapLevelsText(workspace_state.map, labels));
+    const WorkspacePipelineTimings& timing = workspace_state.pipeline_timings;
+    if (timing.total_initial_ms > 0.0 || timing.active_mesh_ms > 0.0) {
+        lines.push_back("  Load pkg/runtime: " + MillisecondsText(timing.map_package_ms) + "/"
+            + MillisecondsText(timing.runtime_map_ms));
+        lines.push_back("  Build grid/voxel: " + MillisecondsText(timing.chunk_grid_ms) + "/"
+            + MillisecondsText(timing.voxel_world_ms));
+        lines.push_back("  Build vis/mesh: " + MillisecondsText(timing.face_visibility_ms) + "/"
+            + MillisecondsText(timing.active_mesh_ms));
+        lines.push_back("  Transitions/GPU: " + MillisecondsText(timing.transitions_ms) + "/"
+            + MillisecondsText(timing.renderer_setup_ms));
+        if (timing.total_initial_ms > 0.0) {
+            lines.push_back("  Initial total: " + MillisecondsText(timing.total_initial_ms));
+        }
+    }
     lines.push_back("");
 }
 
@@ -339,6 +353,21 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
     lines.push_back("  Mode: " + VisibilityModeLabel(workspace_state.visibility_mode));
     lines.push_back("  Radius/Fade: " + std::to_string(workspace_state.visibility_radius_chunks) + "/"
         + std::to_string(workspace_state.visibility_fade_ring_chunks));
+    const WorkspaceStreamingStats& streaming = workspace_state.streaming_stats;
+    lines.push_back("  Stream: " + std::string(streaming.enabled ? "on" : "full resident"));
+    if (streaming.source_chunks > 0) {
+        lines.push_back("  GPU resident: " + std::to_string(streaming.resident_chunks) + "/"
+            + std::to_string(streaming.source_chunks));
+        lines.push_back("  Stream pending: " + std::to_string(streaming.pending_chunks));
+        if (streaming.enabled) {
+            lines.push_back("  Stream radius: " + std::to_string(streaming.resident_radius_chunks) + "/"
+                + std::to_string(streaming.unload_radius_chunks));
+            lines.push_back("  Upload budget: " + std::to_string(streaming.upload_budget_chunks));
+            lines.push_back("  Last +/-: " + std::to_string(streaming.uploaded_chunks_last_update) + "/"
+                + std::to_string(streaming.unloaded_chunks_last_update));
+            lines.push_back("  Stream update: " + MillisecondsText(streaming.last_update_ms));
+        }
+    }
     if (workspace_state.visibility_stats.resident_chunks == 0) {
         lines.push_back("  unavailable");
         lines.push_back("");
@@ -485,17 +514,25 @@ void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& worksp
     lines.push_back("");
 
     lines.push_back("Comparison");
-    lines.push_back("  Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
-    lines.push_back("  Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
-    lines.push_back("  Terrain raw: "
-        + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces
-            + workspace_state.mesh_stats.terrain_raw_wall_faces));
-    lines.push_back("  Terrain merged: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
-    lines.push_back("  Raw T/W: " + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces) + "/"
-        + std::to_string(workspace_state.mesh_stats.terrain_raw_wall_faces));
-    lines.push_back("  Merged T/W/C: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
-        + std::to_string(workspace_state.mesh_stats.terrain_wall_faces) + "/"
-        + std::to_string(workspace_state.mesh_stats.terrain_cliff_faces));
+    lines.push_back("  Simple: " + (workspace_state.simple_chunk_meshes.IsValid()
+            ? std::to_string(workspace_state.mesh_stats.simple_faces)
+            : std::string("not built")));
+    lines.push_back("  Greedy: " + (workspace_state.greedy_chunk_meshes.IsValid()
+            ? std::to_string(workspace_state.mesh_stats.greedy_faces)
+            : std::string("not built")));
+    if (workspace_state.terrain_chunk_meshes.IsValid()) {
+        lines.push_back("  Terrain raw: "
+            + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces
+                + workspace_state.mesh_stats.terrain_raw_wall_faces));
+        lines.push_back("  Terrain merged: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
+        lines.push_back("  Raw T/W: " + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces) + "/"
+            + std::to_string(workspace_state.mesh_stats.terrain_raw_wall_faces));
+        lines.push_back("  Merged T/W/C: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
+            + std::to_string(workspace_state.mesh_stats.terrain_wall_faces) + "/"
+            + std::to_string(workspace_state.mesh_stats.terrain_cliff_faces));
+    } else {
+        lines.push_back("  Terrain: not built");
+    }
     lines.push_back("  Passes: "
         + std::string(workspace_state.show_terrain_tops ? "T" : "-")
         + std::string(workspace_state.show_terrain_walls ? "W" : "-")
