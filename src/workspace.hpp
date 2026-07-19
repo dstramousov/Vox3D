@@ -328,8 +328,10 @@ struct WorkspaceStreamingStats {
     int pending_chunks = 0;
     int region_width_chunks = 0;
     int region_height_chunks = 0;
-    int safety_radius_chunks = 0;
-    int max_view_distance_chunks = 0;
+    int core_radius_chunks = 0;
+    int ahead_depth_chunks = 0;
+    int ahead_half_width_chunks = 0;
+    int direction_sector = 0;
     int upload_budget_chunks = 0;
     int uploaded_chunks_last_update = 0;
     int unloaded_chunks_last_update = 0;
@@ -350,8 +352,10 @@ struct WorkspaceCpuMeshStreamingStats {
     int pending_chunks = 0;
     int region_width_chunks = 0;
     int region_height_chunks = 0;
-    int safety_radius_chunks = 0;
-    int max_view_distance_chunks = 0;
+    int core_radius_chunks = 0;
+    int ahead_depth_chunks = 0;
+    int ahead_half_width_chunks = 0;
+    int direction_sector = 0;
     int built_chunks_last_update = 0;
     int unloaded_chunks_last_update = 0;
     double unload_grace_seconds = 0.0;

@@ -364,8 +364,10 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
             lines.push_back("  CPU region: " + std::to_string(cpu_streaming.region_width_chunks) + "x"
                 + std::to_string(cpu_streaming.region_height_chunks));
             lines.push_back("  CPU retained: " + std::to_string(cpu_streaming.retained_chunks));
-            lines.push_back("  CPU safety/max: " + std::to_string(cpu_streaming.safety_radius_chunks) + "/"
-                + std::to_string(cpu_streaming.max_view_distance_chunks));
+            lines.push_back("  CPU core/ahead: " + std::to_string(cpu_streaming.core_radius_chunks) + "/"
+                + std::to_string(cpu_streaming.ahead_depth_chunks) + "x"
+                + std::to_string(cpu_streaming.ahead_half_width_chunks * 2 + 1));
+            lines.push_back("  CPU direction sector: " + std::to_string(cpu_streaming.direction_sector));
             lines.push_back("  CPU budget: " + MillisecondsText(cpu_streaming.active_build_budget_ms));
             lines.push_back("  CPU last +/-: " + std::to_string(cpu_streaming.built_chunks_last_update) + "/"
                 + std::to_string(cpu_streaming.unloaded_chunks_last_update));
@@ -384,8 +386,10 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
             lines.push_back("  GPU region: " + std::to_string(streaming.region_width_chunks) + "x"
                 + std::to_string(streaming.region_height_chunks));
             lines.push_back("  GPU retained: " + std::to_string(streaming.retained_chunks));
-            lines.push_back("  GPU safety/max: " + std::to_string(streaming.safety_radius_chunks) + "/"
-                + std::to_string(streaming.max_view_distance_chunks));
+            lines.push_back("  GPU core/ahead: " + std::to_string(streaming.core_radius_chunks) + "/"
+                + std::to_string(streaming.ahead_depth_chunks) + "x"
+                + std::to_string(streaming.ahead_half_width_chunks * 2 + 1));
+            lines.push_back("  GPU direction sector: " + std::to_string(streaming.direction_sector));
             lines.push_back("  GPU budget: " + std::to_string(streaming.upload_budget_chunks));
             lines.push_back("  Last +/-: " + std::to_string(streaming.uploaded_chunks_last_update) + "/"
                 + std::to_string(streaming.unloaded_chunks_last_update));

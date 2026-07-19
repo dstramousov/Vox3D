@@ -34,13 +34,13 @@ namespace {
 constexpr int kChunkSize16 = 16;
 constexpr int kChunkSize32 = 32;
 constexpr int kStreamingActivationThresholdChunks = 256;
-constexpr int kStreamingSafetyRadiusChunks = 3;
-constexpr int kStreamingPreloadMarginChunks = 1;
-constexpr int kStreamingMaxViewDistanceChunks = 16;
-constexpr int kStreamingUploadBudgetChunks = 4;
-constexpr double kStreamingUnloadGraceSeconds = 4.0;
-constexpr double kCpuMeshBuildBudgetMilliseconds = 4.0;
-constexpr double kCpuMeshCatchUpBudgetMilliseconds = 8.0;
+constexpr int kStreamingCoreRadiusChunks = 5;
+constexpr int kStreamingAheadDepthChunks = 7;
+constexpr int kStreamingAheadHalfWidthChunks = 3;
+constexpr int kStreamingUploadBudgetChunks = 1;
+constexpr double kStreamingUnloadGraceSeconds = 1.0;
+constexpr double kCpuMeshBuildBudgetMilliseconds = 2.0;
+constexpr int kCpuMeshBuildBudgetChunks = 2;
 
 using SteadyClock = std::chrono::steady_clock;
 
@@ -261,12 +261,11 @@ void ToggleOverlayFlag(
     return RaylibChunkStreamingOptions{
         true,
         kStreamingActivationThresholdChunks,
-        kStreamingSafetyRadiusChunks,
-        kStreamingPreloadMarginChunks,
-        kStreamingMaxViewDistanceChunks,
+        kStreamingCoreRadiusChunks,
+        kStreamingAheadDepthChunks,
+        kStreamingAheadHalfWidthChunks,
         kStreamingUploadBudgetChunks,
         kStreamingUnloadGraceSeconds,
-        CurrentRenderAspectRatio(),
     };
 }
 
@@ -399,8 +398,10 @@ void RecalculateDeferredMeshInfo(ChunkMeshBuildResult& source)
     result.pending_chunks = stats.pending_chunks;
     result.region_width_chunks = stats.region_width_chunks;
     result.region_height_chunks = stats.region_height_chunks;
-    result.safety_radius_chunks = stats.safety_radius_chunks;
-    result.max_view_distance_chunks = stats.max_view_distance_chunks;
+    result.core_radius_chunks = stats.core_radius_chunks;
+    result.ahead_depth_chunks = stats.ahead_depth_chunks;
+    result.ahead_half_width_chunks = stats.ahead_half_width_chunks;
+    result.direction_sector = stats.direction_sector;
     result.upload_budget_chunks = stats.upload_budget_chunks;
     result.uploaded_chunks_last_update = stats.uploaded_chunks_last_update;
     result.unloaded_chunks_last_update = stats.unloaded_chunks_last_update;
@@ -1397,8 +1398,9 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         workspace_.cpu_mesh_streaming_stats.enabled = deferred_cpu_meshes;
         workspace_.cpu_mesh_streaming_stats.source_chunks = workspace_.chunk_meshes.info.total_chunks;
         workspace_.cpu_mesh_streaming_stats.ready_chunks = CountGeneratedChunks(workspace_.chunk_meshes);
-        workspace_.cpu_mesh_streaming_stats.safety_radius_chunks = kStreamingSafetyRadiusChunks;
-        workspace_.cpu_mesh_streaming_stats.max_view_distance_chunks = kStreamingMaxViewDistanceChunks;
+        workspace_.cpu_mesh_streaming_stats.core_radius_chunks = kStreamingCoreRadiusChunks;
+        workspace_.cpu_mesh_streaming_stats.ahead_depth_chunks = kStreamingAheadDepthChunks;
+        workspace_.cpu_mesh_streaming_stats.ahead_half_width_chunks = kStreamingAheadHalfWidthChunks;
         workspace_.cpu_mesh_streaming_stats.unload_grace_seconds = kStreamingUnloadGraceSeconds;
         workspace_.cpu_mesh_streaming_stats.build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
         workspace_.cpu_mesh_streaming_stats.active_build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
@@ -1451,8 +1453,9 @@ void App::SetActiveMeshCacheFromMode()
         && ready_chunks < workspace_.chunk_meshes.info.total_chunks;
     workspace_.cpu_mesh_streaming_stats.source_chunks = workspace_.chunk_meshes.info.total_chunks;
     workspace_.cpu_mesh_streaming_stats.ready_chunks = ready_chunks;
-    workspace_.cpu_mesh_streaming_stats.safety_radius_chunks = kStreamingSafetyRadiusChunks;
-    workspace_.cpu_mesh_streaming_stats.max_view_distance_chunks = kStreamingMaxViewDistanceChunks;
+    workspace_.cpu_mesh_streaming_stats.core_radius_chunks = kStreamingCoreRadiusChunks;
+    workspace_.cpu_mesh_streaming_stats.ahead_depth_chunks = kStreamingAheadDepthChunks;
+    workspace_.cpu_mesh_streaming_stats.ahead_half_width_chunks = kStreamingAheadHalfWidthChunks;
     workspace_.cpu_mesh_streaming_stats.unload_grace_seconds = kStreamingUnloadGraceSeconds;
     workspace_.cpu_mesh_streaming_stats.build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
     workspace_.cpu_mesh_streaming_stats.active_build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
@@ -1619,8 +1622,10 @@ void App::UploadActiveChunkMesh(std::string_view reason)
         out << " pending=" << streaming.pending_chunks;
         out << " region=" << streaming.region_width_chunks << 'x'
             << streaming.region_height_chunks;
-        out << " safety_radius=" << streaming.safety_radius_chunks;
-        out << " max_view=" << streaming.max_view_distance_chunks;
+        out << " core_radius=" << streaming.core_radius_chunks;
+        out << " ahead=" << streaming.ahead_depth_chunks << 'x'
+            << (streaming.ahead_half_width_chunks * 2 + 1);
+        out << " sector=" << streaming.direction_sector;
         out << " grace_s=" << streaming.unload_grace_seconds;
         out << " budget=" << streaming.upload_budget_chunks;
         out << " setup_ms=" << std::fixed << std::setprecision(2)
@@ -1633,10 +1638,12 @@ void App::UploadActiveChunkMesh(std::string_view reason)
             "cpu_mesh_stream",
             "status=waiting source="
                 + std::to_string(workspace_.cpu_mesh_streaming_stats.source_chunks)
-                + " safety_radius="
-                + std::to_string(workspace_.cpu_mesh_streaming_stats.safety_radius_chunks)
-                + " max_view="
-                + std::to_string(workspace_.cpu_mesh_streaming_stats.max_view_distance_chunks)
+                + " core_radius="
+                + std::to_string(workspace_.cpu_mesh_streaming_stats.core_radius_chunks)
+                + " ahead="
+                + std::to_string(workspace_.cpu_mesh_streaming_stats.ahead_depth_chunks)
+                + "x"
+                + std::to_string(workspace_.cpu_mesh_streaming_stats.ahead_half_width_chunks * 2 + 1)
                 + " budget_ms="
                 + std::to_string(workspace_.cpu_mesh_streaming_stats.build_budget_ms));
     } else if (!uploaded) {
@@ -1770,10 +1777,9 @@ void App::UpdateCpuMeshStreaming()
     const RaylibChunkStreamingRegion region = ResolveCameraStreamingRegion(
         preview_camera_.Camera(),
         workspace_.chunk_meshes.info,
-        CurrentRenderAspectRatio(),
-        kStreamingSafetyRadiusChunks,
-        kStreamingPreloadMarginChunks,
-        kStreamingMaxViewDistanceChunks);
+        kStreamingCoreRadiusChunks,
+        kStreamingAheadDepthChunks,
+        kStreamingAheadHalfWidthChunks);
     stats.required_chunks = region.ChunkCount();
     stats.region_width_chunks = region.IsValid()
         ? region.max_chunk_x - region.min_chunk_x + 1
@@ -1781,11 +1787,14 @@ void App::UpdateCpuMeshStreaming()
     stats.region_height_chunks = region.IsValid()
         ? region.max_chunk_y - region.min_chunk_y + 1
         : 0;
-    stats.safety_radius_chunks = kStreamingSafetyRadiusChunks;
-    stats.max_view_distance_chunks = kStreamingMaxViewDistanceChunks;
+    stats.core_radius_chunks = kStreamingCoreRadiusChunks;
+    stats.ahead_depth_chunks = kStreamingAheadDepthChunks;
+    stats.ahead_half_width_chunks = kStreamingAheadHalfWidthChunks;
+    stats.direction_sector = region.direction_sector;
     stats.unload_grace_seconds = kStreamingUnloadGraceSeconds;
 
     struct Candidate {
+        int priority_distance = 0;
         int focus_distance = 0;
         int camera_distance = 0;
         std::size_t source_index = 0;
@@ -1810,31 +1819,36 @@ void App::UpdateCpuMeshStreaming()
                 if (workspace_.chunk_meshes.chunks[*source_index].IsGenerated()) {
                     continue;
                 }
+                const int focus_distance = MeshChunkDistance(coord, region.focus_chunk);
+                const int camera_distance = MeshChunkDistance(coord, region.camera_chunk);
                 candidates.push_back(Candidate{
-                    MeshChunkDistance(coord, region.focus_chunk),
-                    MeshChunkDistance(coord, region.camera_chunk),
+                    std::min(focus_distance, camera_distance),
+                    focus_distance,
+                    camera_distance,
                     *source_index,
                 });
             }
         }
     }
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& lhs, const Candidate& rhs) {
-        if (lhs.focus_distance != rhs.focus_distance) {
-            return lhs.focus_distance < rhs.focus_distance;
+        if (lhs.priority_distance != rhs.priority_distance) {
+            return lhs.priority_distance < rhs.priority_distance;
         }
         if (lhs.camera_distance != rhs.camera_distance) {
             return lhs.camera_distance < rhs.camera_distance;
         }
+        if (lhs.focus_distance != rhs.focus_distance) {
+            return lhs.focus_distance < rhs.focus_distance;
+        }
         return lhs.source_index < rhs.source_index;
     });
 
-    stats.active_build_budget_ms = candidates.empty()
-        ? stats.build_budget_ms
-        : kCpuMeshCatchUpBudgetMilliseconds;
+    stats.active_build_budget_ms = stats.build_budget_ms;
     bool source_changed = false;
     for (const Candidate& candidate : candidates) {
-        if (stats.built_chunks_last_update > 0
-            && ElapsedMilliseconds(started_at) >= stats.active_build_budget_ms) {
+        if (stats.built_chunks_last_update >= kCpuMeshBuildBudgetChunks
+            || (stats.built_chunks_last_update > 0
+                && ElapsedMilliseconds(started_at) >= stats.active_build_budget_ms)) {
             break;
         }
         if (candidate.source_index >= workspace_.chunk_grid.chunks.size()) {
@@ -1916,9 +1930,7 @@ void App::UpdateCpuMeshStreaming()
             return lhs.source_index < rhs.source_index;
         });
 
-    const int retention_limit = std::max(
-        stats.required_chunks * 2,
-        stats.required_chunks + 64);
+    const int retention_limit = stats.required_chunks + 48;
     int forced_evictions = stats.pending_chunks > 0
         ? std::max(0, generated_chunks - retention_limit)
         : 0;

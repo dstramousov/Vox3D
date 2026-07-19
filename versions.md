@@ -386,3 +386,10 @@
 - Replaced fixed-radius large-map residency with a camera-frustum footprint projected onto the map, including a bounded forward distance, safety area, and preload margin.
 - Added coordinated CPU/GPU residency hysteresis: old chunks remain available while required chunks are pending and are evicted only after a grace period.
 - Prioritized newly required chunks around the camera focus, added catch-up CPU/GPU budgets, and exposed required, pending, retained, and footprint counters in Stats.
+
+
+## v0.5.24 -> v0.5.25
+
+- Replaced continuously changing frustum residency with a stable 11x11 camera-centered core plus an eight-sector directional preload strip.
+- Limited large-map streaming work to one CPU chunk and one GPU upload per frame under a 2 ms CPU target, removing the previous 8 ms catch-up bursts.
+- Reduced old-chunk retention and exposed the stable core, preload dimensions, direction sector, and per-frame streaming timings in Stats.

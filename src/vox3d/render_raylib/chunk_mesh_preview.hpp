@@ -72,39 +72,45 @@ enum class RaylibChunkVisibilityMode : std::uint8_t {
     const ChunkMeshBuildInfo& info);
 
 /**
- * @brief Chunk footprint required by the current camera view.
+ * @brief Stable chunk footprint used by large-map streaming.
  *
- * The region is the convex footprint of the camera frustum projected onto the
- * map plane, expanded by a preload margin and a minimum safety radius.
+ * The required set is a square core centered on the camera ground chunk plus
+ * a bounded directional preload strip. Camera rotation is quantized to one of
+ * eight sectors so small mouse movements do not continuously replace the
+ * resident set.
  */
 struct RaylibChunkStreamingRegion {
     ChunkCoord focus_chunk{};
     ChunkCoord camera_chunk{};
+    int direction_sector = 0;
+    int direction_x = 1;
+    int direction_y = 0;
+    int core_radius_chunks = 0;
+    int ahead_depth_chunks = 0;
+    int ahead_half_width_chunks = 0;
     int min_chunk_x = 0;
     int max_chunk_x = -1;
     int min_chunk_y = 0;
     int max_chunk_y = -1;
-    std::array<Vector2, 48> footprint{};
-    int footprint_size = 0;
     int required_chunk_count = 0;
 
     /**
-     * @brief Returns true when the footprint contains at least one chunk.
+     * @brief Returns true when the region contains at least one chunk.
      *
      * @return True for a non-empty clamped region.
      */
     [[nodiscard]] bool IsValid() const;
 
     /**
-     * @brief Tests whether a chunk coordinate belongs to the required region.
+     * @brief Tests whether a chunk belongs to the stable core or preload strip.
      *
      * @param coord Chunk coordinate to test.
-     * @return True when the chunk center is inside the footprint.
+     * @return True when the chunk is required by the current streaming window.
      */
     [[nodiscard]] bool Contains(ChunkCoord coord) const;
 
     /**
-     * @brief Returns the number of chunk centers inside the projected footprint.
+     * @brief Returns the number of chunks in the clamped required set.
      *
      * @return Required chunk count, or zero for an invalid region.
      */
@@ -112,28 +118,26 @@ struct RaylibChunkStreamingRegion {
 };
 
 /**
- * @brief Resolves the camera-dependent chunk region needed for streaming.
+ * @brief Resolves a stable camera-centered region for large-map streaming.
  *
- * Four perspective rays are projected through the viewport corners onto the
- * map's average elevation plane. Rays that do not hit the plane are limited to
- * max_view_distance_chunks. The resulting bounds also include the camera and
- * focus chunks, a safety radius, and a preload margin.
+ * The core changes only after the camera crosses a chunk boundary. Forward
+ * preload changes only when the view direction crosses one of eight 45-degree
+ * sectors. This avoids per-degree frustum churn while keeping additional
+ * geometry available in front of the camera.
  *
  * @param camera Current raylib camera.
  * @param info Mesh source dimensions and level range.
- * @param viewport_aspect_ratio Width divided by height of the 3D viewport.
- * @param safety_radius_chunks Minimum radius retained around camera and focus.
- * @param preload_margin_chunks Additional margin around the projected view.
- * @param max_view_distance_chunks Maximum projected distance from the camera.
- * @return Clamped required chunk footprint.
+ * @param core_radius_chunks Radius of the square always-resident core.
+ * @param ahead_depth_chunks Extra preload depth beyond the core.
+ * @param ahead_half_width_chunks Half-width of the directional preload strip.
+ * @return Clamped stable required chunk region.
  */
 [[nodiscard]] RaylibChunkStreamingRegion ResolveCameraStreamingRegion(
     const Camera3D& camera,
     const ChunkMeshBuildInfo& info,
-    float viewport_aspect_ratio,
-    int safety_radius_chunks,
-    int preload_margin_chunks,
-    int max_view_distance_chunks);
+    int core_radius_chunks,
+    int ahead_depth_chunks,
+    int ahead_half_width_chunks);
 
 /**
  * @brief 3D debug overlay visibility flags for the chunk-mesh preview.
@@ -162,12 +166,11 @@ struct RaylibChunkVisibilityOptions {
 struct RaylibChunkStreamingOptions {
     bool enabled = true;
     int activation_threshold_chunks = 256;
-    int safety_radius_chunks = 3;
-    int preload_margin_chunks = 1;
-    int max_view_distance_chunks = 16;
-    int upload_budget_chunks = 4;
-    double unload_grace_seconds = 4.0;
-    float viewport_aspect_ratio = 1.0F;
+    int core_radius_chunks = 5;
+    int ahead_depth_chunks = 7;
+    int ahead_half_width_chunks = 3;
+    int upload_budget_chunks = 1;
+    double unload_grace_seconds = 1.0;
 };
 
 /**
@@ -182,8 +185,10 @@ struct RaylibChunkStreamingStats {
     int pending_chunks = 0;
     int region_width_chunks = 0;
     int region_height_chunks = 0;
-    int safety_radius_chunks = 0;
-    int max_view_distance_chunks = 0;
+    int core_radius_chunks = 0;
+    int ahead_depth_chunks = 0;
+    int ahead_half_width_chunks = 0;
+    int direction_sector = 0;
     int upload_budget_chunks = 0;
     int uploaded_chunks_last_update = 0;
     int unloaded_chunks_last_update = 0;
