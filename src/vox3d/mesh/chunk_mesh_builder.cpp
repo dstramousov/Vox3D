@@ -548,9 +548,22 @@ bool ChunkMeshBuildChunkResult::IsValid() const
     return mesh.IsValid();
 }
 
+bool ChunkMeshData::IsGenerated() const
+{
+    return generated;
+}
+
 bool ChunkMeshData::IsValid() const
 {
-    return bounds.IsValid() && vertices.size() == faces.size() * 4ULL && indices.size() == faces.size() * 6ULL;
+    if (!bounds.IsValid()) {
+        return false;
+    }
+    if (!generated) {
+        return vertices.empty() && indices.empty() && faces.empty()
+            && terrain_raw_top_faces == 0 && terrain_raw_wall_faces == 0;
+    }
+    return vertices.size() == faces.size() * 4ULL
+        && indices.size() == faces.size() * 6ULL;
 }
 
 std::uint64_t ChunkMeshData::FaceCount() const
@@ -639,6 +652,49 @@ ChunkMeshBuildChunkResult BuildChunkMeshForChunk(
     return result;
 }
 
+ChunkMeshBuildResult CreateDeferredChunkMeshes(
+    const VoxelWorld& world,
+    const ChunkGrid& chunks,
+    ChunkMeshBuildMode mode)
+{
+    ChunkMeshBuildResult result;
+
+    if (!world.IsValid()) {
+        result.diagnostics.AddWarning("cannot create deferred chunk meshes from invalid voxel world");
+        return result;
+    }
+    if (!chunks.IsValid()) {
+        result.diagnostics.AddWarning("cannot create deferred chunk meshes from invalid chunk grid");
+        return result;
+    }
+    if (mode == ChunkMeshBuildMode::kTerrainSurface) {
+        result.diagnostics.AddWarning("cannot create voxel deferred source for terrain-surface mode");
+        return result;
+    }
+    if (world.info.total_chunks != chunks.info.total_chunks
+        || world.info.chunks_x != chunks.info.chunks_x
+        || world.info.chunks_y != chunks.info.chunks_y) {
+        result.diagnostics.AddWarning(
+            "cannot create deferred chunk meshes because voxel world and chunk grid dimensions differ");
+        return result;
+    }
+
+    CopyWorldShape(world, mode, result.info);
+    result.chunks.reserve(chunks.chunks.size());
+    for (const ChunkInfo& chunk : chunks.chunks) {
+        ChunkMeshData placeholder;
+        placeholder.coord = chunk.coord;
+        placeholder.bounds = chunk.bounds;
+        placeholder.generated = false;
+        result.chunks.push_back(std::move(placeholder));
+    }
+
+    if (!result.IsValid()) {
+        result.diagnostics.AddWarning("deferred chunk mesh source validation failed");
+    }
+    return result;
+}
+
 ChunkMeshBuildResult BuildChunkMeshes(const VoxelWorld& world, const ChunkGrid& chunks, ChunkMeshBuildMode mode)
 {
     ChunkMeshBuildResult result;
@@ -690,6 +746,10 @@ std::string ToLogString(const ChunkMeshBuildResult& result)
         out << " chunks=" << result.info.chunks_x << 'x' << result.info.chunks_y << " total=" << result.info.total_chunks;
     }
     out << " mesh_chunks=" << result.chunks.size();
+    out << " generated=" << std::count_if(
+        result.chunks.begin(),
+        result.chunks.end(),
+        [](const ChunkMeshData& chunk) { return chunk.IsGenerated(); });
     out << " non_empty=" << result.info.non_empty_chunks;
     out << " faces=" << result.info.visible_faces;
     if (result.info.mode == ChunkMeshBuildMode::kTerrainSurface) {

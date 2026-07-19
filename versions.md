@@ -375,3 +375,9 @@
 - Added camera-centered GPU chunk streaming for large maps, with a bounded resident radius, unload hysteresis, and a two-chunk-per-frame upload budget.
 - Changed mesh-mode preparation to build only the active mode initially and construct Simple, Greedy, or Terrain meshes lazily when selected; transition data is now reused across chunk-size rebuilds.
 - Added pipeline/streaming timings to Stats and removed the unused per-tile terrain string from voxel columns to reduce large-map memory usage.
+
+## v0.5.22 -> v0.5.23
+
+- Replaced map-wide face visibility and CPU mesh generation on large maps with camera-centered deferred chunk builds under a per-frame time budget.
+- Fixed large-map streaming focus by intersecting the free-fly camera view ray with the map plane, and added a fail-open fallback for an empty frustum result.
+- Skipped expensive diagnostic overview parsing once metadata already proves the map is too large, and added separate CPU/GPU streaming counters to Stats.

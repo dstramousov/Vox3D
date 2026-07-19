@@ -334,6 +334,23 @@ struct WorkspaceStreamingStats {
 };
 
 /**
+ * @brief Last measured camera-centered CPU mesh generation state.
+ */
+struct WorkspaceCpuMeshStreamingStats {
+    bool enabled = false;
+    int source_chunks = 0;
+    int ready_chunks = 0;
+    int pending_chunks = 0;
+    int resident_radius_chunks = 0;
+    int unload_radius_chunks = 0;
+    int built_chunks_last_update = 0;
+    int unloaded_chunks_last_update = 0;
+    double build_budget_ms = 0.0;
+    double last_update_ms = 0.0;
+    double total_update_ms = 0.0;
+};
+
+/**
  * @brief Timings for the latest map and chunk-pipeline construction.
  */
 struct WorkspacePipelineTimings {
@@ -463,6 +480,7 @@ struct WorkspaceState {
     PassabilityValidationReport passability_validation;
     WorkspaceVisibilityStats visibility_stats;
     WorkspaceStreamingStats streaming_stats;
+    WorkspaceCpuMeshStreamingStats cpu_mesh_streaming_stats;
     WorkspacePipelineTimings pipeline_timings;
     int chunk_size_tiles = 16;
     WorkspaceChunkSizeComparison chunk_size_comparison;

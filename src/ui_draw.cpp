@@ -353,19 +353,35 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
     lines.push_back("  Mode: " + VisibilityModeLabel(workspace_state.visibility_mode));
     lines.push_back("  Radius/Fade: " + std::to_string(workspace_state.visibility_radius_chunks) + "/"
         + std::to_string(workspace_state.visibility_fade_ring_chunks));
+    const WorkspaceCpuMeshStreamingStats& cpu_streaming = workspace_state.cpu_mesh_streaming_stats;
+    lines.push_back("  CPU stream: " + std::string(cpu_streaming.enabled ? "on" : "full build"));
+    if (cpu_streaming.source_chunks > 0) {
+        lines.push_back("  CPU ready: " + std::to_string(cpu_streaming.ready_chunks) + "/"
+            + std::to_string(cpu_streaming.source_chunks));
+        lines.push_back("  CPU pending: " + std::to_string(cpu_streaming.pending_chunks));
+        if (cpu_streaming.enabled) {
+            lines.push_back("  CPU radius: " + std::to_string(cpu_streaming.resident_radius_chunks) + "/"
+                + std::to_string(cpu_streaming.unload_radius_chunks));
+            lines.push_back("  CPU budget: " + MillisecondsText(cpu_streaming.build_budget_ms));
+            lines.push_back("  CPU last +/-: " + std::to_string(cpu_streaming.built_chunks_last_update) + "/"
+                + std::to_string(cpu_streaming.unloaded_chunks_last_update));
+            lines.push_back("  CPU update: " + MillisecondsText(cpu_streaming.last_update_ms));
+        }
+    }
+
     const WorkspaceStreamingStats& streaming = workspace_state.streaming_stats;
-    lines.push_back("  Stream: " + std::string(streaming.enabled ? "on" : "full resident"));
+    lines.push_back("  GPU stream: " + std::string(streaming.enabled ? "on" : "full resident"));
     if (streaming.source_chunks > 0) {
         lines.push_back("  GPU resident: " + std::to_string(streaming.resident_chunks) + "/"
             + std::to_string(streaming.source_chunks));
-        lines.push_back("  Stream pending: " + std::to_string(streaming.pending_chunks));
+        lines.push_back("  GPU pending: " + std::to_string(streaming.pending_chunks));
         if (streaming.enabled) {
-            lines.push_back("  Stream radius: " + std::to_string(streaming.resident_radius_chunks) + "/"
+            lines.push_back("  GPU radius: " + std::to_string(streaming.resident_radius_chunks) + "/"
                 + std::to_string(streaming.unload_radius_chunks));
-            lines.push_back("  Upload budget: " + std::to_string(streaming.upload_budget_chunks));
+            lines.push_back("  GPU budget: " + std::to_string(streaming.upload_budget_chunks));
             lines.push_back("  Last +/-: " + std::to_string(streaming.uploaded_chunks_last_update) + "/"
                 + std::to_string(streaming.unloaded_chunks_last_update));
-            lines.push_back("  Stream update: " + MillisecondsText(streaming.last_update_ms));
+            lines.push_back("  GPU update: " + MillisecondsText(streaming.last_update_ms));
         }
     }
     if (workspace_state.visibility_stats.resident_chunks == 0) {

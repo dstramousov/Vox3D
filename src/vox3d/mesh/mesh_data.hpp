@@ -87,9 +87,22 @@ struct MeshFace {
 struct ChunkMeshData {
     ChunkCoord coord;
     TileBounds bounds;
+    bool generated = true;
+    std::uint64_t terrain_raw_top_faces = 0;
+    std::uint64_t terrain_raw_wall_faces = 0;
     std::vector<MeshVertex> vertices;
     std::vector<std::uint32_t> indices;
     std::vector<MeshFace> faces;
+
+    /**
+     * @brief Returns true when CPU generation has completed for this chunk.
+     *
+     * Deferred large-map sources keep placeholder chunks with generated=false
+     * until the camera-centered streaming pass builds their mesh data.
+     *
+     * @return True when the chunk is ready for renderer upload.
+     */
+    [[nodiscard]] bool IsGenerated() const;
 
     /**
      * @brief Returns true when the chunk mesh has internally consistent buffers.

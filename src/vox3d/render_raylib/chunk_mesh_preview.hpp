@@ -56,6 +56,21 @@ enum class RaylibChunkVisibilityMode : std::uint8_t {
 [[nodiscard]] std::string_view ToString(RaylibChunkVisibilityMode mode);
 
 /**
+ * @brief Resolves the map chunk under the camera view focus.
+ *
+ * The free-fly camera target is a one-unit direction point rather than a map
+ * orbit center. This function intersects the view ray with the map's average
+ * elevation plane and clamps the resulting tile to the mesh bounds.
+ *
+ * @param camera Current raylib camera.
+ * @param info Mesh source dimensions and level range.
+ * @return Chunk coordinate used by streaming and radius culling.
+ */
+[[nodiscard]] ChunkCoord ResolveCameraFocusChunk(
+    const Camera3D& camera,
+    const ChunkMeshBuildInfo& info);
+
+/**
  * @brief 3D debug overlay visibility flags for the chunk-mesh preview.
  */
 struct RaylibChunkMeshDebugOverlayOptions {

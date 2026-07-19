@@ -49,6 +49,43 @@ std::string_view ToString(RaylibChunkVisibilityMode mode)
     return "unknown";
 }
 
+ChunkCoord ResolveCameraFocusChunk(
+    const Camera3D& camera,
+    const ChunkMeshBuildInfo& info)
+{
+    const int chunk_size_x = std::max(1, info.chunk_size_x);
+    const int chunk_size_y = std::max(1, info.chunk_size_y);
+    float focus_x = camera.position.x;
+    float focus_z = camera.position.z;
+
+    const float direction_x = camera.target.x - camera.position.x;
+    const float direction_y = camera.target.y - camera.position.y;
+    const float direction_z = camera.target.z - camera.position.z;
+    float focus_level = 0.0F;
+    if (info.levels.has_value()) {
+        focus_level = static_cast<float>(info.levels->min + info.levels->max + 1) * 0.5F;
+    }
+    if (std::abs(direction_y) > 0.0001F) {
+        const float distance = (focus_level - camera.position.y) / direction_y;
+        if (distance >= 0.0F && std::isfinite(distance)) {
+            focus_x = camera.position.x + direction_x * distance;
+            focus_z = camera.position.z + direction_z * distance;
+        }
+    }
+
+    const float tile_x = focus_x + static_cast<float>(info.map_width) * 0.5F;
+    const float tile_y = static_cast<float>(info.map_height) * 0.5F - focus_z;
+    const int chunk_x = std::clamp(
+        static_cast<int>(std::floor(tile_x / static_cast<float>(chunk_size_x))),
+        0,
+        std::max(0, info.chunks_x - 1));
+    const int chunk_y = std::clamp(
+        static_cast<int>(std::floor(tile_y / static_cast<float>(chunk_size_y))),
+        0,
+        std::max(0, info.chunks_y - 1));
+    return ChunkCoord{chunk_x, chunk_y};
+}
+
 namespace {
 
 struct RgbaColor {
@@ -188,49 +225,6 @@ struct RgbaColor {
         position.z,
         static_cast<float>(map_height) * 0.5F - position.y,
     };
-}
-
-[[nodiscard]] int ClampInt(int value, int minimum, int maximum)
-{
-    return std::max(minimum, std::min(maximum, value));
-}
-
-[[nodiscard]] ChunkCoord CameraChunkCoord(
-    const Camera3D& camera,
-    const ChunkMeshBuildInfo& info)
-{
-    const int chunk_size_x = std::max(1, info.chunk_size_x);
-    const int chunk_size_y = std::max(1, info.chunk_size_y);
-    const float tile_x = camera.position.x + static_cast<float>(info.map_width) * 0.5F;
-    const float tile_y = static_cast<float>(info.map_height) * 0.5F - camera.position.z;
-    const int chunk_x = ClampInt(
-        static_cast<int>(std::floor(tile_x / static_cast<float>(chunk_size_x))),
-        0,
-        std::max(0, info.chunks_x - 1));
-    const int chunk_y = ClampInt(
-        static_cast<int>(std::floor(tile_y / static_cast<float>(chunk_size_y))),
-        0,
-        std::max(0, info.chunks_y - 1));
-    return ChunkCoord{chunk_x, chunk_y};
-}
-
-[[nodiscard]] ChunkCoord StreamingCameraChunkCoord(
-    const Camera3D& camera,
-    const ChunkMeshBuildInfo& info)
-{
-    const int chunk_size_x = std::max(1, info.chunk_size_x);
-    const int chunk_size_y = std::max(1, info.chunk_size_y);
-    const float tile_x = camera.target.x + static_cast<float>(info.map_width) * 0.5F;
-    const float tile_y = static_cast<float>(info.map_height) * 0.5F - camera.target.z;
-    const int chunk_x = ClampInt(
-        static_cast<int>(std::floor(tile_x / static_cast<float>(chunk_size_x))),
-        0,
-        std::max(0, info.chunks_x - 1));
-    const int chunk_y = ClampInt(
-        static_cast<int>(std::floor(tile_y / static_cast<float>(chunk_size_y))),
-        0,
-        std::max(0, info.chunks_y - 1));
-    return ChunkCoord{chunk_x, chunk_y};
 }
 
 [[nodiscard]] std::optional<std::size_t> SourceChunkIndex(
@@ -392,13 +386,30 @@ struct RgbaColor {
 {
     ChunkVisibilityOptions options;
     options.mode = ToCoreVisibilityMode(visibility.mode);
-    options.camera_chunk = CameraChunkCoord(camera, build_result.info);
+    options.camera_chunk = ResolveCameraFocusChunk(camera, build_result.info);
     options.radius_chunks = visibility.radius_chunks;
     options.fade_ring_chunks = visibility.fade_ring_chunks;
     if (options.mode == ChunkVisibilityMode::kFrustumCull) {
         options.frustum = BuildCameraFrustum(camera, build_result.info, visibility.viewport_aspect_ratio);
     }
     return options;
+}
+
+[[nodiscard]] ChunkVisibilityReport BuildVisibilityFailOpen(
+    std::span<const ChunkVisibilityItem> items,
+    const ChunkVisibilityOptions& options)
+{
+    ChunkVisibilityReport report = BuildChunkVisibility(items, options);
+    if (options.mode != ChunkVisibilityMode::kFrustumCull || items.empty()
+        || report.drawn_models > 0) {
+        return report;
+    }
+
+    ChunkVisibilityOptions fallback = options;
+    fallback.mode = ChunkVisibilityMode::kAllChunks;
+    report = BuildChunkVisibility(items, fallback);
+    report.mode = ChunkVisibilityMode::kFrustumCull;
+    return report;
 }
 
 struct Ray3f {
@@ -1342,7 +1353,7 @@ void RaylibChunkMeshPreview::UpdateStreaming(
         + std::max(0, options.unload_margin_chunks);
     streaming_stats_.upload_budget_chunks = std::max(1, options.upload_budget_chunks);
 
-    const ChunkCoord center = StreamingCameraChunkCoord(camera, source_->info);
+    const ChunkCoord center = ResolveCameraFocusChunk(camera, source_->info);
     bool residency_changed = false;
     for (std::size_t index = 0; index < resident_chunks_.size(); ++index) {
         if (resident_chunks_[index] == 0 || index >= source_->chunks.size()) {
@@ -1372,7 +1383,9 @@ void RaylibChunkMeshPreview::UpdateStreaming(
             const ChunkCoord coord{x, y};
             const auto source_index = SourceChunkIndex(coord, source_->info);
             if (!source_index.has_value() || *source_index >= resident_chunks_.size()
-                || resident_chunks_[*source_index] != 0) {
+                || *source_index >= source_->chunks.size()
+                || resident_chunks_[*source_index] != 0
+                || !source_->chunks[*source_index].IsGenerated()) {
                 continue;
             }
             candidates.push_back(Candidate{ChunkDistance(coord, center), *source_index});
@@ -1424,7 +1437,8 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
 bool RaylibChunkMeshPreview::UploadSourceChunk(std::size_t source_index)
 {
     if (source_ == nullptr || source_index >= source_->chunks.size()
-        || source_index >= resident_chunks_.size() || resident_chunks_[source_index] != 0) {
+        || source_index >= resident_chunks_.size() || resident_chunks_[source_index] != 0
+        || !source_->chunks[source_index].IsGenerated()) {
         return false;
     }
 
@@ -1525,7 +1539,8 @@ void RaylibChunkMeshPreview::RebuildResidentMetadata()
         std::numeric_limits<std::size_t>::max());
     visibility_items_.reserve(static_cast<std::size_t>(std::max(0, streaming_stats_.resident_chunks)));
     for (std::size_t index = 0; index < source_->chunks.size() && index < resident_chunks_.size(); ++index) {
-        if (resident_chunks_[index] == 0 || source_->chunks[index].faces.empty()) {
+        if (resident_chunks_[index] == 0 || !source_->chunks[index].IsGenerated()
+            || source_->chunks[index].faces.empty()) {
             continue;
         }
         const ChunkMeshData& chunk = source_->chunks[index];
@@ -1592,7 +1607,7 @@ void RaylibChunkMeshPreview::Draw(
     BeginMode3D(camera);
 
     visibility.viewport_aspect_ratio = CurrentRenderAspectRatio();
-    const ChunkVisibilityReport visibility_report = BuildChunkVisibility(
+    const ChunkVisibilityReport visibility_report = BuildVisibilityFailOpen(
         visibility_items_,
         BuildCoreVisibilityOptions(build_result, camera, visibility));
 
@@ -1664,7 +1679,7 @@ RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(
         return result;
     }
 
-    const ChunkVisibilityReport report = BuildChunkVisibility(
+    const ChunkVisibilityReport report = BuildVisibilityFailOpen(
         visibility_items_,
         BuildCoreVisibilityOptions(build_result, camera, visibility));
     result = ToRaylibVisibilityStats(report, visibility.mode);

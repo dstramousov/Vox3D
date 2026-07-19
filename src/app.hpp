@@ -102,6 +102,7 @@ private:
     void AdjustVisibilityRadius(int delta, std::string_view reason);
     void AdjustVisibilityFadeRing(int delta, std::string_view reason);
     void UpdateVisibilityStats();
+    void UpdateCpuMeshStreaming();
     void UpdateChunkStreaming();
     [[nodiscard]] bool EnsureMeshModeAvailable(ChunkMeshBuildMode mode, std::string_view reason);
     void SetChunkSize(int chunk_size, std::string_view reason);

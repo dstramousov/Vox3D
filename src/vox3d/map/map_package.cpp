@@ -481,6 +481,18 @@ void TryReadMetadata(MapPackageInfo& info)
 
 void TryReadOverview(MapPackageInfo& info)
 {
+    if (info.width.has_value() && info.height.has_value()
+        && *info.width > 0 && *info.height > 0) {
+        const std::size_t cell_count = static_cast<std::size_t>(*info.width)
+            * static_cast<std::size_t>(*info.height);
+        if (cell_count > kMaxOverviewCells) {
+            info.warnings.push_back(
+                "map overview skipped: map too large for diagnostic preview cells="
+                + std::to_string(cell_count));
+            return;
+        }
+    }
+
     constexpr std::array<std::string_view, 3> grid_candidates{
         "layers/terrain.json",
         "layers/tile_grid.json",
@@ -518,8 +530,10 @@ void TryReadOverview(MapPackageInfo& info)
 
         const std::size_t cell_count = static_cast<std::size_t>(*info.width) * static_cast<std::size_t>(*info.height);
         if (cell_count > kMaxOverviewCells) {
-            info.warnings.push_back("map overview skipped: map too large for diagnostic preview cells=" + std::to_string(cell_count));
-            continue;
+            info.warnings.push_back(
+                "map overview skipped: map too large for diagnostic preview cells="
+                + std::to_string(cell_count));
+            return;
         }
 
         std::vector<MapCellKind> cells = ExtractTerrainCells(*array_section);
