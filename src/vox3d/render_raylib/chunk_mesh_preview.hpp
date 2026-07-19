@@ -194,6 +194,8 @@ struct RaylibChunkStreamingStats {
     int unloaded_chunks_last_update = 0;
     bool far_lod_uploaded = false;
     int far_lod_step_tiles = 0;
+    int far_lod_chunk_span_tiles = 0;
+    int far_lod_models = 0;
     std::uint64_t far_lod_vertices = 0;
     std::uint64_t far_lod_triangles = 0;
     double unload_grace_seconds = 0.0;
@@ -325,6 +327,19 @@ struct RaylibUploadedChunkModel {
     TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
     std::size_t visibility_item_index = 0;
     std::uint64_t faces = 0;
+};
+
+/**
+ * @brief One coarse Far LOD model and the map tile rectangle it covers.
+ */
+struct RaylibFarLodChunkModel {
+    Model model{};
+    int min_tile_x = 0;
+    int min_tile_y = 0;
+    int max_tile_x = 0;
+    int max_tile_y = 0;
+    std::uint64_t vertices = 0;
+    std::uint64_t triangles = 0;
 };
 
 /**
@@ -512,7 +527,7 @@ private:
     std::vector<double> last_required_seconds_;
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<ChunkVisibilityItem> visibility_items_;
-    Model far_lod_model_{};
+    std::vector<RaylibFarLodChunkModel> far_lod_chunks_;
     bool far_lod_uploaded_ = false;
     RaylibChunkMeshPreviewStats stats_;
     RaylibChunkStreamingStats streaming_stats_;

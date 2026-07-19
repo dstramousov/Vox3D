@@ -399,3 +399,9 @@
 - Added a persistent coarse heightfield LOD for the complete map so streamed detailed chunks no longer expose black gaps while loading or after eviction.
 - Replaced directional detailed preload with a stable 11x11 view-focus region, leaving distant terrain to the coarse LOD and reducing chunk replacement during camera movement.
 - Added Far LOD diagnostics for sample step, vertices, and triangles to the streaming log and Stats panel.
+
+## v0.5.26 -> v0.5.27
+
+- Replaced the single smooth whole-map Far LOD surface with independent 128-tile coarse chunks built from flat stepped cells and vertical walls.
+- Kept coarse surfaces below the exact terrain by sampling each cell minimum and adding a vertical underlay offset, preventing the Far LOD from bulging through detailed voxel chunks.
+- Suppressed only Far LOD chunks fully covered by resident detailed chunks, preserving coarse coverage during streaming without the previous central square overlay.

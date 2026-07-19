@@ -337,6 +337,8 @@ struct WorkspaceStreamingStats {
     int unloaded_chunks_last_update = 0;
     bool far_lod_uploaded = false;
     int far_lod_step_tiles = 0;
+    int far_lod_chunk_span_tiles = 0;
+    int far_lod_models = 0;
     std::uint64_t far_lod_vertices = 0;
     std::uint64_t far_lod_triangles = 0;
     double unload_grace_seconds = 0.0;

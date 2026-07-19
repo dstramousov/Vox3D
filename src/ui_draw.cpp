@@ -385,7 +385,9 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
         if (streaming.enabled) {
             lines.push_back("  Far LOD: " + std::string(streaming.far_lod_uploaded ? "on" : "unavailable"));
             if (streaming.far_lod_uploaded) {
-                lines.push_back("  Far step/verts: " + std::to_string(streaming.far_lod_step_tiles) + "/"
+                lines.push_back("  Far step/span: " + std::to_string(streaming.far_lod_step_tiles) + "/"
+                    + std::to_string(streaming.far_lod_chunk_span_tiles));
+                lines.push_back("  Far models/verts: " + std::to_string(streaming.far_lod_models) + "/"
                     + std::to_string(streaming.far_lod_vertices));
                 lines.push_back("  Far triangles: " + std::to_string(streaming.far_lod_triangles));
             }

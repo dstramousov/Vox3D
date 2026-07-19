@@ -859,124 +859,188 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     return LoadModelFromMesh(mesh);
 }
 
-struct FarLodModelResult {
-    Model model{};
+struct FarLodCell {
+    int surface_level = 0;
+    int color_level = 0;
+};
+
+struct FarLodChunkSetResult {
+    std::vector<RaylibFarLodChunkModel> chunks;
     int step_tiles = 0;
+    int chunk_span_tiles = 0;
     std::uint64_t vertices = 0;
     std::uint64_t triangles = 0;
 
     [[nodiscard]] bool IsValid() const
     {
-        return model.meshCount > 0 && model.meshes != nullptr
-            && step_tiles > 0 && vertices > 0 && triangles > 0;
+        return !chunks.empty() && step_tiles > 0 && chunk_span_tiles > 0
+            && vertices > 0 && triangles > 0;
     }
 };
 
-[[nodiscard]] std::vector<int> BuildFarLodAxis(int size, int step)
-{
-    std::vector<int> positions;
-    if (size <= 0 || step <= 0) {
-        return positions;
-    }
+struct FarLodMeshBuffers {
+    std::vector<float> vertices;
+    std::vector<float> normals;
+    std::vector<unsigned char> colors;
+    std::vector<unsigned short> indices;
+};
 
-    positions.reserve(static_cast<std::size_t>((size + step - 1) / step + 1));
-    for (int value = 0; value < size; value += step) {
-        positions.push_back(value);
-    }
-    if (positions.empty() || positions.back() != size) {
-        positions.push_back(size);
-    }
-    return positions;
+[[nodiscard]] std::size_t FarLodCellIndex(int x, int y, int cells_x)
+{
+    return static_cast<std::size_t>(y) * static_cast<std::size_t>(cells_x)
+        + static_cast<std::size_t>(x);
 }
 
-[[nodiscard]] int SampleFarLodHeight(const RuntimeMap& map, int tile_x, int tile_y)
-{
-    if (!map.height.IsValid()) {
-        return 0;
-    }
-
-    const auto sample = [&](int x, int y) {
-        const int clamped_x = std::clamp(x, 0, map.info.width - 1);
-        const int clamped_y = std::clamp(y, 0, map.info.height - 1);
-        const std::size_t index = static_cast<std::size_t>(clamped_y)
-                * static_cast<std::size_t>(map.info.width)
-            + static_cast<std::size_t>(clamped_x);
-        return map.height.cells[index];
-    };
-
-    const int sum = sample(tile_x - 1, tile_y - 1)
-        + sample(tile_x, tile_y - 1)
-        + sample(tile_x - 1, tile_y)
-        + sample(tile_x, tile_y);
-    return static_cast<int>(std::lround(static_cast<double>(sum) / 4.0));
-}
-
-[[nodiscard]] int SampleFarLodSurfaceHeight(
+[[nodiscard]] std::vector<FarLodCell> BuildFarLodCells(
     const RuntimeMap& map,
-    int tile_x,
-    int tile_y,
-    int sample_radius)
+    int step_tiles,
+    int cells_x,
+    int cells_y)
 {
-    int minimum = std::numeric_limits<int>::max();
-    const int min_x = std::max(0, tile_x - sample_radius);
-    const int max_x = std::min(map.info.width - 1, tile_x + sample_radius);
-    const int min_y = std::max(0, tile_y - sample_radius);
-    const int max_y = std::min(map.info.height - 1, tile_y + sample_radius);
-    for (int y = min_y; y <= max_y; ++y) {
-        const std::size_t row = static_cast<std::size_t>(y)
-            * static_cast<std::size_t>(map.info.width);
-        for (int x = min_x; x <= max_x; ++x) {
-            minimum = std::min(
-                minimum,
-                map.height.cells[row + static_cast<std::size_t>(x)]);
+    std::vector<FarLodCell> cells(
+        static_cast<std::size_t>(cells_x) * static_cast<std::size_t>(cells_y));
+    for (int cell_y = 0; cell_y < cells_y; ++cell_y) {
+        const int min_tile_y = cell_y * step_tiles;
+        const int max_tile_y = std::min(map.info.height, min_tile_y + step_tiles);
+        for (int cell_x = 0; cell_x < cells_x; ++cell_x) {
+            const int min_tile_x = cell_x * step_tiles;
+            const int max_tile_x = std::min(map.info.width, min_tile_x + step_tiles);
+            int minimum_level = std::numeric_limits<int>::max();
+            std::int64_t level_sum = 0;
+            std::int64_t sample_count = 0;
+            for (int tile_y = min_tile_y; tile_y < max_tile_y; ++tile_y) {
+                const std::size_t row = static_cast<std::size_t>(tile_y)
+                    * static_cast<std::size_t>(map.info.width);
+                for (int tile_x = min_tile_x; tile_x < max_tile_x; ++tile_x) {
+                    const int level = map.height.cells[
+                        row + static_cast<std::size_t>(tile_x)];
+                    minimum_level = std::min(minimum_level, level);
+                    level_sum += level;
+                    ++sample_count;
+                }
+            }
+            FarLodCell& cell = cells[FarLodCellIndex(cell_x, cell_y, cells_x)];
+            cell.surface_level = minimum_level == std::numeric_limits<int>::max()
+                ? 0
+                : minimum_level;
+            cell.color_level = sample_count == 0
+                ? cell.surface_level
+                : static_cast<int>(std::lround(
+                      static_cast<double>(level_sum)
+                      / static_cast<double>(sample_count)));
         }
     }
-    return minimum == std::numeric_limits<int>::max() ? 0 : minimum;
+    return cells;
 }
 
-[[nodiscard]] FarLodModelResult LoadFarLodModel(const RuntimeMap& map)
+[[nodiscard]] unsigned short AppendFarLodVertex(
+    FarLodMeshBuffers& buffers,
+    Vector3 position,
+    Vector3 normal,
+    RgbaColor color)
 {
-    FarLodModelResult result;
-    if (!map.IsValid() || !map.height.IsValid()) {
-        return result;
+    const std::size_t vertex_index = buffers.vertices.size() / 3ULL;
+    if (vertex_index >= static_cast<std::size_t>(std::numeric_limits<unsigned short>::max())) {
+        return std::numeric_limits<unsigned short>::max();
+    }
+    buffers.vertices.insert(
+        buffers.vertices.end(),
+        {position.x, position.y, position.z});
+    buffers.normals.insert(
+        buffers.normals.end(),
+        {normal.x, normal.y, normal.z});
+    buffers.colors.insert(
+        buffers.colors.end(),
+        {color.r, color.g, color.b, color.a});
+    return static_cast<unsigned short>(vertex_index);
+}
+
+void AppendFarLodTop(
+    FarLodMeshBuffers& buffers,
+    Vector3 northwest,
+    Vector3 northeast,
+    Vector3 southeast,
+    Vector3 southwest,
+    RgbaColor color)
+{
+    const unsigned short first = AppendFarLodVertex(
+        buffers, northwest, Vector3{0.0F, 1.0F, 0.0F}, color);
+    const unsigned short second = AppendFarLodVertex(
+        buffers, northeast, Vector3{0.0F, 1.0F, 0.0F}, color);
+    const unsigned short third = AppendFarLodVertex(
+        buffers, southeast, Vector3{0.0F, 1.0F, 0.0F}, color);
+    const unsigned short fourth = AppendFarLodVertex(
+        buffers, southwest, Vector3{0.0F, 1.0F, 0.0F}, color);
+    if (fourth == std::numeric_limits<unsigned short>::max()) {
+        return;
+    }
+    buffers.indices.insert(
+        buffers.indices.end(),
+        {first, second, third, first, third, fourth});
+}
+
+void AppendFarLodWall(
+    FarLodMeshBuffers& buffers,
+    Vector3 top_a,
+    Vector3 top_b,
+    Vector3 bottom_b,
+    Vector3 bottom_a,
+    Vector3 normal,
+    RgbaColor color)
+{
+    const unsigned short first = AppendFarLodVertex(
+        buffers, top_a, normal, color);
+    const unsigned short second = AppendFarLodVertex(
+        buffers, top_b, normal, color);
+    const unsigned short third = AppendFarLodVertex(
+        buffers, bottom_b, normal, color);
+    const unsigned short fourth = AppendFarLodVertex(
+        buffers, bottom_a, normal, color);
+    if (fourth == std::numeric_limits<unsigned short>::max()) {
+        return;
     }
 
-    constexpr int kBaseStepTiles = 8;
-    constexpr int kMaxGridNodesPerAxis = 240;
-    const int max_dimension = std::max(map.info.width, map.info.height);
-    const int bounded_step = std::max(
-        kBaseStepTiles,
-        (max_dimension + kMaxGridNodesPerAxis - 2) / (kMaxGridNodesPerAxis - 1));
-    const std::vector<int> x_positions = BuildFarLodAxis(map.info.width, bounded_step);
-    const std::vector<int> y_positions = BuildFarLodAxis(map.info.height, bounded_step);
-    if (x_positions.size() < 2 || y_positions.size() < 2) {
-        return result;
+    // The coarse wall is intentionally double-sided. It can be viewed from
+    // either side while detailed chunks are entering or leaving residency.
+    buffers.indices.insert(
+        buffers.indices.end(),
+        {first, second, third, first, third, fourth,
+         first, third, second, first, fourth, third});
+}
+
+[[nodiscard]] Model LoadFarLodMeshModel(const FarLodMeshBuffers& buffers)
+{
+    if (buffers.vertices.empty() || buffers.indices.empty()
+        || buffers.vertices.size() % 3ULL != 0
+        || buffers.normals.size() != buffers.vertices.size()
+        || buffers.colors.size() / 4ULL != buffers.vertices.size() / 3ULL) {
+        return Model{};
     }
 
-    const std::size_t vertex_count = x_positions.size() * y_positions.size();
-    if (vertex_count > static_cast<std::size_t>(std::numeric_limits<unsigned short>::max())) {
-        return result;
-    }
-    const std::size_t quad_count = (x_positions.size() - 1ULL) * (y_positions.size() - 1ULL);
-    const std::size_t index_count = quad_count * 6ULL;
-    constexpr std::size_t kMaxRaylibAllocation = static_cast<std::size_t>(std::numeric_limits<unsigned int>::max());
-    if (vertex_count > kMaxRaylibAllocation / (3ULL * sizeof(float))
-        || vertex_count > kMaxRaylibAllocation / (4ULL * sizeof(unsigned char))
-        || index_count > kMaxRaylibAllocation / sizeof(unsigned short)) {
-        return result;
+    const std::size_t vertex_count = buffers.vertices.size() / 3ULL;
+    const std::size_t triangle_count = buffers.indices.size() / 3ULL;
+    constexpr std::size_t kMaxRaylibAllocation =
+        static_cast<std::size_t>(std::numeric_limits<unsigned int>::max());
+    if (vertex_count > static_cast<std::size_t>(std::numeric_limits<int>::max())
+        || triangle_count > static_cast<std::size_t>(std::numeric_limits<int>::max())
+        || buffers.vertices.size() > kMaxRaylibAllocation / sizeof(float)
+        || buffers.normals.size() > kMaxRaylibAllocation / sizeof(float)
+        || buffers.colors.size() > kMaxRaylibAllocation / sizeof(unsigned char)
+        || buffers.indices.size() > kMaxRaylibAllocation / sizeof(unsigned short)) {
+        return Model{};
     }
 
     Mesh mesh{};
     mesh.vertexCount = static_cast<int>(vertex_count);
-    mesh.triangleCount = static_cast<int>(quad_count * 2ULL);
+    mesh.triangleCount = static_cast<int>(triangle_count);
     mesh.vertices = static_cast<float*>(MemAlloc(
-        static_cast<unsigned int>(vertex_count * 3ULL * sizeof(float))));
+        static_cast<unsigned int>(buffers.vertices.size() * sizeof(float))));
     mesh.normals = static_cast<float*>(MemAlloc(
-        static_cast<unsigned int>(vertex_count * 3ULL * sizeof(float))));
+        static_cast<unsigned int>(buffers.normals.size() * sizeof(float))));
     mesh.colors = static_cast<unsigned char*>(MemAlloc(
-        static_cast<unsigned int>(vertex_count * 4ULL * sizeof(unsigned char))));
+        static_cast<unsigned int>(buffers.colors.size() * sizeof(unsigned char))));
     mesh.indices = static_cast<unsigned short*>(MemAlloc(
-        static_cast<unsigned int>(index_count * sizeof(unsigned short))));
+        static_cast<unsigned int>(buffers.indices.size() * sizeof(unsigned short))));
     if (mesh.vertices == nullptr || mesh.normals == nullptr
         || mesh.colors == nullptr || mesh.indices == nullptr) {
         if (mesh.vertices != nullptr) {
@@ -991,75 +1055,286 @@ struct FarLodModelResult {
         if (mesh.indices != nullptr) {
             MemFree(mesh.indices);
         }
-        return result;
+        return Model{};
     }
 
-    constexpr float kFarLodVerticalOffset = 0.08F;
-    constexpr float kFarLodColorShade = 0.86F;
-    for (std::size_t y_index = 0; y_index < y_positions.size(); ++y_index) {
-        for (std::size_t x_index = 0; x_index < x_positions.size(); ++x_index) {
-            const std::size_t vertex_index = y_index * x_positions.size() + x_index;
-            const int tile_x = x_positions[x_index];
-            const int tile_y = y_positions[y_index];
-            const int level = SampleFarLodHeight(map, tile_x, tile_y);
-            const int surface_level = SampleFarLodSurfaceHeight(
-                map,
-                tile_x,
-                tile_y,
-                bounded_step);
-            const Vector3 position{
-                static_cast<float>(tile_x) - static_cast<float>(map.info.width) * 0.5F,
-                static_cast<float>(surface_level + 1) - kFarLodVerticalOffset,
-                static_cast<float>(map.info.height) * 0.5F - static_cast<float>(tile_y),
-            };
-            const RgbaColor color = ApplyShade(
-                GeographicBaseColor(level),
-                kFarLodColorShade);
-            const std::size_t vertex_offset = vertex_index * 3ULL;
-            const std::size_t color_offset = vertex_index * 4ULL;
-            mesh.vertices[vertex_offset + 0ULL] = position.x;
-            mesh.vertices[vertex_offset + 1ULL] = position.y;
-            mesh.vertices[vertex_offset + 2ULL] = position.z;
-            mesh.normals[vertex_offset + 0ULL] = 0.0F;
-            mesh.normals[vertex_offset + 1ULL] = 1.0F;
-            mesh.normals[vertex_offset + 2ULL] = 0.0F;
-            mesh.colors[color_offset + 0ULL] = color.r;
-            mesh.colors[color_offset + 1ULL] = color.g;
-            mesh.colors[color_offset + 2ULL] = color.b;
-            mesh.colors[color_offset + 3ULL] = color.a;
-        }
-    }
-
-    std::size_t index_offset = 0;
-    for (std::size_t y_index = 0; y_index + 1ULL < y_positions.size(); ++y_index) {
-        for (std::size_t x_index = 0; x_index + 1ULL < x_positions.size(); ++x_index) {
-            const auto northwest = static_cast<unsigned short>(
-                y_index * x_positions.size() + x_index);
-            const auto northeast = static_cast<unsigned short>(northwest + 1U);
-            const auto southwest = static_cast<unsigned short>(
-                (y_index + 1ULL) * x_positions.size() + x_index);
-            const auto southeast = static_cast<unsigned short>(southwest + 1U);
-            mesh.indices[index_offset++] = northwest;
-            mesh.indices[index_offset++] = northeast;
-            mesh.indices[index_offset++] = southeast;
-            mesh.indices[index_offset++] = northwest;
-            mesh.indices[index_offset++] = southeast;
-            mesh.indices[index_offset++] = southwest;
-        }
-    }
-
+    std::copy(buffers.vertices.begin(), buffers.vertices.end(), mesh.vertices);
+    std::copy(buffers.normals.begin(), buffers.normals.end(), mesh.normals);
+    std::copy(buffers.colors.begin(), buffers.colors.end(), mesh.colors);
+    std::copy(buffers.indices.begin(), buffers.indices.end(), mesh.indices);
     UploadMesh(&mesh, false);
-    result.model = LoadModelFromMesh(mesh);
-    result.step_tiles = bounded_step;
-    result.vertices = vertex_count;
-    result.triangles = quad_count * 2ULL;
-    if (!result.IsValid() && result.model.meshCount > 0 && result.model.meshes != nullptr) {
-        UnloadModel(result.model);
-        result = FarLodModelResult{};
+    return LoadModelFromMesh(mesh);
+}
+
+[[nodiscard]] RaylibFarLodChunkModel BuildFarLodChunkModel(
+    const RuntimeMap& map,
+    const std::vector<FarLodCell>& cells,
+    int cells_x,
+    int cells_y,
+    int step_tiles,
+    int min_cell_x,
+    int min_cell_y,
+    int max_cell_x,
+    int max_cell_y,
+    float outer_skirt_bottom)
+{
+    RaylibFarLodChunkModel result;
+    result.min_tile_x = min_cell_x * step_tiles;
+    result.min_tile_y = min_cell_y * step_tiles;
+    result.max_tile_x = std::min(map.info.width, max_cell_x * step_tiles);
+    result.max_tile_y = std::min(map.info.height, max_cell_y * step_tiles);
+
+    constexpr float kVerticalUnderlayOffset = 0.35F;
+    constexpr float kTopColorShade = 0.82F;
+    constexpr float kWallColorShade = 0.58F;
+    FarLodMeshBuffers buffers;
+    const int local_cell_count = std::max(0, max_cell_x - min_cell_x)
+        * std::max(0, max_cell_y - min_cell_y);
+    buffers.vertices.reserve(static_cast<std::size_t>(local_cell_count) * 36ULL);
+    buffers.normals.reserve(static_cast<std::size_t>(local_cell_count) * 36ULL);
+    buffers.colors.reserve(static_cast<std::size_t>(local_cell_count) * 48ULL);
+    buffers.indices.reserve(static_cast<std::size_t>(local_cell_count) * 54ULL);
+
+    const auto surface_y = [&](int cell_x, int cell_y) {
+        const FarLodCell& cell = cells[FarLodCellIndex(cell_x, cell_y, cells_x)];
+        return static_cast<float>(cell.surface_level + 1)
+            - kVerticalUnderlayOffset;
+    };
+    const auto world_x = [&](int tile_x) {
+        return static_cast<float>(tile_x)
+            - static_cast<float>(map.info.width) * 0.5F;
+    };
+    const auto world_z = [&](int tile_y) {
+        return static_cast<float>(map.info.height) * 0.5F
+            - static_cast<float>(tile_y);
+    };
+
+    for (int cell_y = min_cell_y; cell_y < max_cell_y; ++cell_y) {
+        const int min_tile_y = cell_y * step_tiles;
+        const int max_tile_y = std::min(map.info.height, min_tile_y + step_tiles);
+        for (int cell_x = min_cell_x; cell_x < max_cell_x; ++cell_x) {
+            const int min_tile_x = cell_x * step_tiles;
+            const int max_tile_x = std::min(map.info.width, min_tile_x + step_tiles);
+            const FarLodCell& cell = cells[FarLodCellIndex(cell_x, cell_y, cells_x)];
+            const float top = surface_y(cell_x, cell_y);
+            const float west = world_x(min_tile_x);
+            const float east = world_x(max_tile_x);
+            const float north = world_z(min_tile_y);
+            const float south = world_z(max_tile_y);
+            const RgbaColor top_color = ApplyShade(
+                GeographicBaseColor(cell.color_level),
+                kTopColorShade);
+            const RgbaColor wall_color = ApplyShade(
+                GeographicBaseColor(cell.color_level),
+                kWallColorShade);
+
+            const Vector3 northwest{west, top, north};
+            const Vector3 northeast{east, top, north};
+            const Vector3 southeast{east, top, south};
+            const Vector3 southwest{west, top, south};
+            AppendFarLodTop(
+                buffers,
+                northwest,
+                northeast,
+                southeast,
+                southwest,
+                top_color);
+
+            const float west_bottom = cell_x == 0
+                ? outer_skirt_bottom
+                : surface_y(cell_x - 1, cell_y);
+            if (top > west_bottom + 0.001F) {
+                AppendFarLodWall(
+                    buffers,
+                    northwest,
+                    southwest,
+                    Vector3{west, west_bottom, south},
+                    Vector3{west, west_bottom, north},
+                    Vector3{-1.0F, 0.0F, 0.0F},
+                    wall_color);
+            }
+
+            const float east_bottom = cell_x + 1 >= cells_x
+                ? outer_skirt_bottom
+                : surface_y(cell_x + 1, cell_y);
+            if (top > east_bottom + 0.001F) {
+                AppendFarLodWall(
+                    buffers,
+                    southeast,
+                    northeast,
+                    Vector3{east, east_bottom, north},
+                    Vector3{east, east_bottom, south},
+                    Vector3{1.0F, 0.0F, 0.0F},
+                    wall_color);
+            }
+
+            const float north_bottom = cell_y == 0
+                ? outer_skirt_bottom
+                : surface_y(cell_x, cell_y - 1);
+            if (top > north_bottom + 0.001F) {
+                AppendFarLodWall(
+                    buffers,
+                    northeast,
+                    northwest,
+                    Vector3{west, north_bottom, north},
+                    Vector3{east, north_bottom, north},
+                    Vector3{0.0F, 0.0F, 1.0F},
+                    wall_color);
+            }
+
+            const float south_bottom = cell_y + 1 >= cells_y
+                ? outer_skirt_bottom
+                : surface_y(cell_x, cell_y + 1);
+            if (top > south_bottom + 0.001F) {
+                AppendFarLodWall(
+                    buffers,
+                    southwest,
+                    southeast,
+                    Vector3{east, south_bottom, south},
+                    Vector3{west, south_bottom, south},
+                    Vector3{0.0F, 0.0F, -1.0F},
+                    wall_color);
+            }
+        }
+    }
+
+    result.vertices = buffers.vertices.size() / 3ULL;
+    result.triangles = buffers.indices.size() / 3ULL;
+    result.model = LoadFarLodMeshModel(buffers);
+    if (result.model.meshCount <= 0 || result.model.meshes == nullptr) {
+        result = RaylibFarLodChunkModel{};
     }
     return result;
 }
 
+[[nodiscard]] FarLodChunkSetResult LoadFarLodChunkSet(const RuntimeMap& map)
+{
+    FarLodChunkSetResult result;
+    if (!map.IsValid() || !map.height.IsValid()) {
+        return result;
+    }
+
+    constexpr int kBaseStepTiles = 8;
+    constexpr int kMaxGridNodesPerAxis = 240;
+    constexpr int kCellsPerLodChunk = 16;
+    const int max_dimension = std::max(map.info.width, map.info.height);
+    const int step_tiles = std::max(
+        kBaseStepTiles,
+        (max_dimension + kMaxGridNodesPerAxis - 1) / kMaxGridNodesPerAxis);
+    const int cells_x = (map.info.width + step_tiles - 1) / step_tiles;
+    const int cells_y = (map.info.height + step_tiles - 1) / step_tiles;
+    if (cells_x <= 0 || cells_y <= 0) {
+        return result;
+    }
+
+    const std::vector<FarLodCell> cells = BuildFarLodCells(
+        map,
+        step_tiles,
+        cells_x,
+        cells_y);
+    const float outer_skirt_bottom = static_cast<float>(
+        map.info.levels.has_value() ? map.info.levels->min - 2 : -8);
+    const int lod_chunks_x = (cells_x + kCellsPerLodChunk - 1)
+        / kCellsPerLodChunk;
+    const int lod_chunks_y = (cells_y + kCellsPerLodChunk - 1)
+        / kCellsPerLodChunk;
+    result.chunks.reserve(
+        static_cast<std::size_t>(lod_chunks_x)
+        * static_cast<std::size_t>(lod_chunks_y));
+
+    for (int lod_chunk_y = 0; lod_chunk_y < lod_chunks_y; ++lod_chunk_y) {
+        const int min_cell_y = lod_chunk_y * kCellsPerLodChunk;
+        const int max_cell_y = std::min(
+            cells_y,
+            min_cell_y + kCellsPerLodChunk);
+        for (int lod_chunk_x = 0; lod_chunk_x < lod_chunks_x; ++lod_chunk_x) {
+            const int min_cell_x = lod_chunk_x * kCellsPerLodChunk;
+            const int max_cell_x = std::min(
+                cells_x,
+                min_cell_x + kCellsPerLodChunk);
+            RaylibFarLodChunkModel chunk = BuildFarLodChunkModel(
+                map,
+                cells,
+                cells_x,
+                cells_y,
+                step_tiles,
+                min_cell_x,
+                min_cell_y,
+                max_cell_x,
+                max_cell_y,
+                outer_skirt_bottom);
+            if (chunk.model.meshCount <= 0 || chunk.model.meshes == nullptr) {
+                for (RaylibFarLodChunkModel& loaded_chunk : result.chunks) {
+                    if (loaded_chunk.model.meshCount > 0
+                        && loaded_chunk.model.meshes != nullptr) {
+                        UnloadModel(loaded_chunk.model);
+                    }
+                }
+                return FarLodChunkSetResult{};
+            }
+            result.vertices += chunk.vertices;
+            result.triangles += chunk.triangles;
+            result.chunks.push_back(std::move(chunk));
+        }
+    }
+
+    result.step_tiles = step_tiles;
+    result.chunk_span_tiles = step_tiles * kCellsPerLodChunk;
+    if (!result.IsValid()) {
+        for (RaylibFarLodChunkModel& chunk : result.chunks) {
+            if (chunk.model.meshCount > 0 && chunk.model.meshes != nullptr) {
+                UnloadModel(chunk.model);
+            }
+        }
+        result = FarLodChunkSetResult{};
+    }
+    return result;
+}
+
+[[nodiscard]] bool IsFarLodChunkFullyCovered(
+    const RaylibFarLodChunkModel& far_chunk,
+    const ChunkMeshBuildResult* source,
+    const std::vector<std::uint8_t>& resident_chunks)
+{
+    if (source == nullptr || !source->info.IsValid()
+        || resident_chunks.size() != source->chunks.size()) {
+        return false;
+    }
+
+    const int chunk_size_x = std::max(1, source->info.chunk_size_x);
+    const int chunk_size_y = std::max(1, source->info.chunk_size_y);
+    const int min_chunk_x = std::clamp(
+        far_chunk.min_tile_x / chunk_size_x,
+        0,
+        source->info.chunks_x - 1);
+    const int min_chunk_y = std::clamp(
+        far_chunk.min_tile_y / chunk_size_y,
+        0,
+        source->info.chunks_y - 1);
+    const int max_chunk_x = std::clamp(
+        (std::max(far_chunk.min_tile_x + 1, far_chunk.max_tile_x) - 1)
+            / chunk_size_x,
+        0,
+        source->info.chunks_x - 1);
+    const int max_chunk_y = std::clamp(
+        (std::max(far_chunk.min_tile_y + 1, far_chunk.max_tile_y) - 1)
+            / chunk_size_y,
+        0,
+        source->info.chunks_y - 1);
+    for (int chunk_y = min_chunk_y; chunk_y <= max_chunk_y; ++chunk_y) {
+        for (int chunk_x = min_chunk_x; chunk_x <= max_chunk_x; ++chunk_x) {
+            const auto source_index = SourceChunkIndex(
+                ChunkCoord{chunk_x, chunk_y},
+                source->info);
+            if (!source_index.has_value()
+                || *source_index >= resident_chunks.size()
+                || resident_chunks[*source_index] == 0) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 
 [[nodiscard]] bool IsTerrainPassEnabled(TerrainRenderPass pass, RaylibTerrainPassOptions options)
 {
@@ -1645,12 +1920,14 @@ bool RaylibChunkMeshPreview::SetSource(
         && build_result.info.total_chunks > std::max(0, options.activation_threshold_chunks);
 
     if (streaming_stats_.enabled && runtime_map != nullptr) {
-        FarLodModelResult far_lod = LoadFarLodModel(*runtime_map);
+        FarLodChunkSetResult far_lod = LoadFarLodChunkSet(*runtime_map);
         if (far_lod.IsValid()) {
-            far_lod_model_ = far_lod.model;
+            far_lod_chunks_ = std::move(far_lod.chunks);
             far_lod_uploaded_ = true;
             streaming_stats_.far_lod_uploaded = true;
             streaming_stats_.far_lod_step_tiles = far_lod.step_tiles;
+            streaming_stats_.far_lod_chunk_span_tiles = far_lod.chunk_span_tiles;
+            streaming_stats_.far_lod_models = static_cast<int>(far_lod_chunks_.size());
             streaming_stats_.far_lod_vertices = far_lod.vertices;
             streaming_stats_.far_lod_triangles = far_lod.triangles;
         }
@@ -2056,7 +2333,13 @@ void RaylibChunkMeshPreview::Draw(
     constexpr Vector3 kOrigin{0.0F, 0.0F, 0.0F};
     constexpr float kScale = 1.0F;
     if (far_lod_uploaded_) {
-        DrawModel(far_lod_model_, kOrigin, kScale, WHITE);
+        for (const RaylibFarLodChunkModel& far_chunk : far_lod_chunks_) {
+            if (IsFarLodChunkFullyCovered(
+                    far_chunk, source_, resident_chunks_)) {
+                continue;
+            }
+            DrawModel(far_chunk.model, kOrigin, kScale, WHITE);
+        }
     }
     for (const RaylibUploadedChunkModel& chunk : chunks_) {
         if (!IsTerrainPassEnabled(chunk.terrain_pass, terrain_passes)
@@ -2156,9 +2439,10 @@ RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(
 
 void RaylibChunkMeshPreview::Unload()
 {
-    if (far_lod_uploaded_ && far_lod_model_.meshCount > 0
-        && far_lod_model_.meshes != nullptr) {
-        UnloadModel(far_lod_model_);
+    for (RaylibFarLodChunkModel& far_chunk : far_lod_chunks_) {
+        if (far_chunk.model.meshCount > 0 && far_chunk.model.meshes != nullptr) {
+            UnloadModel(far_chunk.model);
+        }
     }
     for (RaylibUploadedChunkModel& chunk : chunks_) {
         if (chunk.model.meshCount > 0 && chunk.model.meshes != nullptr) {
@@ -2170,7 +2454,7 @@ void RaylibChunkMeshPreview::Unload()
     last_required_seconds_.clear();
     chunks_.clear();
     visibility_items_.clear();
-    far_lod_model_ = Model{};
+    far_lod_chunks_.clear();
     far_lod_uploaded_ = false;
     stats_ = RaylibChunkMeshPreviewStats{};
     streaming_stats_ = RaylibChunkStreamingStats{};

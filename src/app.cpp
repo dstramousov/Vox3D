@@ -407,6 +407,8 @@ void RecalculateDeferredMeshInfo(ChunkMeshBuildResult& source)
     result.unloaded_chunks_last_update = stats.unloaded_chunks_last_update;
     result.far_lod_uploaded = stats.far_lod_uploaded;
     result.far_lod_step_tiles = stats.far_lod_step_tiles;
+    result.far_lod_chunk_span_tiles = stats.far_lod_chunk_span_tiles;
+    result.far_lod_models = stats.far_lod_models;
     result.far_lod_vertices = stats.far_lod_vertices;
     result.far_lod_triangles = stats.far_lod_triangles;
     result.unload_grace_seconds = stats.unload_grace_seconds;
@@ -1636,6 +1638,8 @@ void App::UploadActiveChunkMesh(std::string_view reason)
         out << " far_lod=" << (streaming.far_lod_uploaded ? "yes" : "no");
         if (streaming.far_lod_uploaded) {
             out << " far_step=" << streaming.far_lod_step_tiles;
+            out << " far_span=" << streaming.far_lod_chunk_span_tiles;
+            out << " far_models=" << streaming.far_lod_models;
             out << " far_vertices=" << streaming.far_lod_vertices;
             out << " far_triangles=" << streaming.far_lod_triangles;
         }
