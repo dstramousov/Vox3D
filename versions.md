@@ -393,3 +393,9 @@
 - Replaced continuously changing frustum residency with a stable 11x11 camera-centered core plus an eight-sector directional preload strip.
 - Limited large-map streaming work to one CPU chunk and one GPU upload per frame under a 2 ms CPU target, removing the previous 8 ms catch-up bursts.
 - Reduced old-chunk retention and exposed the stable core, preload dimensions, direction sector, and per-frame streaming timings in Stats.
+
+## v0.5.25 -> v0.5.26
+
+- Added a persistent coarse heightfield LOD for the complete map so streamed detailed chunks no longer expose black gaps while loading or after eviction.
+- Replaced directional detailed preload with a stable 11x11 view-focus region, leaving distant terrain to the coarse LOD and reducing chunk replacement during camera movement.
+- Added Far LOD diagnostics for sample step, vertices, and triangles to the streaming log and Stats panel.

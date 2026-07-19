@@ -74,10 +74,10 @@ enum class RaylibChunkVisibilityMode : std::uint8_t {
 /**
  * @brief Stable chunk footprint used by large-map streaming.
  *
- * The required set is a square core centered on the camera ground chunk plus
- * a bounded directional preload strip. Camera rotation is quantized to one of
- * eight sectors so small mouse movements do not continuously replace the
- * resident set.
+ * The required set is a square core centered on the camera view focus plus an
+ * optional bounded directional preload strip. Camera rotation is quantized to
+ * one of eight sectors so small mouse movements do not continuously replace
+ * the resident set.
  */
 struct RaylibChunkStreamingRegion {
     ChunkCoord focus_chunk{};
@@ -120,10 +120,10 @@ struct RaylibChunkStreamingRegion {
 /**
  * @brief Resolves a stable camera-centered region for large-map streaming.
  *
- * The core changes only after the camera crosses a chunk boundary. Forward
- * preload changes only when the view direction crosses one of eight 45-degree
- * sectors. This avoids per-degree frustum churn while keeping additional
- * geometry available in front of the camera.
+ * The core changes only after the camera view focus crosses a chunk boundary.
+ * Forward preload changes only when the view direction crosses one of eight
+ * 45-degree sectors. This avoids per-degree frustum churn while keeping
+ * additional geometry available in front of the camera.
  *
  * @param camera Current raylib camera.
  * @param info Mesh source dimensions and level range.
@@ -192,6 +192,10 @@ struct RaylibChunkStreamingStats {
     int upload_budget_chunks = 0;
     int uploaded_chunks_last_update = 0;
     int unloaded_chunks_last_update = 0;
+    bool far_lod_uploaded = false;
+    int far_lod_step_tiles = 0;
+    std::uint64_t far_lod_vertices = 0;
+    std::uint64_t far_lod_triangles = 0;
     double unload_grace_seconds = 0.0;
     double last_update_ms = 0.0;
     double total_update_ms = 0.0;
@@ -354,6 +358,8 @@ public:
      * @param build_result Renderer-independent chunk mesh data.
      * @param color_mode Vertex-color mode applied during upload.
      * @param camera Camera used to choose the initial resident window.
+     * @param runtime_map Optional runtime map used to build the persistent far
+     *        terrain LOD for large streamed sources.
      * @param options Streaming thresholds, radius, hysteresis, and frame budget.
      * @return True if the source is valid and at least one model is resident.
      */
@@ -361,6 +367,7 @@ public:
         const ChunkMeshBuildResult& build_result,
         RaylibChunkMeshColorMode color_mode,
         const Camera3D& camera,
+        const RuntimeMap* runtime_map = nullptr,
         RaylibChunkStreamingOptions options = {});
 
     /**
@@ -505,6 +512,8 @@ private:
     std::vector<double> last_required_seconds_;
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<ChunkVisibilityItem> visibility_items_;
+    Model far_lod_model_{};
+    bool far_lod_uploaded_ = false;
     RaylibChunkMeshPreviewStats stats_;
     RaylibChunkStreamingStats streaming_stats_;
 };

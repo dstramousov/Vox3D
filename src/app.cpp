@@ -35,8 +35,8 @@ constexpr int kChunkSize16 = 16;
 constexpr int kChunkSize32 = 32;
 constexpr int kStreamingActivationThresholdChunks = 256;
 constexpr int kStreamingCoreRadiusChunks = 5;
-constexpr int kStreamingAheadDepthChunks = 7;
-constexpr int kStreamingAheadHalfWidthChunks = 3;
+constexpr int kStreamingAheadDepthChunks = 0;
+constexpr int kStreamingAheadHalfWidthChunks = 0;
 constexpr int kStreamingUploadBudgetChunks = 1;
 constexpr double kStreamingUnloadGraceSeconds = 1.0;
 constexpr double kCpuMeshBuildBudgetMilliseconds = 2.0;
@@ -405,6 +405,10 @@ void RecalculateDeferredMeshInfo(ChunkMeshBuildResult& source)
     result.upload_budget_chunks = stats.upload_budget_chunks;
     result.uploaded_chunks_last_update = stats.uploaded_chunks_last_update;
     result.unloaded_chunks_last_update = stats.unloaded_chunks_last_update;
+    result.far_lod_uploaded = stats.far_lod_uploaded;
+    result.far_lod_step_tiles = stats.far_lod_step_tiles;
+    result.far_lod_vertices = stats.far_lod_vertices;
+    result.far_lod_triangles = stats.far_lod_triangles;
     result.unload_grace_seconds = stats.unload_grace_seconds;
     result.last_update_ms = stats.last_update_ms;
     result.total_update_ms = stats.total_update_ms;
@@ -1602,6 +1606,7 @@ void App::UploadActiveChunkMesh(std::string_view reason)
         workspace_.chunk_meshes,
         ToRaylibColorMode(workspace_.color_mode),
         preview_camera_.Camera(),
+        &workspace_.runtime_map,
         BuildRaylibStreamingOptions());
     workspace_.pipeline_timings.renderer_setup_ms = ElapsedMilliseconds(started_at);
     workspace_.streaming_stats = ToWorkspaceStreamingStats(chunk_mesh_preview_.StreamingStats());
@@ -1628,6 +1633,12 @@ void App::UploadActiveChunkMesh(std::string_view reason)
         out << " sector=" << streaming.direction_sector;
         out << " grace_s=" << streaming.unload_grace_seconds;
         out << " budget=" << streaming.upload_budget_chunks;
+        out << " far_lod=" << (streaming.far_lod_uploaded ? "yes" : "no");
+        if (streaming.far_lod_uploaded) {
+            out << " far_step=" << streaming.far_lod_step_tiles;
+            out << " far_vertices=" << streaming.far_lod_vertices;
+            out << " far_triangles=" << streaming.far_lod_triangles;
+        }
         out << " setup_ms=" << std::fixed << std::setprecision(2)
             << workspace_.pipeline_timings.renderer_setup_ms;
         logger_.Info("chunk_stream", out.str());

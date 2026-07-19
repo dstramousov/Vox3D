@@ -383,6 +383,12 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
         lines.push_back("  GPU required/pending: " + std::to_string(streaming.required_chunks) + "/"
             + std::to_string(streaming.pending_chunks));
         if (streaming.enabled) {
+            lines.push_back("  Far LOD: " + std::string(streaming.far_lod_uploaded ? "on" : "unavailable"));
+            if (streaming.far_lod_uploaded) {
+                lines.push_back("  Far step/verts: " + std::to_string(streaming.far_lod_step_tiles) + "/"
+                    + std::to_string(streaming.far_lod_vertices));
+                lines.push_back("  Far triangles: " + std::to_string(streaming.far_lod_triangles));
+            }
             lines.push_back("  GPU region: " + std::to_string(streaming.region_width_chunks) + "x"
                 + std::to_string(streaming.region_height_chunks));
             lines.push_back("  GPU retained: " + std::to_string(streaming.retained_chunks));

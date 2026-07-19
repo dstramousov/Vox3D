@@ -142,24 +142,7 @@ RaylibChunkStreamingRegion ResolveCameraStreamingRegion(
         return region;
     }
 
-    const int chunk_size_x = std::max(1, info.chunk_size_x);
-    const int chunk_size_y = std::max(1, info.chunk_size_y);
-    const auto world_to_chunk = [&](float world_x, float world_z) {
-        const float tile_x = world_x + static_cast<float>(info.map_width) * 0.5F;
-        const float tile_y = static_cast<float>(info.map_height) * 0.5F - world_z;
-        return ChunkCoord{
-            std::clamp(
-                static_cast<int>(std::floor(tile_x / static_cast<float>(chunk_size_x))),
-                0,
-                info.chunks_x - 1),
-            std::clamp(
-                static_cast<int>(std::floor(tile_y / static_cast<float>(chunk_size_y))),
-                0,
-                info.chunks_y - 1),
-        };
-    };
-
-    region.camera_chunk = world_to_chunk(camera.position.x, camera.position.z);
+    region.camera_chunk = ResolveCameraFocusChunk(camera, info);
     region.core_radius_chunks = std::max(0, core_radius_chunks);
     region.ahead_depth_chunks = std::max(0, ahead_depth_chunks);
     region.ahead_half_width_chunks = std::max(0, ahead_half_width_chunks);
@@ -192,20 +175,7 @@ RaylibChunkStreamingRegion ResolveCameraStreamingRegion(
     region.direction_x = kDirections[static_cast<std::size_t>(sector)].x;
     region.direction_y = kDirections[static_cast<std::size_t>(sector)].y;
 
-    region.focus_chunk = ChunkCoord{
-        std::clamp(
-            region.camera_chunk.x
-                + region.direction_x
-                    * (region.core_radius_chunks + region.ahead_depth_chunks),
-            0,
-            info.chunks_x - 1),
-        std::clamp(
-            region.camera_chunk.y
-                + region.direction_y
-                    * (region.core_radius_chunks + region.ahead_depth_chunks),
-            0,
-            info.chunks_y - 1),
-    };
+    region.focus_chunk = region.camera_chunk;
 
     const int reach = region.core_radius_chunks + region.ahead_depth_chunks
         + region.ahead_half_width_chunks;
@@ -889,6 +859,207 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     return LoadModelFromMesh(mesh);
 }
 
+struct FarLodModelResult {
+    Model model{};
+    int step_tiles = 0;
+    std::uint64_t vertices = 0;
+    std::uint64_t triangles = 0;
+
+    [[nodiscard]] bool IsValid() const
+    {
+        return model.meshCount > 0 && model.meshes != nullptr
+            && step_tiles > 0 && vertices > 0 && triangles > 0;
+    }
+};
+
+[[nodiscard]] std::vector<int> BuildFarLodAxis(int size, int step)
+{
+    std::vector<int> positions;
+    if (size <= 0 || step <= 0) {
+        return positions;
+    }
+
+    positions.reserve(static_cast<std::size_t>((size + step - 1) / step + 1));
+    for (int value = 0; value < size; value += step) {
+        positions.push_back(value);
+    }
+    if (positions.empty() || positions.back() != size) {
+        positions.push_back(size);
+    }
+    return positions;
+}
+
+[[nodiscard]] int SampleFarLodHeight(const RuntimeMap& map, int tile_x, int tile_y)
+{
+    if (!map.height.IsValid()) {
+        return 0;
+    }
+
+    const auto sample = [&](int x, int y) {
+        const int clamped_x = std::clamp(x, 0, map.info.width - 1);
+        const int clamped_y = std::clamp(y, 0, map.info.height - 1);
+        const std::size_t index = static_cast<std::size_t>(clamped_y)
+                * static_cast<std::size_t>(map.info.width)
+            + static_cast<std::size_t>(clamped_x);
+        return map.height.cells[index];
+    };
+
+    const int sum = sample(tile_x - 1, tile_y - 1)
+        + sample(tile_x, tile_y - 1)
+        + sample(tile_x - 1, tile_y)
+        + sample(tile_x, tile_y);
+    return static_cast<int>(std::lround(static_cast<double>(sum) / 4.0));
+}
+
+[[nodiscard]] int SampleFarLodSurfaceHeight(
+    const RuntimeMap& map,
+    int tile_x,
+    int tile_y,
+    int sample_radius)
+{
+    int minimum = std::numeric_limits<int>::max();
+    const int min_x = std::max(0, tile_x - sample_radius);
+    const int max_x = std::min(map.info.width - 1, tile_x + sample_radius);
+    const int min_y = std::max(0, tile_y - sample_radius);
+    const int max_y = std::min(map.info.height - 1, tile_y + sample_radius);
+    for (int y = min_y; y <= max_y; ++y) {
+        const std::size_t row = static_cast<std::size_t>(y)
+            * static_cast<std::size_t>(map.info.width);
+        for (int x = min_x; x <= max_x; ++x) {
+            minimum = std::min(
+                minimum,
+                map.height.cells[row + static_cast<std::size_t>(x)]);
+        }
+    }
+    return minimum == std::numeric_limits<int>::max() ? 0 : minimum;
+}
+
+[[nodiscard]] FarLodModelResult LoadFarLodModel(const RuntimeMap& map)
+{
+    FarLodModelResult result;
+    if (!map.IsValid() || !map.height.IsValid()) {
+        return result;
+    }
+
+    constexpr int kBaseStepTiles = 8;
+    constexpr int kMaxGridNodesPerAxis = 240;
+    const int max_dimension = std::max(map.info.width, map.info.height);
+    const int bounded_step = std::max(
+        kBaseStepTiles,
+        (max_dimension + kMaxGridNodesPerAxis - 2) / (kMaxGridNodesPerAxis - 1));
+    const std::vector<int> x_positions = BuildFarLodAxis(map.info.width, bounded_step);
+    const std::vector<int> y_positions = BuildFarLodAxis(map.info.height, bounded_step);
+    if (x_positions.size() < 2 || y_positions.size() < 2) {
+        return result;
+    }
+
+    const std::size_t vertex_count = x_positions.size() * y_positions.size();
+    if (vertex_count > static_cast<std::size_t>(std::numeric_limits<unsigned short>::max())) {
+        return result;
+    }
+    const std::size_t quad_count = (x_positions.size() - 1ULL) * (y_positions.size() - 1ULL);
+    const std::size_t index_count = quad_count * 6ULL;
+    constexpr std::size_t kMaxRaylibAllocation = static_cast<std::size_t>(std::numeric_limits<unsigned int>::max());
+    if (vertex_count > kMaxRaylibAllocation / (3ULL * sizeof(float))
+        || vertex_count > kMaxRaylibAllocation / (4ULL * sizeof(unsigned char))
+        || index_count > kMaxRaylibAllocation / sizeof(unsigned short)) {
+        return result;
+    }
+
+    Mesh mesh{};
+    mesh.vertexCount = static_cast<int>(vertex_count);
+    mesh.triangleCount = static_cast<int>(quad_count * 2ULL);
+    mesh.vertices = static_cast<float*>(MemAlloc(
+        static_cast<unsigned int>(vertex_count * 3ULL * sizeof(float))));
+    mesh.normals = static_cast<float*>(MemAlloc(
+        static_cast<unsigned int>(vertex_count * 3ULL * sizeof(float))));
+    mesh.colors = static_cast<unsigned char*>(MemAlloc(
+        static_cast<unsigned int>(vertex_count * 4ULL * sizeof(unsigned char))));
+    mesh.indices = static_cast<unsigned short*>(MemAlloc(
+        static_cast<unsigned int>(index_count * sizeof(unsigned short))));
+    if (mesh.vertices == nullptr || mesh.normals == nullptr
+        || mesh.colors == nullptr || mesh.indices == nullptr) {
+        if (mesh.vertices != nullptr) {
+            MemFree(mesh.vertices);
+        }
+        if (mesh.normals != nullptr) {
+            MemFree(mesh.normals);
+        }
+        if (mesh.colors != nullptr) {
+            MemFree(mesh.colors);
+        }
+        if (mesh.indices != nullptr) {
+            MemFree(mesh.indices);
+        }
+        return result;
+    }
+
+    constexpr float kFarLodVerticalOffset = 0.08F;
+    constexpr float kFarLodColorShade = 0.86F;
+    for (std::size_t y_index = 0; y_index < y_positions.size(); ++y_index) {
+        for (std::size_t x_index = 0; x_index < x_positions.size(); ++x_index) {
+            const std::size_t vertex_index = y_index * x_positions.size() + x_index;
+            const int tile_x = x_positions[x_index];
+            const int tile_y = y_positions[y_index];
+            const int level = SampleFarLodHeight(map, tile_x, tile_y);
+            const int surface_level = SampleFarLodSurfaceHeight(
+                map,
+                tile_x,
+                tile_y,
+                bounded_step);
+            const Vector3 position{
+                static_cast<float>(tile_x) - static_cast<float>(map.info.width) * 0.5F,
+                static_cast<float>(surface_level + 1) - kFarLodVerticalOffset,
+                static_cast<float>(map.info.height) * 0.5F - static_cast<float>(tile_y),
+            };
+            const RgbaColor color = ApplyShade(
+                GeographicBaseColor(level),
+                kFarLodColorShade);
+            const std::size_t vertex_offset = vertex_index * 3ULL;
+            const std::size_t color_offset = vertex_index * 4ULL;
+            mesh.vertices[vertex_offset + 0ULL] = position.x;
+            mesh.vertices[vertex_offset + 1ULL] = position.y;
+            mesh.vertices[vertex_offset + 2ULL] = position.z;
+            mesh.normals[vertex_offset + 0ULL] = 0.0F;
+            mesh.normals[vertex_offset + 1ULL] = 1.0F;
+            mesh.normals[vertex_offset + 2ULL] = 0.0F;
+            mesh.colors[color_offset + 0ULL] = color.r;
+            mesh.colors[color_offset + 1ULL] = color.g;
+            mesh.colors[color_offset + 2ULL] = color.b;
+            mesh.colors[color_offset + 3ULL] = color.a;
+        }
+    }
+
+    std::size_t index_offset = 0;
+    for (std::size_t y_index = 0; y_index + 1ULL < y_positions.size(); ++y_index) {
+        for (std::size_t x_index = 0; x_index + 1ULL < x_positions.size(); ++x_index) {
+            const auto northwest = static_cast<unsigned short>(
+                y_index * x_positions.size() + x_index);
+            const auto northeast = static_cast<unsigned short>(northwest + 1U);
+            const auto southwest = static_cast<unsigned short>(
+                (y_index + 1ULL) * x_positions.size() + x_index);
+            const auto southeast = static_cast<unsigned short>(southwest + 1U);
+            mesh.indices[index_offset++] = northwest;
+            mesh.indices[index_offset++] = northeast;
+            mesh.indices[index_offset++] = southeast;
+            mesh.indices[index_offset++] = northwest;
+            mesh.indices[index_offset++] = southeast;
+            mesh.indices[index_offset++] = southwest;
+        }
+    }
+
+    UploadMesh(&mesh, false);
+    result.model = LoadModelFromMesh(mesh);
+    result.step_tiles = bounded_step;
+    result.vertices = vertex_count;
+    result.triangles = quad_count * 2ULL;
+    if (!result.IsValid() && result.model.meshCount > 0 && result.model.meshes != nullptr) {
+        UnloadModel(result.model);
+        result = FarLodModelResult{};
+    }
+    return result;
+}
+
 
 [[nodiscard]] bool IsTerrainPassEnabled(TerrainRenderPass pass, RaylibTerrainPassOptions options)
 {
@@ -1456,6 +1627,7 @@ bool RaylibChunkMeshPreview::SetSource(
     const ChunkMeshBuildResult& build_result,
     RaylibChunkMeshColorMode color_mode,
     const Camera3D& camera,
+    const RuntimeMap* runtime_map,
     RaylibChunkStreamingOptions options)
 {
     Unload();
@@ -1471,6 +1643,18 @@ bool RaylibChunkMeshPreview::SetSource(
     streaming_stats_.source_chunks = build_result.info.total_chunks;
     streaming_stats_.enabled = options.enabled
         && build_result.info.total_chunks > std::max(0, options.activation_threshold_chunks);
+
+    if (streaming_stats_.enabled && runtime_map != nullptr) {
+        FarLodModelResult far_lod = LoadFarLodModel(*runtime_map);
+        if (far_lod.IsValid()) {
+            far_lod_model_ = far_lod.model;
+            far_lod_uploaded_ = true;
+            streaming_stats_.far_lod_uploaded = true;
+            streaming_stats_.far_lod_step_tiles = far_lod.step_tiles;
+            streaming_stats_.far_lod_vertices = far_lod.vertices;
+            streaming_stats_.far_lod_triangles = far_lod.triangles;
+        }
+    }
 
     const bool split_terrain_passes = build_result.info.mode == ChunkMeshBuildMode::kTerrainSurface;
     const int reserve_side = std::max(
@@ -1491,11 +1675,11 @@ bool RaylibChunkMeshPreview::SetSource(
         RecalculateUploadStats();
         streaming_stats_.required_chunks = build_result.info.total_chunks;
         streaming_stats_.resident_chunks = static_cast<int>(build_result.chunks.size());
-        return stats_.uploaded;
+        return IsUploaded();
     }
 
     UpdateStreaming(camera, options);
-    return stats_.uploaded;
+    return IsUploaded();
 }
 
 void RaylibChunkMeshPreview::UpdateStreaming(
@@ -1689,7 +1873,7 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
     Camera3D camera{};
     RaylibChunkStreamingOptions options;
     options.enabled = false;
-    return SetSource(build_result, color_mode, camera, options);
+    return SetSource(build_result, color_mode, camera, nullptr, options);
 }
 
 bool RaylibChunkMeshPreview::UploadSourceChunk(std::size_t source_index)
@@ -1871,6 +2055,9 @@ void RaylibChunkMeshPreview::Draw(
 
     constexpr Vector3 kOrigin{0.0F, 0.0F, 0.0F};
     constexpr float kScale = 1.0F;
+    if (far_lod_uploaded_) {
+        DrawModel(far_lod_model_, kOrigin, kScale, WHITE);
+    }
     for (const RaylibUploadedChunkModel& chunk : chunks_) {
         if (!IsTerrainPassEnabled(chunk.terrain_pass, terrain_passes)
             || chunk.visibility_item_index >= visibility_report.entries.size()) {
@@ -1969,6 +2156,10 @@ RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(
 
 void RaylibChunkMeshPreview::Unload()
 {
+    if (far_lod_uploaded_ && far_lod_model_.meshCount > 0
+        && far_lod_model_.meshes != nullptr) {
+        UnloadModel(far_lod_model_);
+    }
     for (RaylibUploadedChunkModel& chunk : chunks_) {
         if (chunk.model.meshCount > 0 && chunk.model.meshes != nullptr) {
             UnloadModel(chunk.model);
@@ -1979,13 +2170,15 @@ void RaylibChunkMeshPreview::Unload()
     last_required_seconds_.clear();
     chunks_.clear();
     visibility_items_.clear();
+    far_lod_model_ = Model{};
+    far_lod_uploaded_ = false;
     stats_ = RaylibChunkMeshPreviewStats{};
     streaming_stats_ = RaylibChunkStreamingStats{};
 }
 
 bool RaylibChunkMeshPreview::IsUploaded() const
 {
-    return stats_.uploaded && !chunks_.empty();
+    return far_lod_uploaded_ || (stats_.uploaded && !chunks_.empty());
 }
 
 const RaylibChunkMeshPreviewStats& RaylibChunkMeshPreview::Stats() const
