@@ -322,13 +322,18 @@ struct WorkspaceVisibilityStats {
 struct WorkspaceStreamingStats {
     bool enabled = false;
     int source_chunks = 0;
+    int required_chunks = 0;
     int resident_chunks = 0;
+    int retained_chunks = 0;
     int pending_chunks = 0;
-    int resident_radius_chunks = 0;
-    int unload_radius_chunks = 0;
+    int region_width_chunks = 0;
+    int region_height_chunks = 0;
+    int safety_radius_chunks = 0;
+    int max_view_distance_chunks = 0;
     int upload_budget_chunks = 0;
     int uploaded_chunks_last_update = 0;
     int unloaded_chunks_last_update = 0;
+    double unload_grace_seconds = 0.0;
     double last_update_ms = 0.0;
     double total_update_ms = 0.0;
 };
@@ -339,13 +344,19 @@ struct WorkspaceStreamingStats {
 struct WorkspaceCpuMeshStreamingStats {
     bool enabled = false;
     int source_chunks = 0;
+    int required_chunks = 0;
     int ready_chunks = 0;
+    int retained_chunks = 0;
     int pending_chunks = 0;
-    int resident_radius_chunks = 0;
-    int unload_radius_chunks = 0;
+    int region_width_chunks = 0;
+    int region_height_chunks = 0;
+    int safety_radius_chunks = 0;
+    int max_view_distance_chunks = 0;
     int built_chunks_last_update = 0;
     int unloaded_chunks_last_update = 0;
+    double unload_grace_seconds = 0.0;
     double build_budget_ms = 0.0;
+    double active_build_budget_ms = 0.0;
     double last_update_ms = 0.0;
     double total_update_ms = 0.0;
 };

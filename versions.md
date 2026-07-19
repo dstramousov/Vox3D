@@ -381,3 +381,8 @@
 - Replaced map-wide face visibility and CPU mesh generation on large maps with camera-centered deferred chunk builds under a per-frame time budget.
 - Fixed large-map streaming focus by intersecting the free-fly camera view ray with the map plane, and added a fail-open fallback for an empty frustum result.
 - Skipped expensive diagnostic overview parsing once metadata already proves the map is too large, and added separate CPU/GPU streaming counters to Stats.
+## v0.5.23 -> v0.5.24
+
+- Replaced fixed-radius large-map residency with a camera-frustum footprint projected onto the map, including a bounded forward distance, safety area, and preload margin.
+- Added coordinated CPU/GPU residency hysteresis: old chunks remain available while required chunks are pending and are evicted only after a grace period.
+- Prioritized newly required chunks around the camera focus, added catch-up CPU/GPU budgets, and exposed required, pending, retained, and footprint counters in Stats.

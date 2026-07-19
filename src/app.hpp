@@ -152,6 +152,7 @@ private:
     bool dialog_input_blocked_until_next_frame_ = false;
     bool suppress_window_close_request_this_frame_ = false;
     ProcessMemoryInfo process_memory_{};
+    std::vector<double> cpu_chunk_last_required_seconds_;
     float process_memory_sample_timer_ = 0.0F;
     Font title_font_{};
     Font text_font_{};

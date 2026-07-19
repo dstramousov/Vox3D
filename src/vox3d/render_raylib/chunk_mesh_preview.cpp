@@ -86,6 +86,252 @@ ChunkCoord ResolveCameraFocusChunk(
     return ChunkCoord{chunk_x, chunk_y};
 }
 
+bool RaylibChunkStreamingRegion::IsValid() const
+{
+    return footprint_size >= 3
+        && min_chunk_x <= max_chunk_x
+        && min_chunk_y <= max_chunk_y;
+}
+
+bool RaylibChunkStreamingRegion::Contains(ChunkCoord coord) const
+{
+    if (!IsValid()
+        || coord.x < min_chunk_x || coord.x > max_chunk_x
+        || coord.y < min_chunk_y || coord.y > max_chunk_y) {
+        return false;
+    }
+
+    const Vector2 point{
+        static_cast<float>(coord.x) + 0.5F,
+        static_cast<float>(coord.y) + 0.5F,
+    };
+    bool has_positive = false;
+    bool has_negative = false;
+    for (int index = 0; index < footprint_size; ++index) {
+        const Vector2 lhs = footprint[static_cast<std::size_t>(index)];
+        const Vector2 rhs = footprint[static_cast<std::size_t>((index + 1) % footprint_size)];
+        const float cross = (rhs.x - lhs.x) * (point.y - lhs.y)
+            - (rhs.y - lhs.y) * (point.x - lhs.x);
+        has_positive = has_positive || cross > 0.0001F;
+        has_negative = has_negative || cross < -0.0001F;
+        if (has_positive && has_negative) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int RaylibChunkStreamingRegion::ChunkCount() const
+{
+    return IsValid() ? std::max(0, required_chunk_count) : 0;
+}
+
+RaylibChunkStreamingRegion ResolveCameraStreamingRegion(
+    const Camera3D& camera,
+    const ChunkMeshBuildInfo& info,
+    float viewport_aspect_ratio,
+    int safety_radius_chunks,
+    int preload_margin_chunks,
+    int max_view_distance_chunks)
+{
+    RaylibChunkStreamingRegion region;
+    if (info.chunks_x <= 0 || info.chunks_y <= 0) {
+        return region;
+    }
+
+    constexpr float kEpsilon = 0.0001F;
+    constexpr float kDegToRad = 3.14159265358979323846F / 180.0F;
+    const int chunk_size_x = std::max(1, info.chunk_size_x);
+    const int chunk_size_y = std::max(1, info.chunk_size_y);
+    const float safety_radius = static_cast<float>(std::max(0, safety_radius_chunks));
+    const float preload_margin = static_cast<float>(std::max(0, preload_margin_chunks)) + 0.75F;
+    const float max_view_distance = static_cast<float>(std::max(1, max_view_distance_chunks))
+        * static_cast<float>(std::max(chunk_size_x, chunk_size_y));
+
+    const auto world_to_chunk_point = [&](float world_x, float world_z) {
+        const float tile_x = world_x + static_cast<float>(info.map_width) * 0.5F;
+        const float tile_y = static_cast<float>(info.map_height) * 0.5F - world_z;
+        return Vector2{
+            std::clamp(
+                tile_x / static_cast<float>(chunk_size_x),
+                0.0F,
+                static_cast<float>(info.chunks_x)),
+            std::clamp(
+                tile_y / static_cast<float>(chunk_size_y),
+                0.0F,
+                static_cast<float>(info.chunks_y)),
+        };
+    };
+    const auto point_to_chunk = [&](Vector2 point) {
+        return ChunkCoord{
+            std::clamp(static_cast<int>(std::floor(point.x)), 0, info.chunks_x - 1),
+            std::clamp(static_cast<int>(std::floor(point.y)), 0, info.chunks_y - 1),
+        };
+    };
+    const auto normalize = [](Vector3 value, Vector3 fallback) {
+        const float length = std::sqrt(
+            value.x * value.x + value.y * value.y + value.z * value.z);
+        if (length <= 0.0001F || !std::isfinite(length)) {
+            return fallback;
+        }
+        return Vector3{value.x / length, value.y / length, value.z / length};
+    };
+    const auto cross3 = [](Vector3 lhs, Vector3 rhs) {
+        return Vector3{
+            lhs.y * rhs.z - lhs.z * rhs.y,
+            lhs.z * rhs.x - lhs.x * rhs.z,
+            lhs.x * rhs.y - lhs.y * rhs.x,
+        };
+    };
+    const auto cross2 = [](Vector2 origin, Vector2 lhs, Vector2 rhs) {
+        return (lhs.x - origin.x) * (rhs.y - origin.y)
+            - (lhs.y - origin.y) * (rhs.x - origin.x);
+    };
+
+    const Vector2 camera_point = world_to_chunk_point(camera.position.x, camera.position.z);
+    region.camera_chunk = point_to_chunk(camera_point);
+    region.focus_chunk = ResolveCameraFocusChunk(camera, info);
+    const Vector2 focus_point{
+        static_cast<float>(region.focus_chunk.x) + 0.5F,
+        static_cast<float>(region.focus_chunk.y) + 0.5F,
+    };
+
+    std::vector<Vector2> points;
+    points.reserve(32);
+    const auto add_expanded_point = [&](Vector2 point, float radius) {
+        const float min_x = std::clamp(point.x - radius, 0.0F, static_cast<float>(info.chunks_x));
+        const float max_x = std::clamp(point.x + radius, 0.0F, static_cast<float>(info.chunks_x));
+        const float min_y = std::clamp(point.y - radius, 0.0F, static_cast<float>(info.chunks_y));
+        const float max_y = std::clamp(point.y + radius, 0.0F, static_cast<float>(info.chunks_y));
+        points.push_back(Vector2{min_x, min_y});
+        points.push_back(Vector2{max_x, min_y});
+        points.push_back(Vector2{max_x, max_y});
+        points.push_back(Vector2{min_x, max_y});
+    };
+    add_expanded_point(camera_point, safety_radius + preload_margin);
+    add_expanded_point(focus_point, safety_radius + preload_margin);
+
+    const Vector3 forward = normalize(
+        Vector3{
+            camera.target.x - camera.position.x,
+            camera.target.y - camera.position.y,
+            camera.target.z - camera.position.z,
+        },
+        Vector3{0.0F, -0.7F, -0.7F});
+    const Vector3 right = normalize(cross3(forward, camera.up), Vector3{1.0F, 0.0F, 0.0F});
+    const Vector3 view_up = normalize(cross3(right, forward), Vector3{0.0F, 1.0F, 0.0F});
+    const float half_fov_tangent = std::tan(
+        std::clamp(camera.fovy, 1.0F, 175.0F) * 0.5F * kDegToRad);
+    const float horizontal_tangent = half_fov_tangent * std::max(0.1F, viewport_aspect_ratio);
+    float map_plane_y = 0.0F;
+    if (info.levels.has_value()) {
+        map_plane_y = static_cast<float>(info.levels->min + info.levels->max + 1) * 0.5F;
+    }
+
+    for (const float vertical_sign : std::array<float, 2>{-1.0F, 1.0F}) {
+        for (const float horizontal_sign : std::array<float, 2>{-1.0F, 1.0F}) {
+            const Vector3 ray = normalize(
+                Vector3{
+                    forward.x + right.x * horizontal_sign * horizontal_tangent
+                        + view_up.x * vertical_sign * half_fov_tangent,
+                    forward.y + right.y * horizontal_sign * horizontal_tangent
+                        + view_up.y * vertical_sign * half_fov_tangent,
+                    forward.z + right.z * horizontal_sign * horizontal_tangent
+                        + view_up.z * vertical_sign * half_fov_tangent,
+                },
+                forward);
+            const float horizontal_length = std::hypot(ray.x, ray.z);
+            if (horizontal_length <= kEpsilon) {
+                continue;
+            }
+
+            float horizontal_distance = max_view_distance;
+            if (ray.y < -kEpsilon) {
+                const float ray_distance = (map_plane_y - camera.position.y) / ray.y;
+                if (ray_distance >= 0.0F && std::isfinite(ray_distance)) {
+                    horizontal_distance = std::min(
+                        max_view_distance,
+                        ray_distance * horizontal_length);
+                }
+            }
+            const float scale = horizontal_distance / horizontal_length;
+            add_expanded_point(
+                world_to_chunk_point(
+                    camera.position.x + ray.x * scale,
+                    camera.position.z + ray.z * scale),
+                preload_margin);
+        }
+    }
+
+    std::sort(points.begin(), points.end(), [](Vector2 lhs, Vector2 rhs) {
+        if (lhs.x != rhs.x) {
+            return lhs.x < rhs.x;
+        }
+        return lhs.y < rhs.y;
+    });
+    points.erase(std::unique(points.begin(), points.end(), [](Vector2 lhs, Vector2 rhs) {
+        return std::abs(lhs.x - rhs.x) <= 0.0001F
+            && std::abs(lhs.y - rhs.y) <= 0.0001F;
+    }), points.end());
+    if (points.size() < 3) {
+        return region;
+    }
+
+    std::vector<Vector2> hull;
+    hull.reserve(points.size() * 2);
+    for (Vector2 point : points) {
+        while (hull.size() >= 2
+            && cross2(hull[hull.size() - 2], hull.back(), point) <= 0.0F) {
+            hull.pop_back();
+        }
+        hull.push_back(point);
+    }
+    const std::size_t lower_size = hull.size();
+    for (auto it = points.rbegin() + 1; it != points.rend(); ++it) {
+        while (hull.size() > lower_size
+            && cross2(hull[hull.size() - 2], hull.back(), *it) <= 0.0F) {
+            hull.pop_back();
+        }
+        hull.push_back(*it);
+    }
+    if (!hull.empty()) {
+        hull.pop_back();
+    }
+    region.footprint_size = static_cast<int>(std::min(hull.size(), region.footprint.size()));
+    if (region.footprint_size < 3) {
+        return region;
+    }
+    for (int index = 0; index < region.footprint_size; ++index) {
+        region.footprint[static_cast<std::size_t>(index)] = hull[static_cast<std::size_t>(index)];
+    }
+
+    float min_x = region.footprint[0].x;
+    float max_x = region.footprint[0].x;
+    float min_y = region.footprint[0].y;
+    float max_y = region.footprint[0].y;
+    for (int index = 1; index < region.footprint_size; ++index) {
+        const Vector2 point = region.footprint[static_cast<std::size_t>(index)];
+        min_x = std::min(min_x, point.x);
+        max_x = std::max(max_x, point.x);
+        min_y = std::min(min_y, point.y);
+        max_y = std::max(max_y, point.y);
+    }
+    region.min_chunk_x = std::clamp(static_cast<int>(std::floor(min_x)), 0, info.chunks_x - 1);
+    region.max_chunk_x = std::clamp(static_cast<int>(std::floor(max_x)), 0, info.chunks_x - 1);
+    region.min_chunk_y = std::clamp(static_cast<int>(std::floor(min_y)), 0, info.chunks_y - 1);
+    region.max_chunk_y = std::clamp(static_cast<int>(std::floor(max_y)), 0, info.chunks_y - 1);
+
+    region.required_chunk_count = 0;
+    for (int y = region.min_chunk_y; y <= region.max_chunk_y; ++y) {
+        for (int x = region.min_chunk_x; x <= region.max_chunk_x; ++x) {
+            if (region.Contains(ChunkCoord{x, y})) {
+                ++region.required_chunk_count;
+            }
+        }
+    }
+    return region;
+}
+
 namespace {
 
 struct RgbaColor {
@@ -243,6 +489,11 @@ struct RgbaColor {
     return std::max(std::abs(lhs.x - rhs.x), std::abs(lhs.y - rhs.y));
 }
 
+[[nodiscard]] double CurrentSteadySeconds()
+{
+    return std::chrono::duration<double>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 [[nodiscard]] ChunkVisibilityMode ToCoreVisibilityMode(RaylibChunkVisibilityMode mode)
 {
@@ -1311,17 +1562,20 @@ bool RaylibChunkMeshPreview::SetSource(
     source_ = &build_result;
     source_color_mode_ = color_mode;
     resident_chunks_.assign(build_result.chunks.size(), 0);
+    last_required_seconds_.assign(build_result.chunks.size(), 0.0);
     streaming_stats_.source_chunks = build_result.info.total_chunks;
     streaming_stats_.enabled = options.enabled
         && build_result.info.total_chunks > std::max(0, options.activation_threshold_chunks);
 
     const bool split_terrain_passes = build_result.info.mode == ChunkMeshBuildMode::kTerrainSurface;
-    const std::size_t expected_models = streaming_stats_.enabled
-        ? static_cast<std::size_t>(std::max(1, options.resident_radius_chunks * 2 + 1))
-            * static_cast<std::size_t>(std::max(1, options.resident_radius_chunks * 2 + 1))
-            * (split_terrain_passes ? 3ULL : 1ULL)
-        : build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL);
-    chunks_.reserve(expected_models);
+    const int reserve_side = std::max(
+        1,
+        std::max(0, options.max_view_distance_chunks)
+            + std::max(0, options.preload_margin_chunks) * 2 + 1);
+    const std::size_t expected_resident_chunks = std::min(
+        build_result.chunks.size(),
+        static_cast<std::size_t>(reserve_side) * static_cast<std::size_t>(reserve_side));
+    chunks_.reserve(expected_resident_chunks * (split_terrain_passes ? 3ULL : 1ULL));
 
     if (!streaming_stats_.enabled) {
         for (std::size_t index = 0; index < build_result.chunks.size(); ++index) {
@@ -1329,6 +1583,7 @@ bool RaylibChunkMeshPreview::SetSource(
         }
         RebuildResidentMetadata();
         RecalculateUploadStats();
+        streaming_stats_.required_chunks = build_result.info.total_chunks;
         streaming_stats_.resident_chunks = static_cast<int>(build_result.chunks.size());
         return stats_.uploaded;
     }
@@ -1346,58 +1601,77 @@ void RaylibChunkMeshPreview::UpdateStreaming(
     }
 
     const auto started_at = std::chrono::steady_clock::now();
+    const double now_seconds = CurrentSteadySeconds();
     streaming_stats_.uploaded_chunks_last_update = 0;
     streaming_stats_.unloaded_chunks_last_update = 0;
-    streaming_stats_.resident_radius_chunks = std::max(0, options.resident_radius_chunks);
-    streaming_stats_.unload_radius_chunks = streaming_stats_.resident_radius_chunks
-        + std::max(0, options.unload_margin_chunks);
+    streaming_stats_.safety_radius_chunks = std::max(0, options.safety_radius_chunks);
+    streaming_stats_.max_view_distance_chunks = std::max(1, options.max_view_distance_chunks);
     streaming_stats_.upload_budget_chunks = std::max(1, options.upload_budget_chunks);
+    streaming_stats_.unload_grace_seconds = std::max(0.0, options.unload_grace_seconds);
 
-    const ChunkCoord center = ResolveCameraFocusChunk(camera, source_->info);
-    bool residency_changed = false;
-    for (std::size_t index = 0; index < resident_chunks_.size(); ++index) {
-        if (resident_chunks_[index] == 0 || index >= source_->chunks.size()) {
-            continue;
-        }
-        if (ChunkDistance(source_->chunks[index].coord, center) <= streaming_stats_.unload_radius_chunks) {
-            continue;
-        }
-        UnloadSourceChunk(index);
-        ++streaming_stats_.unloaded_chunks_last_update;
-        residency_changed = true;
+    if (last_required_seconds_.size() != resident_chunks_.size()) {
+        last_required_seconds_.assign(resident_chunks_.size(), 0.0);
     }
 
+    const RaylibChunkStreamingRegion region = ResolveCameraStreamingRegion(
+        camera,
+        source_->info,
+        options.viewport_aspect_ratio,
+        options.safety_radius_chunks,
+        options.preload_margin_chunks,
+        options.max_view_distance_chunks);
+    streaming_stats_.required_chunks = region.ChunkCount();
+    streaming_stats_.region_width_chunks = region.IsValid()
+        ? region.max_chunk_x - region.min_chunk_x + 1
+        : 0;
+    streaming_stats_.region_height_chunks = region.IsValid()
+        ? region.max_chunk_y - region.min_chunk_y + 1
+        : 0;
+
     struct Candidate {
-        int distance = 0;
+        int focus_distance = 0;
+        int camera_distance = 0;
         std::size_t source_index = 0;
     };
     std::vector<Candidate> candidates;
-    const int min_x = std::max(0, center.x - streaming_stats_.resident_radius_chunks);
-    const int max_x = std::min(source_->info.chunks_x - 1, center.x + streaming_stats_.resident_radius_chunks);
-    const int min_y = std::max(0, center.y - streaming_stats_.resident_radius_chunks);
-    const int max_y = std::min(source_->info.chunks_y - 1, center.y + streaming_stats_.resident_radius_chunks);
-    candidates.reserve(static_cast<std::size_t>(std::max(0, max_x - min_x + 1))
-        * static_cast<std::size_t>(std::max(0, max_y - min_y + 1)));
-    for (int y = min_y; y <= max_y; ++y) {
-        for (int x = min_x; x <= max_x; ++x) {
-            const ChunkCoord coord{x, y};
-            const auto source_index = SourceChunkIndex(coord, source_->info);
-            if (!source_index.has_value() || *source_index >= resident_chunks_.size()
-                || *source_index >= source_->chunks.size()
-                || resident_chunks_[*source_index] != 0
-                || !source_->chunks[*source_index].IsGenerated()) {
-                continue;
+    candidates.reserve(static_cast<std::size_t>(std::max(0, region.ChunkCount())));
+    if (region.IsValid()) {
+        for (int y = region.min_chunk_y; y <= region.max_chunk_y; ++y) {
+            for (int x = region.min_chunk_x; x <= region.max_chunk_x; ++x) {
+                const ChunkCoord coord{x, y};
+                if (!region.Contains(coord)) {
+                    continue;
+                }
+                const auto source_index = SourceChunkIndex(coord, source_->info);
+                if (!source_index.has_value()
+                    || *source_index >= resident_chunks_.size()
+                    || *source_index >= source_->chunks.size()) {
+                    continue;
+                }
+                last_required_seconds_[*source_index] = now_seconds;
+                if (resident_chunks_[*source_index] != 0
+                    || !source_->chunks[*source_index].IsGenerated()) {
+                    continue;
+                }
+                candidates.push_back(Candidate{
+                    ChunkDistance(coord, region.focus_chunk),
+                    ChunkDistance(coord, region.camera_chunk),
+                    *source_index,
+                });
             }
-            candidates.push_back(Candidate{ChunkDistance(coord, center), *source_index});
         }
     }
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& lhs, const Candidate& rhs) {
-        if (lhs.distance != rhs.distance) {
-            return lhs.distance < rhs.distance;
+        if (lhs.focus_distance != rhs.focus_distance) {
+            return lhs.focus_distance < rhs.focus_distance;
+        }
+        if (lhs.camera_distance != rhs.camera_distance) {
+            return lhs.camera_distance < rhs.camera_distance;
         }
         return lhs.source_index < rhs.source_index;
     });
 
+    bool residency_changed = false;
     const int upload_count = std::min(
         streaming_stats_.upload_budget_chunks,
         static_cast<int>(candidates.size()));
@@ -1408,13 +1682,84 @@ void RaylibChunkMeshPreview::UpdateStreaming(
         }
     }
 
+    streaming_stats_.pending_chunks = 0;
+    if (region.IsValid()) {
+        for (int y = region.min_chunk_y; y <= region.max_chunk_y; ++y) {
+            for (int x = region.min_chunk_x; x <= region.max_chunk_x; ++x) {
+                const ChunkCoord coord{x, y};
+                if (!region.Contains(coord)) {
+                    continue;
+                }
+                const auto source_index = SourceChunkIndex(coord, source_->info);
+                if (source_index.has_value()
+                    && *source_index < resident_chunks_.size()
+                    && resident_chunks_[*source_index] == 0) {
+                    ++streaming_stats_.pending_chunks;
+                }
+            }
+        }
+    }
+
+    struct EvictionCandidate {
+        double last_required_seconds = 0.0;
+        std::size_t source_index = 0;
+    };
+    std::vector<EvictionCandidate> eviction_candidates;
+    for (std::size_t index = 0; index < resident_chunks_.size() && index < source_->chunks.size(); ++index) {
+        if (resident_chunks_[index] == 0 || region.Contains(source_->chunks[index].coord)) {
+            continue;
+        }
+        eviction_candidates.push_back(EvictionCandidate{
+            index < last_required_seconds_.size() ? last_required_seconds_[index] : 0.0,
+            index,
+        });
+    }
+    std::sort(
+        eviction_candidates.begin(),
+        eviction_candidates.end(),
+        [](const EvictionCandidate& lhs, const EvictionCandidate& rhs) {
+            if (lhs.last_required_seconds != rhs.last_required_seconds) {
+                return lhs.last_required_seconds < rhs.last_required_seconds;
+            }
+            return lhs.source_index < rhs.source_index;
+        });
+
+    const int resident_before_eviction = static_cast<int>(std::count(
+        resident_chunks_.begin(),
+        resident_chunks_.end(),
+        static_cast<std::uint8_t>(1)));
+    const int retention_limit = std::max(
+        streaming_stats_.required_chunks * 2,
+        streaming_stats_.required_chunks + 64);
+    int forced_evictions = streaming_stats_.pending_chunks > 0
+        ? std::max(0, resident_before_eviction - retention_limit)
+        : 0;
+    for (const EvictionCandidate& candidate : eviction_candidates) {
+        if (streaming_stats_.pending_chunks > 0) {
+            if (forced_evictions <= 0) {
+                break;
+            }
+            --forced_evictions;
+        } else if (candidate.last_required_seconds > 0.0
+            && now_seconds - candidate.last_required_seconds
+                < streaming_stats_.unload_grace_seconds) {
+            continue;
+        }
+        UnloadSourceChunk(candidate.source_index);
+        ++streaming_stats_.unloaded_chunks_last_update;
+        residency_changed = true;
+    }
+
     streaming_stats_.resident_chunks = static_cast<int>(std::count(
         resident_chunks_.begin(),
         resident_chunks_.end(),
         static_cast<std::uint8_t>(1)));
-    streaming_stats_.pending_chunks = std::max(
-        0,
-        static_cast<int>(candidates.size()) - streaming_stats_.uploaded_chunks_last_update);
+    streaming_stats_.retained_chunks = 0;
+    for (std::size_t index = 0; index < resident_chunks_.size() && index < source_->chunks.size(); ++index) {
+        if (resident_chunks_[index] != 0 && !region.Contains(source_->chunks[index].coord)) {
+            ++streaming_stats_.retained_chunks;
+        }
+    }
 
     if (residency_changed) {
         RebuildResidentMetadata();
@@ -1422,7 +1767,8 @@ void RaylibChunkMeshPreview::UpdateStreaming(
     }
 
     const auto finished_at = std::chrono::steady_clock::now();
-    streaming_stats_.last_update_ms = std::chrono::duration<double, std::milli>(finished_at - started_at).count();
+    streaming_stats_.last_update_ms = std::chrono::duration<double, std::milli>(
+        finished_at - started_at).count();
     streaming_stats_.total_update_ms += streaming_stats_.last_update_ms;
 }
 
@@ -1718,6 +2064,7 @@ void RaylibChunkMeshPreview::Unload()
     }
     source_ = nullptr;
     resident_chunks_.clear();
+    last_required_seconds_.clear();
     chunks_.clear();
     visibility_items_.clear();
     stats_ = RaylibChunkMeshPreviewStats{};

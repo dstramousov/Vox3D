@@ -358,11 +358,15 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
     if (cpu_streaming.source_chunks > 0) {
         lines.push_back("  CPU ready: " + std::to_string(cpu_streaming.ready_chunks) + "/"
             + std::to_string(cpu_streaming.source_chunks));
-        lines.push_back("  CPU pending: " + std::to_string(cpu_streaming.pending_chunks));
+        lines.push_back("  CPU required/pending: " + std::to_string(cpu_streaming.required_chunks) + "/"
+            + std::to_string(cpu_streaming.pending_chunks));
         if (cpu_streaming.enabled) {
-            lines.push_back("  CPU radius: " + std::to_string(cpu_streaming.resident_radius_chunks) + "/"
-                + std::to_string(cpu_streaming.unload_radius_chunks));
-            lines.push_back("  CPU budget: " + MillisecondsText(cpu_streaming.build_budget_ms));
+            lines.push_back("  CPU region: " + std::to_string(cpu_streaming.region_width_chunks) + "x"
+                + std::to_string(cpu_streaming.region_height_chunks));
+            lines.push_back("  CPU retained: " + std::to_string(cpu_streaming.retained_chunks));
+            lines.push_back("  CPU safety/max: " + std::to_string(cpu_streaming.safety_radius_chunks) + "/"
+                + std::to_string(cpu_streaming.max_view_distance_chunks));
+            lines.push_back("  CPU budget: " + MillisecondsText(cpu_streaming.active_build_budget_ms));
             lines.push_back("  CPU last +/-: " + std::to_string(cpu_streaming.built_chunks_last_update) + "/"
                 + std::to_string(cpu_streaming.unloaded_chunks_last_update));
             lines.push_back("  CPU update: " + MillisecondsText(cpu_streaming.last_update_ms));
@@ -374,10 +378,14 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
     if (streaming.source_chunks > 0) {
         lines.push_back("  GPU resident: " + std::to_string(streaming.resident_chunks) + "/"
             + std::to_string(streaming.source_chunks));
-        lines.push_back("  GPU pending: " + std::to_string(streaming.pending_chunks));
+        lines.push_back("  GPU required/pending: " + std::to_string(streaming.required_chunks) + "/"
+            + std::to_string(streaming.pending_chunks));
         if (streaming.enabled) {
-            lines.push_back("  GPU radius: " + std::to_string(streaming.resident_radius_chunks) + "/"
-                + std::to_string(streaming.unload_radius_chunks));
+            lines.push_back("  GPU region: " + std::to_string(streaming.region_width_chunks) + "x"
+                + std::to_string(streaming.region_height_chunks));
+            lines.push_back("  GPU retained: " + std::to_string(streaming.retained_chunks));
+            lines.push_back("  GPU safety/max: " + std::to_string(streaming.safety_radius_chunks) + "/"
+                + std::to_string(streaming.max_view_distance_chunks));
             lines.push_back("  GPU budget: " + std::to_string(streaming.upload_budget_chunks));
             lines.push_back("  Last +/-: " + std::to_string(streaming.uploaded_chunks_last_update) + "/"
                 + std::to_string(streaming.unloaded_chunks_last_update));

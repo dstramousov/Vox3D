@@ -11,6 +11,7 @@
 
 #include <raylib.h>
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -71,6 +72,70 @@ enum class RaylibChunkVisibilityMode : std::uint8_t {
     const ChunkMeshBuildInfo& info);
 
 /**
+ * @brief Chunk footprint required by the current camera view.
+ *
+ * The region is the convex footprint of the camera frustum projected onto the
+ * map plane, expanded by a preload margin and a minimum safety radius.
+ */
+struct RaylibChunkStreamingRegion {
+    ChunkCoord focus_chunk{};
+    ChunkCoord camera_chunk{};
+    int min_chunk_x = 0;
+    int max_chunk_x = -1;
+    int min_chunk_y = 0;
+    int max_chunk_y = -1;
+    std::array<Vector2, 48> footprint{};
+    int footprint_size = 0;
+    int required_chunk_count = 0;
+
+    /**
+     * @brief Returns true when the footprint contains at least one chunk.
+     *
+     * @return True for a non-empty clamped region.
+     */
+    [[nodiscard]] bool IsValid() const;
+
+    /**
+     * @brief Tests whether a chunk coordinate belongs to the required region.
+     *
+     * @param coord Chunk coordinate to test.
+     * @return True when the chunk center is inside the footprint.
+     */
+    [[nodiscard]] bool Contains(ChunkCoord coord) const;
+
+    /**
+     * @brief Returns the number of chunk centers inside the projected footprint.
+     *
+     * @return Required chunk count, or zero for an invalid region.
+     */
+    [[nodiscard]] int ChunkCount() const;
+};
+
+/**
+ * @brief Resolves the camera-dependent chunk region needed for streaming.
+ *
+ * Four perspective rays are projected through the viewport corners onto the
+ * map's average elevation plane. Rays that do not hit the plane are limited to
+ * max_view_distance_chunks. The resulting bounds also include the camera and
+ * focus chunks, a safety radius, and a preload margin.
+ *
+ * @param camera Current raylib camera.
+ * @param info Mesh source dimensions and level range.
+ * @param viewport_aspect_ratio Width divided by height of the 3D viewport.
+ * @param safety_radius_chunks Minimum radius retained around camera and focus.
+ * @param preload_margin_chunks Additional margin around the projected view.
+ * @param max_view_distance_chunks Maximum projected distance from the camera.
+ * @return Clamped required chunk footprint.
+ */
+[[nodiscard]] RaylibChunkStreamingRegion ResolveCameraStreamingRegion(
+    const Camera3D& camera,
+    const ChunkMeshBuildInfo& info,
+    float viewport_aspect_ratio,
+    int safety_radius_chunks,
+    int preload_margin_chunks,
+    int max_view_distance_chunks);
+
+/**
  * @brief 3D debug overlay visibility flags for the chunk-mesh preview.
  */
 struct RaylibChunkMeshDebugOverlayOptions {
@@ -97,9 +162,12 @@ struct RaylibChunkVisibilityOptions {
 struct RaylibChunkStreamingOptions {
     bool enabled = true;
     int activation_threshold_chunks = 256;
-    int resident_radius_chunks = 6;
-    int unload_margin_chunks = 2;
-    int upload_budget_chunks = 2;
+    int safety_radius_chunks = 3;
+    int preload_margin_chunks = 1;
+    int max_view_distance_chunks = 16;
+    int upload_budget_chunks = 4;
+    double unload_grace_seconds = 4.0;
+    float viewport_aspect_ratio = 1.0F;
 };
 
 /**
@@ -108,13 +176,18 @@ struct RaylibChunkStreamingOptions {
 struct RaylibChunkStreamingStats {
     bool enabled = false;
     int source_chunks = 0;
+    int required_chunks = 0;
     int resident_chunks = 0;
+    int retained_chunks = 0;
     int pending_chunks = 0;
-    int resident_radius_chunks = 0;
-    int unload_radius_chunks = 0;
+    int region_width_chunks = 0;
+    int region_height_chunks = 0;
+    int safety_radius_chunks = 0;
+    int max_view_distance_chunks = 0;
     int upload_budget_chunks = 0;
     int uploaded_chunks_last_update = 0;
     int unloaded_chunks_last_update = 0;
+    double unload_grace_seconds = 0.0;
     double last_update_ms = 0.0;
     double total_update_ms = 0.0;
 };
@@ -288,8 +361,9 @@ public:
     /**
      * @brief Advances camera-centered chunk residency by one frame.
      *
-     * GPU uploads are limited by upload_budget_chunks. Chunks outside the
-     * resident radius plus unload margin are released immediately.
+     * GPU uploads are limited by upload_budget_chunks. The required set follows
+     * the projected viewport. Old chunks are retained while required chunks are
+     * pending and then released only after unload_grace_seconds.
      *
      * @param camera Camera whose target selects the active chunk window.
      * @param options Current streaming policy.
@@ -423,6 +497,7 @@ private:
     const ChunkMeshBuildResult* source_ = nullptr;
     RaylibChunkMeshColorMode source_color_mode_ = RaylibChunkMeshColorMode::kMaterial;
     std::vector<std::uint8_t> resident_chunks_;
+    std::vector<double> last_required_seconds_;
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<ChunkVisibilityItem> visibility_items_;
     RaylibChunkMeshPreviewStats stats_;
