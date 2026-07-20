@@ -330,20 +330,6 @@ void PushMapStats(std::vector<std::string>& lines, const WorkspaceState& workspa
     lines.push_back("  Size: " + MapSizeText(workspace_state.map, labels));
     lines.push_back("  Tile: " + MapTileText(workspace_state.map, labels));
     lines.push_back("  Levels: " + MapLevelsText(workspace_state.map, labels));
-    const WorkspacePipelineTimings& timing = workspace_state.pipeline_timings;
-    if (timing.total_initial_ms > 0.0 || timing.active_mesh_ms > 0.0) {
-        lines.push_back("  Load pkg/runtime: " + MillisecondsText(timing.map_package_ms) + "/"
-            + MillisecondsText(timing.runtime_map_ms));
-        lines.push_back("  Build grid/voxel: " + MillisecondsText(timing.chunk_grid_ms) + "/"
-            + MillisecondsText(timing.voxel_world_ms));
-        lines.push_back("  Build vis/mesh: " + MillisecondsText(timing.face_visibility_ms) + "/"
-            + MillisecondsText(timing.active_mesh_ms));
-        lines.push_back("  Transitions/GPU: " + MillisecondsText(timing.transitions_ms) + "/"
-            + MillisecondsText(timing.renderer_setup_ms));
-        if (timing.total_initial_ms > 0.0) {
-            lines.push_back("  Initial total: " + MillisecondsText(timing.total_initial_ms));
-        }
-    }
     lines.push_back("");
 }
 
@@ -353,57 +339,6 @@ void PushVisibilityStats(std::vector<std::string>& lines, const WorkspaceState& 
     lines.push_back("  Mode: " + VisibilityModeLabel(workspace_state.visibility_mode));
     lines.push_back("  Radius/Fade: " + std::to_string(workspace_state.visibility_radius_chunks) + "/"
         + std::to_string(workspace_state.visibility_fade_ring_chunks));
-    const WorkspaceCpuMeshStreamingStats& cpu_streaming = workspace_state.cpu_mesh_streaming_stats;
-    lines.push_back("  CPU stream: " + std::string(cpu_streaming.enabled ? "on" : "full build"));
-    if (cpu_streaming.source_chunks > 0) {
-        lines.push_back("  CPU ready: " + std::to_string(cpu_streaming.ready_chunks) + "/"
-            + std::to_string(cpu_streaming.source_chunks));
-        lines.push_back("  CPU required/pending: " + std::to_string(cpu_streaming.required_chunks) + "/"
-            + std::to_string(cpu_streaming.pending_chunks));
-        if (cpu_streaming.enabled) {
-            lines.push_back("  CPU region: " + std::to_string(cpu_streaming.region_width_chunks) + "x"
-                + std::to_string(cpu_streaming.region_height_chunks));
-            lines.push_back("  CPU retained: " + std::to_string(cpu_streaming.retained_chunks));
-            lines.push_back("  CPU core/ahead: " + std::to_string(cpu_streaming.core_radius_chunks) + "/"
-                + std::to_string(cpu_streaming.ahead_depth_chunks) + "x"
-                + std::to_string(cpu_streaming.ahead_half_width_chunks * 2 + 1));
-            lines.push_back("  CPU direction sector: " + std::to_string(cpu_streaming.direction_sector));
-            lines.push_back("  CPU budget: " + MillisecondsText(cpu_streaming.active_build_budget_ms));
-            lines.push_back("  CPU last +/-: " + std::to_string(cpu_streaming.built_chunks_last_update) + "/"
-                + std::to_string(cpu_streaming.unloaded_chunks_last_update));
-            lines.push_back("  CPU update: " + MillisecondsText(cpu_streaming.last_update_ms));
-        }
-    }
-
-    const WorkspaceStreamingStats& streaming = workspace_state.streaming_stats;
-    lines.push_back("  GPU stream: " + std::string(streaming.enabled ? "on" : "full resident"));
-    if (streaming.source_chunks > 0) {
-        lines.push_back("  GPU resident: " + std::to_string(streaming.resident_chunks) + "/"
-            + std::to_string(streaming.source_chunks));
-        lines.push_back("  GPU required/pending: " + std::to_string(streaming.required_chunks) + "/"
-            + std::to_string(streaming.pending_chunks));
-        if (streaming.enabled) {
-            lines.push_back("  Far LOD: " + std::string(streaming.far_lod_uploaded ? "on" : "unavailable"));
-            if (streaming.far_lod_uploaded) {
-                lines.push_back("  Far step/span: " + std::to_string(streaming.far_lod_step_tiles) + "/"
-                    + std::to_string(streaming.far_lod_chunk_span_tiles));
-                lines.push_back("  Far models/verts: " + std::to_string(streaming.far_lod_models) + "/"
-                    + std::to_string(streaming.far_lod_vertices));
-                lines.push_back("  Far triangles: " + std::to_string(streaming.far_lod_triangles));
-            }
-            lines.push_back("  GPU region: " + std::to_string(streaming.region_width_chunks) + "x"
-                + std::to_string(streaming.region_height_chunks));
-            lines.push_back("  GPU retained: " + std::to_string(streaming.retained_chunks));
-            lines.push_back("  GPU core/ahead: " + std::to_string(streaming.core_radius_chunks) + "/"
-                + std::to_string(streaming.ahead_depth_chunks) + "x"
-                + std::to_string(streaming.ahead_half_width_chunks * 2 + 1));
-            lines.push_back("  GPU direction sector: " + std::to_string(streaming.direction_sector));
-            lines.push_back("  GPU budget: " + std::to_string(streaming.upload_budget_chunks));
-            lines.push_back("  Last +/-: " + std::to_string(streaming.uploaded_chunks_last_update) + "/"
-                + std::to_string(streaming.unloaded_chunks_last_update));
-            lines.push_back("  GPU update: " + MillisecondsText(streaming.last_update_ms));
-        }
-    }
     if (workspace_state.visibility_stats.resident_chunks == 0) {
         lines.push_back("  unavailable");
         lines.push_back("");
@@ -550,25 +485,17 @@ void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& worksp
     lines.push_back("");
 
     lines.push_back("Comparison");
-    lines.push_back("  Simple: " + (workspace_state.simple_chunk_meshes.IsValid()
-            ? std::to_string(workspace_state.mesh_stats.simple_faces)
-            : std::string("not built")));
-    lines.push_back("  Greedy: " + (workspace_state.greedy_chunk_meshes.IsValid()
-            ? std::to_string(workspace_state.mesh_stats.greedy_faces)
-            : std::string("not built")));
-    if (workspace_state.terrain_chunk_meshes.IsValid()) {
-        lines.push_back("  Terrain raw: "
-            + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces
-                + workspace_state.mesh_stats.terrain_raw_wall_faces));
-        lines.push_back("  Terrain merged: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
-        lines.push_back("  Raw T/W: " + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces) + "/"
-            + std::to_string(workspace_state.mesh_stats.terrain_raw_wall_faces));
-        lines.push_back("  Merged T/W/C: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
-            + std::to_string(workspace_state.mesh_stats.terrain_wall_faces) + "/"
-            + std::to_string(workspace_state.mesh_stats.terrain_cliff_faces));
-    } else {
-        lines.push_back("  Terrain: not built");
-    }
+    lines.push_back("  Simple: " + std::to_string(workspace_state.mesh_stats.simple_faces));
+    lines.push_back("  Greedy: " + std::to_string(workspace_state.mesh_stats.greedy_faces));
+    lines.push_back("  Terrain raw: "
+        + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces
+            + workspace_state.mesh_stats.terrain_raw_wall_faces));
+    lines.push_back("  Terrain merged: " + std::to_string(workspace_state.mesh_stats.terrain_faces));
+    lines.push_back("  Raw T/W: " + std::to_string(workspace_state.mesh_stats.terrain_raw_top_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.terrain_raw_wall_faces));
+    lines.push_back("  Merged T/W/C: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.terrain_wall_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.terrain_cliff_faces));
     lines.push_back("  Passes: "
         + std::string(workspace_state.show_terrain_tops ? "T" : "-")
         + std::string(workspace_state.show_terrain_walls ? "W" : "-")

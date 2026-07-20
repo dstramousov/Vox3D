@@ -102,9 +102,6 @@ private:
     void AdjustVisibilityRadius(int delta, std::string_view reason);
     void AdjustVisibilityFadeRing(int delta, std::string_view reason);
     void UpdateVisibilityStats();
-    void UpdateCpuMeshStreaming();
-    void UpdateChunkStreaming();
-    [[nodiscard]] bool EnsureMeshModeAvailable(ChunkMeshBuildMode mode, std::string_view reason);
     void SetChunkSize(int chunk_size, std::string_view reason);
     void RebuildChunkPipeline(int chunk_size, std::string_view reason);
     void UploadActiveChunkMesh(std::string_view reason);
@@ -152,7 +149,6 @@ private:
     bool dialog_input_blocked_until_next_frame_ = false;
     bool suppress_window_close_request_this_frame_ = false;
     ProcessMemoryInfo process_memory_{};
-    std::vector<double> cpu_chunk_last_required_seconds_;
     float process_memory_sample_timer_ = 0.0F;
     Font title_font_{};
     Font text_font_{};

@@ -416,12 +416,8 @@ void BuildTerrainChunkMesh(
     ChunkMeshBuildInfo& info,
     Diagnostics& diagnostics)
 {
-    const std::uint64_t raw_top_before = info.terrain_raw_top_faces;
-    const std::uint64_t raw_walls_before = info.terrain_raw_wall_faces;
-
     mesh.coord = chunk.coord;
     mesh.bounds = chunk.bounds;
-    mesh.generated = true;
     ReserveTerrainChunkBuffers(chunk, mesh);
 
     std::vector<TopMaskCell> top_mask;
@@ -443,9 +439,6 @@ void BuildTerrainChunkMesh(
                 break;
         }
     }
-
-    mesh.terrain_raw_top_faces = info.terrain_raw_top_faces - raw_top_before;
-    mesh.terrain_raw_wall_faces = info.terrain_raw_wall_faces - raw_walls_before;
 }
 
 void CopyMapShape(const RuntimeMap& map, const ChunkGrid& chunks, ChunkMeshBuildInfo& info)
@@ -473,74 +466,6 @@ void AccumulateChunkStats(const ChunkMeshData& mesh, ChunkMeshBuildInfo& info)
 }
 
 }  // namespace
-
-ChunkMeshBuildChunkResult BuildTerrainChunkMeshForChunk(
-    const RuntimeMap& map,
-    const ChunkGrid& chunks,
-    const ChunkInfo& chunk)
-{
-    ChunkMeshBuildChunkResult result;
-
-    if (!map.IsValid() || !map.HasCoreGrids()) {
-        result.diagnostics.AddWarning("cannot build terrain chunk from invalid runtime map");
-        return result;
-    }
-    if (!chunks.IsValid() || !chunk.IsValid()) {
-        result.diagnostics.AddWarning("cannot build terrain chunk from invalid chunk metadata");
-        return result;
-    }
-    if (map.info.width != chunks.info.map_width
-        || map.info.height != chunks.info.map_height) {
-        result.diagnostics.AddWarning(
-            "cannot build terrain chunk because runtime map and chunk grid dimensions differ");
-        return result;
-    }
-
-    ChunkMeshBuildInfo local_info;
-    CopyMapShape(map, chunks, local_info);
-    BuildTerrainChunkMesh(map, chunk, result.mesh, local_info, result.diagnostics);
-    if (!result.IsValid()) {
-        result.diagnostics.AddWarning("single terrain chunk mesh validation failed after build");
-    }
-    return result;
-}
-
-ChunkMeshBuildResult CreateDeferredTerrainChunkMeshes(
-    const RuntimeMap& map,
-    const ChunkGrid& chunks)
-{
-    ChunkMeshBuildResult result;
-
-    if (!map.IsValid() || !map.HasCoreGrids()) {
-        result.diagnostics.AddWarning("cannot create deferred terrain meshes from invalid runtime map");
-        return result;
-    }
-    if (!chunks.IsValid()) {
-        result.diagnostics.AddWarning("cannot create deferred terrain meshes from invalid chunk grid");
-        return result;
-    }
-    if (map.info.width != chunks.info.map_width
-        || map.info.height != chunks.info.map_height) {
-        result.diagnostics.AddWarning(
-            "cannot create deferred terrain meshes because runtime map and chunk grid dimensions differ");
-        return result;
-    }
-
-    CopyMapShape(map, chunks, result.info);
-    result.chunks.reserve(chunks.chunks.size());
-    for (const ChunkInfo& chunk : chunks.chunks) {
-        ChunkMeshData placeholder;
-        placeholder.coord = chunk.coord;
-        placeholder.bounds = chunk.bounds;
-        placeholder.generated = false;
-        result.chunks.push_back(std::move(placeholder));
-    }
-
-    if (!result.IsValid()) {
-        result.diagnostics.AddWarning("deferred terrain mesh source validation failed");
-    }
-    return result;
-}
 
 ChunkMeshBuildResult BuildTerrainChunkMeshes(const RuntimeMap& map, const ChunkGrid& chunks)
 {

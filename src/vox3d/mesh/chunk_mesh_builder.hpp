@@ -39,24 +39,6 @@ struct ChunkMeshBuildChunkResult {
     ChunkMeshBuildMode mode = ChunkMeshBuildMode::kSimpleFaces);
 
 /**
- * @brief Creates a valid deferred mesh source without generating chunk faces.
- *
- * The returned result contains one placeholder per chunk with generated=false.
- * Map shape and solid-block metadata are available immediately, while mesh
- * buffers can be filled incrementally with BuildChunkMeshForChunk().
- * Terrain-surface mode is not accepted because it must be built from RuntimeMap.
- *
- * @param world Voxel world defining map shape and level range.
- * @param chunks Chunk grid defining placeholder coordinates and bounds.
- * @param mode Simple or greedy voxel mesh mode.
- * @return Deferred mesh source ready for camera-centered CPU streaming.
- */
-[[nodiscard]] ChunkMeshBuildResult CreateDeferredChunkMeshes(
-    const VoxelWorld& world,
-    const ChunkGrid& chunks,
-    ChunkMeshBuildMode mode = ChunkMeshBuildMode::kSimpleFaces);
-
-/**
  * @brief Builds renderer-independent mesh data for each chunk.
  *
  * In simple mode each visible voxel face is emitted as one indexed quad. In

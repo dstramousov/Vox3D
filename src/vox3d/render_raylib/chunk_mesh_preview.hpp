@@ -11,7 +11,6 @@
 
 #include <raylib.h>
 
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -57,89 +56,6 @@ enum class RaylibChunkVisibilityMode : std::uint8_t {
 [[nodiscard]] std::string_view ToString(RaylibChunkVisibilityMode mode);
 
 /**
- * @brief Resolves the map chunk under the camera view focus.
- *
- * The free-fly camera target is a one-unit direction point rather than a map
- * orbit center. This function intersects the view ray with the map's average
- * elevation plane and clamps the resulting tile to the mesh bounds.
- *
- * @param camera Current raylib camera.
- * @param info Mesh source dimensions and level range.
- * @return Chunk coordinate used by streaming and radius culling.
- */
-[[nodiscard]] ChunkCoord ResolveCameraFocusChunk(
-    const Camera3D& camera,
-    const ChunkMeshBuildInfo& info);
-
-/**
- * @brief Stable chunk footprint used by large-map streaming.
- *
- * The required set is a square core centered on the camera view focus plus an
- * optional bounded directional preload strip. Camera rotation is quantized to
- * one of eight sectors so small mouse movements do not continuously replace
- * the resident set.
- */
-struct RaylibChunkStreamingRegion {
-    ChunkCoord focus_chunk{};
-    ChunkCoord camera_chunk{};
-    int direction_sector = 0;
-    int direction_x = 1;
-    int direction_y = 0;
-    int core_radius_chunks = 0;
-    int ahead_depth_chunks = 0;
-    int ahead_half_width_chunks = 0;
-    int min_chunk_x = 0;
-    int max_chunk_x = -1;
-    int min_chunk_y = 0;
-    int max_chunk_y = -1;
-    int required_chunk_count = 0;
-
-    /**
-     * @brief Returns true when the region contains at least one chunk.
-     *
-     * @return True for a non-empty clamped region.
-     */
-    [[nodiscard]] bool IsValid() const;
-
-    /**
-     * @brief Tests whether a chunk belongs to the stable core or preload strip.
-     *
-     * @param coord Chunk coordinate to test.
-     * @return True when the chunk is required by the current streaming window.
-     */
-    [[nodiscard]] bool Contains(ChunkCoord coord) const;
-
-    /**
-     * @brief Returns the number of chunks in the clamped required set.
-     *
-     * @return Required chunk count, or zero for an invalid region.
-     */
-    [[nodiscard]] int ChunkCount() const;
-};
-
-/**
- * @brief Resolves a stable camera-centered region for large-map streaming.
- *
- * The core changes only after the camera view focus crosses a chunk boundary.
- * Forward preload changes only when the view direction crosses one of eight
- * 45-degree sectors. This avoids per-degree frustum churn while keeping
- * additional geometry available in front of the camera.
- *
- * @param camera Current raylib camera.
- * @param info Mesh source dimensions and level range.
- * @param core_radius_chunks Radius of the square always-resident core.
- * @param ahead_depth_chunks Extra preload depth beyond the core.
- * @param ahead_half_width_chunks Half-width of the directional preload strip.
- * @return Clamped stable required chunk region.
- */
-[[nodiscard]] RaylibChunkStreamingRegion ResolveCameraStreamingRegion(
-    const Camera3D& camera,
-    const ChunkMeshBuildInfo& info,
-    int core_radius_chunks,
-    int ahead_depth_chunks,
-    int ahead_half_width_chunks);
-
-/**
  * @brief 3D debug overlay visibility flags for the chunk-mesh preview.
  */
 struct RaylibChunkMeshDebugOverlayOptions {
@@ -158,49 +74,6 @@ struct RaylibChunkVisibilityOptions {
     int fade_ring_chunks = 1;
     bool show_hidden_bounds = false;
     float viewport_aspect_ratio = 1.0F;
-};
-
-/**
- * @brief GPU residency policy for large chunk-mesh sources.
- */
-struct RaylibChunkStreamingOptions {
-    bool enabled = true;
-    int activation_threshold_chunks = 256;
-    int core_radius_chunks = 5;
-    int ahead_depth_chunks = 7;
-    int ahead_half_width_chunks = 3;
-    int upload_budget_chunks = 1;
-    double unload_grace_seconds = 1.0;
-};
-
-/**
- * @brief Last measured chunk streaming and GPU residency counters.
- */
-struct RaylibChunkStreamingStats {
-    bool enabled = false;
-    int source_chunks = 0;
-    int required_chunks = 0;
-    int resident_chunks = 0;
-    int retained_chunks = 0;
-    int pending_chunks = 0;
-    int region_width_chunks = 0;
-    int region_height_chunks = 0;
-    int core_radius_chunks = 0;
-    int ahead_depth_chunks = 0;
-    int ahead_half_width_chunks = 0;
-    int direction_sector = 0;
-    int upload_budget_chunks = 0;
-    int uploaded_chunks_last_update = 0;
-    int unloaded_chunks_last_update = 0;
-    bool far_lod_uploaded = false;
-    int far_lod_step_tiles = 0;
-    int far_lod_chunk_span_tiles = 0;
-    int far_lod_models = 0;
-    std::uint64_t far_lod_vertices = 0;
-    std::uint64_t far_lod_triangles = 0;
-    double unload_grace_seconds = 0.0;
-    double last_update_ms = 0.0;
-    double total_update_ms = 0.0;
 };
 
 /**
@@ -330,19 +203,6 @@ struct RaylibUploadedChunkModel {
 };
 
 /**
- * @brief One coarse Far LOD model and the map tile rectangle it covers.
- */
-struct RaylibFarLodChunkModel {
-    Model model{};
-    int min_tile_x = 0;
-    int min_tile_y = 0;
-    int max_tile_x = 0;
-    int max_tile_y = 0;
-    std::uint64_t vertices = 0;
-    std::uint64_t triangles = 0;
-};
-
-/**
  * @brief Raylib-backed debug preview renderer for generated chunk meshes.
  *
  * The renderer owns raylib Model resources created from renderer-independent
@@ -361,41 +221,6 @@ public:
     RaylibChunkMeshPreview& operator=(const RaylibChunkMeshPreview&) = delete;
     RaylibChunkMeshPreview(RaylibChunkMeshPreview&&) = delete;
     RaylibChunkMeshPreview& operator=(RaylibChunkMeshPreview&&) = delete;
-
-    /**
-     * @brief Sets a mesh source and initializes camera-centered GPU streaming.
-     *
-     * Small sources below the activation threshold are uploaded completely.
-     * Large sources keep only a bounded chunk window resident and upload new
-     * chunks incrementally through UpdateStreaming(). The source object must
-     * outlive the preview or remain at the same address until the next call.
-     *
-     * @param build_result Renderer-independent chunk mesh data.
-     * @param color_mode Vertex-color mode applied during upload.
-     * @param camera Camera used to choose the initial resident window.
-     * @param runtime_map Optional runtime map used to build the persistent far
-     *        terrain LOD for large streamed sources.
-     * @param options Streaming thresholds, radius, hysteresis, and frame budget.
-     * @return True if the source is valid and at least one model is resident.
-     */
-    [[nodiscard]] bool SetSource(
-        const ChunkMeshBuildResult& build_result,
-        RaylibChunkMeshColorMode color_mode,
-        const Camera3D& camera,
-        const RuntimeMap* runtime_map = nullptr,
-        RaylibChunkStreamingOptions options = {});
-
-    /**
-     * @brief Advances camera-centered chunk residency by one frame.
-     *
-     * GPU uploads are limited by upload_budget_chunks. The required set follows
-     * the projected viewport. Old chunks are retained while required chunks are
-     * pending and then released only after unload_grace_seconds.
-     *
-     * @param camera Camera whose target selects the active chunk window.
-     * @param options Current streaming policy.
-     */
-    void UpdateStreaming(const Camera3D& camera, RaylibChunkStreamingOptions options = {});
 
     /**
      * @brief Uploads chunk mesh data into raylib Model resources.
@@ -508,29 +333,10 @@ public:
      */
     [[nodiscard]] const RaylibChunkMeshPreviewStats& Stats() const;
 
-    /**
-     * @brief Returns current GPU streaming and residency statistics.
-     *
-     * @return Streaming counters for diagnostics and UI display.
-     */
-    [[nodiscard]] const RaylibChunkStreamingStats& StreamingStats() const;
-
 private:
-    [[nodiscard]] bool UploadSourceChunk(std::size_t source_index);
-    void UnloadSourceChunk(std::size_t source_index);
-    void RebuildResidentMetadata();
-    void RecalculateUploadStats();
-
-    const ChunkMeshBuildResult* source_ = nullptr;
-    RaylibChunkMeshColorMode source_color_mode_ = RaylibChunkMeshColorMode::kMaterial;
-    std::vector<std::uint8_t> resident_chunks_;
-    std::vector<double> last_required_seconds_;
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<ChunkVisibilityItem> visibility_items_;
-    std::vector<RaylibFarLodChunkModel> far_lod_chunks_;
-    bool far_lod_uploaded_ = false;
     RaylibChunkMeshPreviewStats stats_;
-    RaylibChunkStreamingStats streaming_stats_;
 };
 
 /**

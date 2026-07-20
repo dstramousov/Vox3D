@@ -200,6 +200,7 @@ VoxelWorld BuildVoxelWorld(const RuntimeMap& map, const ChunkGrid& chunks)
             column.tile = TileCoord{x, y};
             column.base_level = levels.min;
             column.surface_level = surface_level;
+            column.terrain = map.terrain.cells[index];
             column.blocked = blocked;
             column.surface_block_type = SurfaceBlockType(blocked);
 

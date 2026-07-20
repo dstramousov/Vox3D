@@ -18,11 +18,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
-#include <cmath>
 #include <cstdint>
+#include <cmath>
 #include <filesystem>
 #include <iomanip>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -33,27 +32,6 @@ namespace {
 
 constexpr int kChunkSize16 = 16;
 constexpr int kChunkSize32 = 32;
-constexpr int kStreamingActivationThresholdChunks = 256;
-constexpr int kStreamingCoreRadiusChunks = 5;
-constexpr int kStreamingAheadDepthChunks = 0;
-constexpr int kStreamingAheadHalfWidthChunks = 0;
-constexpr int kStreamingUploadBudgetChunks = 1;
-constexpr double kStreamingUnloadGraceSeconds = 1.0;
-constexpr double kCpuMeshBuildBudgetMilliseconds = 2.0;
-constexpr int kCpuMeshBuildBudgetChunks = 2;
-
-using SteadyClock = std::chrono::steady_clock;
-
-[[nodiscard]] double ElapsedMilliseconds(SteadyClock::time_point started_at)
-{
-    return std::chrono::duration<double, std::milli>(SteadyClock::now() - started_at).count();
-}
-
-[[nodiscard]] double CurrentSteadySeconds()
-{
-    return std::chrono::duration<double>(
-        SteadyClock::now().time_since_epoch()).count();
-}
 
 [[nodiscard]] std::vector<int> BuildFontCodepoints()
 {
@@ -256,96 +234,6 @@ void ToggleOverlayFlag(
     };
 }
 
-[[nodiscard]] RaylibChunkStreamingOptions BuildRaylibStreamingOptions()
-{
-    return RaylibChunkStreamingOptions{
-        true,
-        kStreamingActivationThresholdChunks,
-        kStreamingCoreRadiusChunks,
-        kStreamingAheadDepthChunks,
-        kStreamingAheadHalfWidthChunks,
-        kStreamingUploadBudgetChunks,
-        kStreamingUnloadGraceSeconds,
-    };
-}
-
-[[nodiscard]] bool ShouldUseDeferredCpuMeshes(const ChunkGrid& chunks)
-{
-    return chunks.IsValid()
-        && chunks.info.total_chunks > kStreamingActivationThresholdChunks;
-}
-
-[[nodiscard]] std::optional<std::size_t> MeshSourceChunkIndex(
-    ChunkCoord coord,
-    const ChunkMeshBuildInfo& info)
-{
-    if (coord.x < 0 || coord.y < 0
-        || coord.x >= info.chunks_x || coord.y >= info.chunks_y) {
-        return std::nullopt;
-    }
-    return static_cast<std::size_t>(coord.y)
-        * static_cast<std::size_t>(info.chunks_x)
-        + static_cast<std::size_t>(coord.x);
-}
-
-[[nodiscard]] int MeshChunkDistance(ChunkCoord lhs, ChunkCoord rhs)
-{
-    return std::max(std::abs(lhs.x - rhs.x), std::abs(lhs.y - rhs.y));
-}
-
-[[nodiscard]] int CountGeneratedChunks(const ChunkMeshBuildResult& source)
-{
-    return static_cast<int>(std::count_if(
-        source.chunks.begin(),
-        source.chunks.end(),
-        [](const ChunkMeshData& chunk) { return chunk.IsGenerated(); }));
-}
-
-void RecalculateDeferredMeshInfo(ChunkMeshBuildResult& source)
-{
-    source.info.visible_faces = 0;
-    source.info.terrain_raw_top_faces = 0;
-    source.info.terrain_raw_wall_faces = 0;
-    source.info.terrain_top_faces = 0;
-    source.info.terrain_wall_faces = 0;
-    source.info.terrain_cliff_faces = 0;
-    source.info.vertices = 0;
-    source.info.indices = 0;
-    source.info.non_empty_chunks = 0;
-
-    for (const ChunkMeshData& chunk : source.chunks) {
-        if (!chunk.IsGenerated()) {
-            continue;
-        }
-        if (!chunk.faces.empty()) {
-            ++source.info.non_empty_chunks;
-        }
-        source.info.visible_faces += chunk.FaceCount();
-        source.info.vertices += static_cast<std::uint64_t>(chunk.vertices.size());
-        source.info.indices += static_cast<std::uint64_t>(chunk.indices.size());
-        source.info.terrain_raw_top_faces += chunk.terrain_raw_top_faces;
-        source.info.terrain_raw_wall_faces += chunk.terrain_raw_wall_faces;
-        if (source.info.mode != ChunkMeshBuildMode::kTerrainSurface) {
-            continue;
-        }
-        for (const MeshFace& face : chunk.faces) {
-            switch (face.terrain_pass) {
-                case TerrainRenderPass::kTops:
-                    ++source.info.terrain_top_faces;
-                    break;
-                case TerrainRenderPass::kWalls:
-                    ++source.info.terrain_wall_faces;
-                    break;
-                case TerrainRenderPass::kCliffs:
-                    ++source.info.terrain_cliff_faces;
-                    break;
-                case TerrainRenderPass::kBody:
-                    break;
-            }
-        }
-    }
-}
-
 [[nodiscard]] RaylibTerrainPassOptions BuildRaylibTerrainPassOptions(const WorkspaceState& workspace)
 {
     return RaylibTerrainPassOptions{
@@ -384,36 +272,6 @@ void RecalculateDeferredMeshInfo(ChunkMeshBuildResult& source)
     result.total_faces = stats.total_faces;
     result.drawn_faces = stats.drawn_faces;
     result.culled_faces = stats.culled_faces;
-    return result;
-}
-
-[[nodiscard]] WorkspaceStreamingStats ToWorkspaceStreamingStats(const RaylibChunkStreamingStats& stats)
-{
-    WorkspaceStreamingStats result;
-    result.enabled = stats.enabled;
-    result.source_chunks = stats.source_chunks;
-    result.required_chunks = stats.required_chunks;
-    result.resident_chunks = stats.resident_chunks;
-    result.retained_chunks = stats.retained_chunks;
-    result.pending_chunks = stats.pending_chunks;
-    result.region_width_chunks = stats.region_width_chunks;
-    result.region_height_chunks = stats.region_height_chunks;
-    result.core_radius_chunks = stats.core_radius_chunks;
-    result.ahead_depth_chunks = stats.ahead_depth_chunks;
-    result.ahead_half_width_chunks = stats.ahead_half_width_chunks;
-    result.direction_sector = stats.direction_sector;
-    result.upload_budget_chunks = stats.upload_budget_chunks;
-    result.uploaded_chunks_last_update = stats.uploaded_chunks_last_update;
-    result.unloaded_chunks_last_update = stats.unloaded_chunks_last_update;
-    result.far_lod_uploaded = stats.far_lod_uploaded;
-    result.far_lod_step_tiles = stats.far_lod_step_tiles;
-    result.far_lod_chunk_span_tiles = stats.far_lod_chunk_span_tiles;
-    result.far_lod_models = stats.far_lod_models;
-    result.far_lod_vertices = stats.far_lod_vertices;
-    result.far_lod_triangles = stats.far_lod_triangles;
-    result.unload_grace_seconds = stats.unload_grace_seconds;
-    result.last_update_ms = stats.last_update_ms;
-    result.total_update_ms = stats.total_update_ms;
     return result;
 }
 
@@ -566,46 +424,24 @@ bool App::Initialize()
     }
     SetTargetFPS(config_.target_fps);
 
-    const auto initial_pipeline_started_at = SteadyClock::now();
-    auto stage_started_at = SteadyClock::now();
     workspace_.map = LoadMapPackageInfo(config_.map_package_path);
-    workspace_.pipeline_timings.map_package_ms = ElapsedMilliseconds(stage_started_at);
     logger_.Info("map", ToLogString(workspace_.map));
     for (const auto& warning : workspace_.map.warnings) {
         logger_.Warn("map", warning);
     }
-
-    stage_started_at = SteadyClock::now();
     workspace_.runtime_map = BuildRuntimeMap(workspace_.map);
-    workspace_.pipeline_timings.runtime_map_ms = ElapsedMilliseconds(stage_started_at);
     logger_.Info("runtime_map", ToLogString(workspace_.runtime_map));
     for (const auto& warning : workspace_.runtime_map.diagnostics.warnings) {
         logger_.Warn("runtime_map", warning);
     }
     RebuildChunkPipeline(workspace_.chunk_size_tiles, "initial");
-    workspace_.pipeline_timings.total_initial_ms = ElapsedMilliseconds(initial_pipeline_started_at);
-    {
-        std::ostringstream out;
-        out << "map_ms=" << std::fixed << std::setprecision(2) << workspace_.pipeline_timings.map_package_ms;
-        out << " runtime_ms=" << workspace_.pipeline_timings.runtime_map_ms;
-        out << " chunk_grid_ms=" << workspace_.pipeline_timings.chunk_grid_ms;
-        out << " voxel_ms=" << workspace_.pipeline_timings.voxel_world_ms;
-        out << " visibility_ms=" << workspace_.pipeline_timings.face_visibility_ms;
-        out << " active_mesh_ms=" << workspace_.pipeline_timings.active_mesh_ms;
-        out << " transitions_ms=" << workspace_.pipeline_timings.transitions_ms;
-        out << " renderer_ms=" << workspace_.pipeline_timings.renderer_setup_ms;
-        out << " total_ms=" << workspace_.pipeline_timings.total_initial_ms;
-        logger_.Info("pipeline_timing", out.str());
-    }
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
     LoadUiFonts();
     RefreshProcessMemoryInfo();
     RebuildLayout();
-    if (workspace_.chunk_meshes.IsValid()) {
-        preview_camera_.StartFlyInToMap(
-            workspace_.chunk_meshes,
-            layout_cache_.workspace.map_overview);
+    if (chunk_mesh_preview_.IsUploaded()) {
+        preview_camera_.StartFlyInToMap(workspace_.chunk_meshes, layout_cache_.workspace.map_overview);
         logger_.Info("camera3d", "startup fly-in " + ToLogString(preview_camera_.Status()));
     }
 
@@ -1093,7 +929,6 @@ void App::Update(float dt)
         process_memory_sample_timer_ = 0.0F;
     }
 
-    UpdateChunkStreaming();
     UpdateVisibilityStats();
 
     if (!config_.window_resizable || !IsWindowResized()) {
@@ -1167,10 +1002,6 @@ void App::RefreshMeshOptimizationStats()
     workspace_.mesh_stats = MeshOptimizationStats{};
     workspace_.mesh_stats.active_mode = workspace_.mesh_mode;
 
-    if (workspace_.voxel_world.IsValid()) {
-        workspace_.mesh_stats.solid_blocks = workspace_.voxel_world.info.solid_blocks;
-        workspace_.mesh_stats.naive_faces = workspace_.voxel_world.info.solid_blocks * 6ULL;
-    }
     if (workspace_.face_visibility.IsValid()) {
         workspace_.mesh_stats.solid_blocks = workspace_.face_visibility.info.solid_blocks;
         workspace_.mesh_stats.naive_faces = workspace_.face_visibility.info.naive_faces;
@@ -1236,114 +1067,52 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     const ChunkGridInfo before_grid_info = workspace_.chunk_grid.info;
     const MeshOptimizationStats before_stats = workspace_.mesh_stats;
 
-    auto stage_started_at = SteadyClock::now();
-    ChunkGrid next_chunk_grid = BuildChunkGrid(
-        workspace_.runtime_map,
-        ChunkGridOptions{chunk_size, chunk_size});
-    workspace_.pipeline_timings.chunk_grid_ms = ElapsedMilliseconds(stage_started_at);
+    ChunkGrid next_chunk_grid = BuildChunkGrid(workspace_.runtime_map, ChunkGridOptions{chunk_size, chunk_size});
     logger_.Info("chunk_grid", "reason=" + std::string(reason) + " " + ToLogString(next_chunk_grid));
     for (const auto& warning : next_chunk_grid.diagnostics.warnings) {
         logger_.Warn("chunk_grid", warning);
     }
 
-    stage_started_at = SteadyClock::now();
     VoxelWorld next_voxel_world = BuildVoxelWorld(workspace_.runtime_map, next_chunk_grid);
-    workspace_.pipeline_timings.voxel_world_ms = ElapsedMilliseconds(stage_started_at);
     logger_.Info("voxel_world", "reason=" + std::string(reason) + " " + ToLogString(next_voxel_world));
     for (const auto& warning : next_voxel_world.diagnostics.warnings) {
         logger_.Warn("voxel_world", warning);
     }
 
-    const bool deferred_cpu_meshes = ShouldUseDeferredCpuMeshes(next_chunk_grid);
-    FaceVisibilityResult next_face_visibility;
-    workspace_.pipeline_timings.face_visibility_ms = 0.0;
-    if (deferred_cpu_meshes) {
-        logger_.Info(
-            "face_visibility",
-            "reason=" + std::string(reason)
-                + " status=deferred map-wide pass skipped for large-map CPU streaming");
-    } else {
-        stage_started_at = SteadyClock::now();
-        next_face_visibility = BuildFaceVisibility(next_voxel_world);
-        workspace_.pipeline_timings.face_visibility_ms = ElapsedMilliseconds(stage_started_at);
-        logger_.Info(
-            "face_visibility",
-            "reason=" + std::string(reason) + " " + ToLogString(next_face_visibility));
-        for (const auto& warning : next_face_visibility.diagnostics.warnings) {
-            logger_.Warn("face_visibility", warning);
-        }
+    FaceVisibilityResult next_face_visibility = BuildFaceVisibility(next_voxel_world);
+    logger_.Info("face_visibility", "reason=" + std::string(reason) + " " + ToLogString(next_face_visibility));
+    for (const auto& warning : next_face_visibility.diagnostics.warnings) {
+        logger_.Warn("face_visibility", warning);
     }
 
-    ChunkMeshCache next_simple_cache;
-    ChunkMeshCache next_greedy_cache;
-    ChunkMeshBuildResult next_simple_meshes;
-    ChunkMeshBuildResult next_greedy_meshes;
-    ChunkMeshBuildResult next_terrain_meshes;
-    stage_started_at = SteadyClock::now();
-    if (deferred_cpu_meshes) {
-        if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
-            next_terrain_meshes = CreateDeferredTerrainChunkMeshes(
-                workspace_.runtime_map,
-                next_chunk_grid);
-            logger_.Info(
-                "terrain_mesh",
-                "reason=" + std::string(reason) + " deferred=yes "
-                    + ToLogString(next_terrain_meshes));
-        } else {
-            ChunkMeshBuildResult deferred = CreateDeferredChunkMeshes(
-                next_voxel_world,
-                next_chunk_grid,
-                workspace_.mesh_mode);
-            logger_.Info(
-                "chunk_mesh_source",
-                "reason=" + std::string(reason) + " deferred=yes "
-                    + ToLogString(deferred));
-            if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
-                next_greedy_meshes = std::move(deferred);
-            } else {
-                next_simple_meshes = std::move(deferred);
-            }
-        }
-    } else if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
-        next_terrain_meshes = BuildTerrainChunkMeshes(workspace_.runtime_map, next_chunk_grid);
-        logger_.Info(
-            "terrain_mesh",
-            "reason=" + std::string(reason) + " " + ToLogString(next_terrain_meshes));
-        for (const auto& warning : next_terrain_meshes.diagnostics.warnings) {
-            logger_.Warn("terrain_mesh", warning);
-        }
-    } else {
-        ChunkMeshCache active_cache = BuildChunkMeshCache(
-            next_voxel_world,
-            next_chunk_grid,
-            workspace_.mesh_mode);
-        logger_.Info(
-            "chunk_mesh_cache",
-            "reason=" + std::string(reason) + " " + ToLogString(active_cache));
-        for (const auto& warning : active_cache.diagnostics.warnings) {
-            logger_.Warn("chunk_mesh_cache", warning);
-        }
-        if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
-            next_greedy_cache = std::move(active_cache);
-        } else {
-            next_simple_cache = std::move(active_cache);
-        }
+    ChunkMeshCache next_simple_cache = BuildChunkMeshCache(
+        next_voxel_world,
+        next_chunk_grid,
+        ChunkMeshBuildMode::kSimpleFaces);
+    logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_simple_cache));
+    for (const auto& warning : next_simple_cache.diagnostics.warnings) {
+        logger_.Warn("chunk_mesh_cache", warning);
     }
-    workspace_.pipeline_timings.active_mesh_ms = ElapsedMilliseconds(stage_started_at);
 
-    TransitionFeatureSet next_transition_features;
-    const bool rebuild_transitions = !workspace_.transition_features.IsValid();
-    workspace_.pipeline_timings.transitions_ms = 0.0;
-    if (rebuild_transitions) {
-        stage_started_at = SteadyClock::now();
-        next_transition_features = BuildTransitionFeatures(workspace_.runtime_map);
-        workspace_.pipeline_timings.transitions_ms = ElapsedMilliseconds(stage_started_at);
-        logger_.Info(
-            "transitions",
-            "reason=" + std::string(reason) + " " + ToLogString(next_transition_features));
-        for (const auto& warning : next_transition_features.diagnostics.warnings) {
-            logger_.Warn("transitions", warning);
-        }
+    ChunkMeshCache next_greedy_cache = BuildChunkMeshCache(
+        next_voxel_world,
+        next_chunk_grid,
+        ChunkMeshBuildMode::kGreedyFaces);
+    logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_greedy_cache));
+    for (const auto& warning : next_greedy_cache.diagnostics.warnings) {
+        logger_.Warn("chunk_mesh_cache", warning);
+    }
+
+    ChunkMeshBuildResult next_terrain_meshes = BuildTerrainChunkMeshes(workspace_.runtime_map, next_chunk_grid);
+    logger_.Info("terrain_mesh", "reason=" + std::string(reason) + " " + ToLogString(next_terrain_meshes));
+    for (const auto& warning : next_terrain_meshes.diagnostics.warnings) {
+        logger_.Warn("terrain_mesh", warning);
+    }
+
+    TransitionFeatureSet next_transition_features = BuildTransitionFeatures(workspace_.runtime_map);
+    logger_.Info("transitions", "reason=" + std::string(reason) + " " + ToLogString(next_transition_features));
+    for (const auto& warning : next_transition_features.diagnostics.warnings) {
+        logger_.Warn("transitions", warning);
     }
 
     workspace_.chunk_size_tiles = chunk_size;
@@ -1352,17 +1121,8 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     workspace_.face_visibility = std::move(next_face_visibility);
     workspace_.simple_chunk_mesh_cache = std::move(next_simple_cache);
     workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
-    workspace_.simple_chunk_meshes = workspace_.simple_chunk_mesh_cache.IsValid()
-        ? ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache)
-        : std::move(next_simple_meshes);
-    workspace_.greedy_chunk_meshes = workspace_.greedy_chunk_mesh_cache.IsValid()
-        ? ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache)
-        : std::move(next_greedy_meshes);
     workspace_.terrain_chunk_meshes = std::move(next_terrain_meshes);
-    if (rebuild_transitions) {
-        workspace_.transition_features = std::move(next_transition_features);
-    }
-
+    workspace_.transition_features = std::move(next_transition_features);
     if (workspace_.validation_mode == WorkspaceValidationMode::kOff) {
         ClearPassabilityValidation("chunk_pipeline_disabled");
     } else if (workspace_.passability_validation_dirty) {
@@ -1392,25 +1152,12 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     } else {
         workspace_.movement_probe = MovementProbeResult{};
     }
-
+    workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
+    workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
     SetActiveMeshCacheFromMode();
     workspace_.last_mesh_rebuild = workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
-            || deferred_cpu_meshes
         ? ChunkMeshRebuildReport{}
         : FullCacheBuildReport(workspace_.chunk_mesh_cache);
-
-    workspace_.cpu_mesh_streaming_stats = WorkspaceCpuMeshStreamingStats{};
-    if (workspace_.chunk_meshes.IsValid()) {
-        workspace_.cpu_mesh_streaming_stats.enabled = deferred_cpu_meshes;
-        workspace_.cpu_mesh_streaming_stats.source_chunks = workspace_.chunk_meshes.info.total_chunks;
-        workspace_.cpu_mesh_streaming_stats.ready_chunks = CountGeneratedChunks(workspace_.chunk_meshes);
-        workspace_.cpu_mesh_streaming_stats.core_radius_chunks = kStreamingCoreRadiusChunks;
-        workspace_.cpu_mesh_streaming_stats.ahead_depth_chunks = kStreamingAheadDepthChunks;
-        workspace_.cpu_mesh_streaming_stats.ahead_half_width_chunks = kStreamingAheadHalfWidthChunks;
-        workspace_.cpu_mesh_streaming_stats.unload_grace_seconds = kStreamingUnloadGraceSeconds;
-        workspace_.cpu_mesh_streaming_stats.build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
-        workspace_.cpu_mesh_streaming_stats.active_build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
-    }
 
     UploadActiveChunkMesh(reason);
     RefreshChunkSizeComparison(before_chunk_size, before_grid_info, before_stats, had_before_stats);
@@ -1447,120 +1194,12 @@ void App::SetActiveMeshCacheFromMode()
         workspace_.chunk_mesh_cache = workspace_.simple_chunk_mesh_cache;
         workspace_.chunk_meshes = workspace_.simple_chunk_meshes;
     }
-
-    workspace_.cpu_mesh_streaming_stats = WorkspaceCpuMeshStreamingStats{};
-    cpu_chunk_last_required_seconds_.clear();
-    if (!workspace_.chunk_meshes.IsValid()) {
-        return;
-    }
-
-    const int ready_chunks = CountGeneratedChunks(workspace_.chunk_meshes);
-    workspace_.cpu_mesh_streaming_stats.enabled = ShouldUseDeferredCpuMeshes(workspace_.chunk_grid)
-        && ready_chunks < workspace_.chunk_meshes.info.total_chunks;
-    workspace_.cpu_mesh_streaming_stats.source_chunks = workspace_.chunk_meshes.info.total_chunks;
-    workspace_.cpu_mesh_streaming_stats.ready_chunks = ready_chunks;
-    workspace_.cpu_mesh_streaming_stats.core_radius_chunks = kStreamingCoreRadiusChunks;
-    workspace_.cpu_mesh_streaming_stats.ahead_depth_chunks = kStreamingAheadDepthChunks;
-    workspace_.cpu_mesh_streaming_stats.ahead_half_width_chunks = kStreamingAheadHalfWidthChunks;
-    workspace_.cpu_mesh_streaming_stats.unload_grace_seconds = kStreamingUnloadGraceSeconds;
-    workspace_.cpu_mesh_streaming_stats.build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
-    workspace_.cpu_mesh_streaming_stats.active_build_budget_ms = kCpuMeshBuildBudgetMilliseconds;
-}
-
-bool App::EnsureMeshModeAvailable(ChunkMeshBuildMode mode, std::string_view reason)
-{
-    if (mode == ChunkMeshBuildMode::kTerrainSurface && workspace_.terrain_chunk_meshes.IsValid()) {
-        return true;
-    }
-    if (mode == ChunkMeshBuildMode::kGreedyFaces && workspace_.greedy_chunk_meshes.IsValid()) {
-        return true;
-    }
-    if (mode == ChunkMeshBuildMode::kSimpleFaces && workspace_.simple_chunk_meshes.IsValid()) {
-        return true;
-    }
-    if (!workspace_.chunk_grid.IsValid() || !workspace_.runtime_map.IsValid()) {
-        logger_.Warn("mesh_lazy", "build ignored because map or chunk grid is invalid");
-        return false;
-    }
-
-    const bool deferred_cpu_meshes = ShouldUseDeferredCpuMeshes(workspace_.chunk_grid);
-    const auto started_at = SteadyClock::now();
-    if (mode == ChunkMeshBuildMode::kTerrainSurface) {
-        workspace_.terrain_chunk_meshes = deferred_cpu_meshes
-            ? CreateDeferredTerrainChunkMeshes(workspace_.runtime_map, workspace_.chunk_grid)
-            : BuildTerrainChunkMeshes(workspace_.runtime_map, workspace_.chunk_grid);
-        logger_.Info(
-            "terrain_mesh",
-            "lazy reason=" + std::string(reason)
-                + " deferred=" + (deferred_cpu_meshes ? "yes " : "no ")
-                + ToLogString(workspace_.terrain_chunk_meshes));
-        for (const auto& warning : workspace_.terrain_chunk_meshes.diagnostics.warnings) {
-            logger_.Warn("terrain_mesh", warning);
-        }
-    } else if (deferred_cpu_meshes) {
-        ChunkMeshBuildResult deferred = CreateDeferredChunkMeshes(
-            workspace_.voxel_world,
-            workspace_.chunk_grid,
-            mode);
-        logger_.Info(
-            "chunk_mesh_source",
-            "lazy reason=" + std::string(reason) + " deferred=yes "
-                + ToLogString(deferred));
-        for (const auto& warning : deferred.diagnostics.warnings) {
-            logger_.Warn("chunk_mesh_source", warning);
-        }
-        if (mode == ChunkMeshBuildMode::kGreedyFaces) {
-            workspace_.greedy_chunk_meshes = std::move(deferred);
-        } else {
-            workspace_.simple_chunk_meshes = std::move(deferred);
-        }
-    } else {
-        if (!workspace_.voxel_world.IsValid()) {
-            logger_.Warn("mesh_lazy", "voxel mesh build ignored because voxel world is invalid");
-            return false;
-        }
-        ChunkMeshCache cache = BuildChunkMeshCache(
-            workspace_.voxel_world,
-            workspace_.chunk_grid,
-            mode);
-        logger_.Info(
-            "chunk_mesh_cache",
-            "lazy reason=" + std::string(reason) + " " + ToLogString(cache));
-        for (const auto& warning : cache.diagnostics.warnings) {
-            logger_.Warn("chunk_mesh_cache", warning);
-        }
-        if (mode == ChunkMeshBuildMode::kGreedyFaces) {
-            workspace_.greedy_chunk_mesh_cache = std::move(cache);
-            workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
-        } else {
-            workspace_.simple_chunk_mesh_cache = std::move(cache);
-            workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
-        }
-    }
-
-    workspace_.pipeline_timings.active_mesh_ms = ElapsedMilliseconds(started_at);
-    const bool available = mode == ChunkMeshBuildMode::kTerrainSurface
-        ? workspace_.terrain_chunk_meshes.IsValid()
-        : (mode == ChunkMeshBuildMode::kGreedyFaces
-              ? workspace_.greedy_chunk_meshes.IsValid()
-              : workspace_.simple_chunk_meshes.IsValid());
-    logger_.Info(
-        "mesh_lazy",
-        "mode=" + std::string(ToString(mode))
-            + " deferred=" + (deferred_cpu_meshes ? "yes" : "no")
-            + " duration_ms=" + std::to_string(workspace_.pipeline_timings.active_mesh_ms)
-            + " status=" + (available ? "ready" : "invalid"));
-    return available;
 }
 
 void App::RunDirtyRebuildProbe(std::string_view reason)
 {
     if (!workspace_.runtime_map.IsValid() || !workspace_.chunk_grid.IsValid()) {
         logger_.Warn("dirty_rebuild", "probe ignored because runtime map or chunk grid is invalid");
-        return;
-    }
-    if (workspace_.cpu_mesh_streaming_stats.enabled) {
-        logger_.Warn("dirty_rebuild", "probe ignored while deferred CPU mesh streaming is active");
         return;
     }
     if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
@@ -1603,65 +1242,15 @@ void App::RunDirtyRebuildProbe(std::string_view reason)
 
 void App::UploadActiveChunkMesh(std::string_view reason)
 {
-    const auto started_at = SteadyClock::now();
-    const bool uploaded = chunk_mesh_preview_.SetSource(
-        workspace_.chunk_meshes,
-        ToRaylibColorMode(workspace_.color_mode),
-        preview_camera_.Camera(),
-        &workspace_.runtime_map,
-        BuildRaylibStreamingOptions());
-    workspace_.pipeline_timings.renderer_setup_ms = ElapsedMilliseconds(started_at);
-    workspace_.streaming_stats = ToWorkspaceStreamingStats(chunk_mesh_preview_.StreamingStats());
+    const bool uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes, ToRaylibColorMode(workspace_.color_mode));
     RefreshMeshOptimizationStats();
     UpdateVisibilityStats();
     logger_.Info(
         "render3d",
         "upload reason=" + std::string(reason) + " color=" + std::string(ToString(workspace_.color_mode)) + " "
             + ToLogString(chunk_mesh_preview_.Stats()));
-    {
-        const RaylibChunkStreamingStats& streaming = chunk_mesh_preview_.StreamingStats();
-        std::ostringstream out;
-        out << "enabled=" << (streaming.enabled ? "yes" : "no");
-        out << " source=" << streaming.source_chunks;
-        out << " required=" << streaming.required_chunks;
-        out << " resident=" << streaming.resident_chunks;
-        out << " retained=" << streaming.retained_chunks;
-        out << " pending=" << streaming.pending_chunks;
-        out << " region=" << streaming.region_width_chunks << 'x'
-            << streaming.region_height_chunks;
-        out << " core_radius=" << streaming.core_radius_chunks;
-        out << " ahead=" << streaming.ahead_depth_chunks << 'x'
-            << (streaming.ahead_half_width_chunks * 2 + 1);
-        out << " sector=" << streaming.direction_sector;
-        out << " grace_s=" << streaming.unload_grace_seconds;
-        out << " budget=" << streaming.upload_budget_chunks;
-        out << " far_lod=" << (streaming.far_lod_uploaded ? "yes" : "no");
-        if (streaming.far_lod_uploaded) {
-            out << " far_step=" << streaming.far_lod_step_tiles;
-            out << " far_span=" << streaming.far_lod_chunk_span_tiles;
-            out << " far_models=" << streaming.far_lod_models;
-            out << " far_vertices=" << streaming.far_lod_vertices;
-            out << " far_triangles=" << streaming.far_lod_triangles;
-        }
-        out << " setup_ms=" << std::fixed << std::setprecision(2)
-            << workspace_.pipeline_timings.renderer_setup_ms;
-        logger_.Info("chunk_stream", out.str());
-    }
     logger_.Info("mesh_stats", ToLogString(workspace_.mesh_stats));
-    if (!uploaded && workspace_.cpu_mesh_streaming_stats.enabled) {
-        logger_.Info(
-            "cpu_mesh_stream",
-            "status=waiting source="
-                + std::to_string(workspace_.cpu_mesh_streaming_stats.source_chunks)
-                + " core_radius="
-                + std::to_string(workspace_.cpu_mesh_streaming_stats.core_radius_chunks)
-                + " ahead="
-                + std::to_string(workspace_.cpu_mesh_streaming_stats.ahead_depth_chunks)
-                + "x"
-                + std::to_string(workspace_.cpu_mesh_streaming_stats.ahead_half_width_chunks * 2 + 1)
-                + " budget_ms="
-                + std::to_string(workspace_.cpu_mesh_streaming_stats.build_budget_ms));
-    } else if (!uploaded) {
+    if (!uploaded) {
         logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");
     }
 }
@@ -1672,16 +1261,17 @@ void App::SetMeshBuildMode(ChunkMeshBuildMode mode, std::string_view reason)
         logger_.Debug("mesh_stats", "mesh mode unchanged mode=" + std::string(ToString(mode)));
         return;
     }
-    if (!EnsureMeshModeAvailable(mode, reason)) {
+
+    const ChunkMeshBuildResult& selected = mode == ChunkMeshBuildMode::kTerrainSurface
+        ? workspace_.terrain_chunk_meshes
+        : (mode == ChunkMeshBuildMode::kGreedyFaces ? workspace_.greedy_chunk_meshes : workspace_.simple_chunk_meshes);
+    if (!selected.IsValid()) {
         logger_.Warn("mesh_stats", "mesh mode switch ignored invalid mode=" + std::string(ToString(mode)));
         return;
     }
 
     workspace_.mesh_mode = mode;
     SetActiveMeshCacheFromMode();
-    workspace_.last_mesh_rebuild = mode == ChunkMeshBuildMode::kTerrainSurface
-        ? ChunkMeshRebuildReport{}
-        : FullCacheBuildReport(workspace_.chunk_mesh_cache);
     UploadActiveChunkMesh(reason);
     layout_dirty_ = true;
 }
@@ -1770,249 +1360,8 @@ void App::AdjustVisibilityFadeRing(int delta, std::string_view reason)
         BuildRaylibTerrainPassOptions(workspace_))));
 }
 
-void App::UpdateCpuMeshStreaming()
-{
-    WorkspaceCpuMeshStreamingStats& stats = workspace_.cpu_mesh_streaming_stats;
-    stats.built_chunks_last_update = 0;
-    stats.unloaded_chunks_last_update = 0;
-    stats.last_update_ms = 0.0;
-
-    if (!stats.enabled || !workspace_.show_3d_preview
-        || !workspace_.chunk_meshes.IsValid()
-        || !workspace_.chunk_grid.IsValid()) {
-        return;
-    }
-
-    const auto started_at = SteadyClock::now();
-    const double now_seconds = CurrentSteadySeconds();
-    if (cpu_chunk_last_required_seconds_.size() != workspace_.chunk_meshes.chunks.size()) {
-        cpu_chunk_last_required_seconds_.assign(workspace_.chunk_meshes.chunks.size(), 0.0);
-    }
-
-    const RaylibChunkStreamingRegion region = ResolveCameraStreamingRegion(
-        preview_camera_.Camera(),
-        workspace_.chunk_meshes.info,
-        kStreamingCoreRadiusChunks,
-        kStreamingAheadDepthChunks,
-        kStreamingAheadHalfWidthChunks);
-    stats.required_chunks = region.ChunkCount();
-    stats.region_width_chunks = region.IsValid()
-        ? region.max_chunk_x - region.min_chunk_x + 1
-        : 0;
-    stats.region_height_chunks = region.IsValid()
-        ? region.max_chunk_y - region.min_chunk_y + 1
-        : 0;
-    stats.core_radius_chunks = kStreamingCoreRadiusChunks;
-    stats.ahead_depth_chunks = kStreamingAheadDepthChunks;
-    stats.ahead_half_width_chunks = kStreamingAheadHalfWidthChunks;
-    stats.direction_sector = region.direction_sector;
-    stats.unload_grace_seconds = kStreamingUnloadGraceSeconds;
-
-    struct Candidate {
-        int priority_distance = 0;
-        int focus_distance = 0;
-        int camera_distance = 0;
-        std::size_t source_index = 0;
-    };
-    std::vector<Candidate> candidates;
-    candidates.reserve(static_cast<std::size_t>(std::max(0, region.ChunkCount())));
-    if (region.IsValid()) {
-        for (int y = region.min_chunk_y; y <= region.max_chunk_y; ++y) {
-            for (int x = region.min_chunk_x; x <= region.max_chunk_x; ++x) {
-                const ChunkCoord coord{x, y};
-                if (!region.Contains(coord)) {
-                    continue;
-                }
-                const auto source_index = MeshSourceChunkIndex(
-                    coord,
-                    workspace_.chunk_meshes.info);
-                if (!source_index.has_value()
-                    || *source_index >= workspace_.chunk_meshes.chunks.size()) {
-                    continue;
-                }
-                cpu_chunk_last_required_seconds_[*source_index] = now_seconds;
-                if (workspace_.chunk_meshes.chunks[*source_index].IsGenerated()) {
-                    continue;
-                }
-                const int focus_distance = MeshChunkDistance(coord, region.focus_chunk);
-                const int camera_distance = MeshChunkDistance(coord, region.camera_chunk);
-                candidates.push_back(Candidate{
-                    std::min(focus_distance, camera_distance),
-                    focus_distance,
-                    camera_distance,
-                    *source_index,
-                });
-            }
-        }
-    }
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& lhs, const Candidate& rhs) {
-        if (lhs.priority_distance != rhs.priority_distance) {
-            return lhs.priority_distance < rhs.priority_distance;
-        }
-        if (lhs.camera_distance != rhs.camera_distance) {
-            return lhs.camera_distance < rhs.camera_distance;
-        }
-        if (lhs.focus_distance != rhs.focus_distance) {
-            return lhs.focus_distance < rhs.focus_distance;
-        }
-        return lhs.source_index < rhs.source_index;
-    });
-
-    stats.active_build_budget_ms = stats.build_budget_ms;
-    bool source_changed = false;
-    for (const Candidate& candidate : candidates) {
-        if (stats.built_chunks_last_update >= kCpuMeshBuildBudgetChunks
-            || (stats.built_chunks_last_update > 0
-                && ElapsedMilliseconds(started_at) >= stats.active_build_budget_ms)) {
-            break;
-        }
-        if (candidate.source_index >= workspace_.chunk_grid.chunks.size()) {
-            continue;
-        }
-
-        const ChunkInfo& chunk_info = workspace_.chunk_grid.chunks[candidate.source_index];
-        ChunkMeshBuildChunkResult build = workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
-            ? BuildTerrainChunkMeshForChunk(
-                  workspace_.runtime_map,
-                  workspace_.chunk_grid,
-                  chunk_info)
-            : BuildChunkMeshForChunk(
-                  workspace_.voxel_world,
-                  chunk_info,
-                  workspace_.mesh_mode);
-        for (const auto& warning : build.diagnostics.warnings) {
-            logger_.Warn("cpu_mesh_stream", warning);
-        }
-        if (!build.IsValid()) {
-            build.mesh.coord = chunk_info.coord;
-            build.mesh.bounds = chunk_info.bounds;
-            build.mesh.generated = true;
-        }
-        workspace_.chunk_meshes.chunks[candidate.source_index] = std::move(build.mesh);
-        ++stats.built_chunks_last_update;
-        source_changed = true;
-    }
-
-    stats.pending_chunks = 0;
-    if (region.IsValid()) {
-        for (int y = region.min_chunk_y; y <= region.max_chunk_y; ++y) {
-            for (int x = region.min_chunk_x; x <= region.max_chunk_x; ++x) {
-                const ChunkCoord coord{x, y};
-                if (!region.Contains(coord)) {
-                    continue;
-                }
-                const auto source_index = MeshSourceChunkIndex(
-                    coord,
-                    workspace_.chunk_meshes.info);
-                if (source_index.has_value()
-                    && *source_index < workspace_.chunk_meshes.chunks.size()
-                    && !workspace_.chunk_meshes.chunks[*source_index].IsGenerated()) {
-                    ++stats.pending_chunks;
-                }
-            }
-        }
-    }
-
-    struct EvictionCandidate {
-        double last_required_seconds = 0.0;
-        std::size_t source_index = 0;
-    };
-    std::vector<EvictionCandidate> eviction_candidates;
-    int generated_chunks = 0;
-    for (std::size_t index = 0; index < workspace_.chunk_meshes.chunks.size(); ++index) {
-        const ChunkMeshData& chunk = workspace_.chunk_meshes.chunks[index];
-        if (!chunk.IsGenerated()) {
-            continue;
-        }
-        ++generated_chunks;
-        if (region.Contains(chunk.coord)) {
-            continue;
-        }
-        eviction_candidates.push_back(EvictionCandidate{
-            index < cpu_chunk_last_required_seconds_.size()
-                ? cpu_chunk_last_required_seconds_[index]
-                : 0.0,
-            index,
-        });
-    }
-    std::sort(
-        eviction_candidates.begin(),
-        eviction_candidates.end(),
-        [](const EvictionCandidate& lhs, const EvictionCandidate& rhs) {
-            if (lhs.last_required_seconds != rhs.last_required_seconds) {
-                return lhs.last_required_seconds < rhs.last_required_seconds;
-            }
-            return lhs.source_index < rhs.source_index;
-        });
-
-    const int retention_limit = stats.required_chunks + 48;
-    int forced_evictions = stats.pending_chunks > 0
-        ? std::max(0, generated_chunks - retention_limit)
-        : 0;
-    for (const EvictionCandidate& candidate : eviction_candidates) {
-        if (stats.pending_chunks > 0) {
-            if (forced_evictions <= 0) {
-                break;
-            }
-            --forced_evictions;
-        } else if (candidate.last_required_seconds > 0.0
-            && now_seconds - candidate.last_required_seconds < stats.unload_grace_seconds) {
-            continue;
-        }
-        ChunkMeshData& chunk = workspace_.chunk_meshes.chunks[candidate.source_index];
-        ChunkMeshData placeholder;
-        placeholder.coord = chunk.coord;
-        placeholder.bounds = chunk.bounds;
-        placeholder.generated = false;
-        chunk = std::move(placeholder);
-        ++stats.unloaded_chunks_last_update;
-        source_changed = true;
-    }
-
-    stats.retained_chunks = 0;
-    for (const ChunkMeshData& chunk : workspace_.chunk_meshes.chunks) {
-        if (chunk.IsGenerated() && !region.Contains(chunk.coord)) {
-            ++stats.retained_chunks;
-        }
-    }
-
-    if (source_changed) {
-        RecalculateDeferredMeshInfo(workspace_.chunk_meshes);
-        RefreshMeshOptimizationStats();
-        layout_dirty_ = true;
-    }
-
-    stats.ready_chunks = CountGeneratedChunks(workspace_.chunk_meshes);
-    stats.last_update_ms = ElapsedMilliseconds(started_at);
-    stats.total_update_ms += stats.last_update_ms;
-}
-
-void App::UpdateChunkStreaming()
-{
-    UpdateCpuMeshStreaming();
-
-    if (!workspace_.show_3d_preview || !workspace_.chunk_meshes.IsValid()) {
-        workspace_.streaming_stats = ToWorkspaceStreamingStats(chunk_mesh_preview_.StreamingStats());
-        return;
-    }
-
-    const int before_resident = chunk_mesh_preview_.StreamingStats().resident_chunks;
-    const std::uint64_t before_models = chunk_mesh_preview_.Stats().models;
-    chunk_mesh_preview_.UpdateStreaming(
-        preview_camera_.Camera(),
-        BuildRaylibStreamingOptions());
-    workspace_.streaming_stats = ToWorkspaceStreamingStats(chunk_mesh_preview_.StreamingStats());
-
-    if (before_resident != workspace_.streaming_stats.resident_chunks
-        || before_models != chunk_mesh_preview_.Stats().models) {
-        RefreshMeshOptimizationStats();
-        layout_dirty_ = true;
-    }
-}
-
 void App::UpdateVisibilityStats()
 {
-    workspace_.streaming_stats = ToWorkspaceStreamingStats(chunk_mesh_preview_.StreamingStats());
     if (!chunk_mesh_preview_.IsUploaded() || !workspace_.chunk_meshes.IsValid()) {
         workspace_.visibility_stats = WorkspaceVisibilityStats{};
         workspace_.visibility_stats.mode = workspace_.visibility_mode;
