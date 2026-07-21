@@ -963,18 +963,60 @@ void DrawHeightOverlay(const RuntimeMap& map)
     return index < visible_chunks.size() && visible_chunks[index] != 0U;
 }
 
+[[nodiscard]] bool IsObjectMarkerKindEnabled(RuntimeObjectMarkerKind kind, RaylibChunkMeshDebugOverlayOptions overlays)
+{
+    switch (kind) {
+        case RuntimeObjectMarkerKind::kTree:
+            return overlays.show_object_trees;
+        case RuntimeObjectMarkerKind::kBush:
+            return overlays.show_object_bushes;
+        case RuntimeObjectMarkerKind::kReed:
+            return overlays.show_object_reeds;
+        case RuntimeObjectMarkerKind::kRuin:
+            return overlays.show_object_ruins;
+        case RuntimeObjectMarkerKind::kCover:
+            return overlays.show_object_cover;
+        case RuntimeObjectMarkerKind::kLoot:
+            return overlays.show_object_loot;
+        case RuntimeObjectMarkerKind::kStructure:
+            return overlays.show_object_structures;
+        case RuntimeObjectMarkerKind::kTrench:
+            return overlays.show_object_trenches;
+        case RuntimeObjectMarkerKind::kUnknown:
+            return overlays.show_object_unknown;
+    }
+    return false;
+}
+
+[[nodiscard]] bool HasAnyObjectMarkerFilter(RaylibChunkMeshDebugOverlayOptions overlays)
+{
+    return overlays.show_object_trees
+        || overlays.show_object_bushes
+        || overlays.show_object_reeds
+        || overlays.show_object_ruins
+        || overlays.show_object_cover
+        || overlays.show_object_loot
+        || overlays.show_object_structures
+        || overlays.show_object_trenches
+        || overlays.show_object_unknown;
+}
+
 void DrawObjectMarkersOverlay(
     const RuntimeMap& map,
     const ChunkMeshBuildResult& build_result,
-    const ChunkVisibilityReport& visibility_report)
+    const ChunkVisibilityReport& visibility_report,
+    RaylibChunkMeshDebugOverlayOptions overlays)
 {
-    if (!map.info.object_markers_loaded || !map.height.IsValid() || !build_result.info.IsValid()) {
+    if (!map.info.object_markers_loaded || !map.height.IsValid() || !build_result.info.IsValid()
+        || !HasAnyObjectMarkerFilter(overlays)) {
         return;
     }
 
     const std::vector<std::uint8_t> visible_chunks = BuildVisibleChunkMask(build_result.info, visibility_report);
     for (const RuntimeObjectMarker& marker : map.object_markers) {
-        if (!map.height.Contains(marker.tile) || !IsMarkerChunkVisible(marker, build_result.info, visible_chunks)) {
+        if (!IsObjectMarkerKindEnabled(marker.kind, overlays)
+            || !map.height.Contains(marker.tile)
+            || !IsMarkerChunkVisible(marker, build_result.info, visible_chunks)) {
             continue;
         }
 
@@ -1353,9 +1395,7 @@ void DrawDebugOverlays(
     if (overlays.show_height) {
         DrawHeightOverlay(*runtime_map);
     }
-    if (overlays.show_object_markers) {
-        DrawObjectMarkersOverlay(*runtime_map, build_result, visibility_report);
-    }
+    DrawObjectMarkersOverlay(*runtime_map, build_result, visibility_report, overlays);
 }
 
 }  // namespace

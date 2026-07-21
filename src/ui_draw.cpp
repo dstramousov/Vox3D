@@ -1142,8 +1142,28 @@ struct TextPanelRow {
             return labels.workspace_subitem_collision_overlay;
         case WorkspacePanelItem::kRenderHeight:
             return labels.workspace_subitem_height;
-        case WorkspacePanelItem::kRenderObjectMarkers:
-            return "Object Markers";
+        case WorkspacePanelItem::k3DObjectsGroup:
+            return "Objects";
+        case WorkspacePanelItem::k3DObjectsAll:
+            return "All Objects";
+        case WorkspacePanelItem::k3DObjectsTrees:
+            return "Trees";
+        case WorkspacePanelItem::k3DObjectsBushes:
+            return "Bushes";
+        case WorkspacePanelItem::k3DObjectsReeds:
+            return "Reeds";
+        case WorkspacePanelItem::k3DObjectsRuins:
+            return "Ruins";
+        case WorkspacePanelItem::k3DObjectsCover:
+            return "Cover";
+        case WorkspacePanelItem::k3DObjectsLoot:
+            return "Loot / Cache";
+        case WorkspacePanelItem::k3DObjectsStructures:
+            return "Structures";
+        case WorkspacePanelItem::k3DObjectsTrenches:
+            return "Trenches";
+        case WorkspacePanelItem::k3DObjectsUnknown:
+            return "Unknown";
         case WorkspacePanelItem::k3DMeshGroup:
             return "Mesh";
         case WorkspacePanelItem::k3DChunkSizeGroup:
@@ -2248,7 +2268,15 @@ void DrawWorkspace(
             workspace_state.show_3d_world_grid,
             workspace_state.show_3d_collision_overlay,
             workspace_state.show_3d_height_overlay,
-            workspace_state.show_3d_object_markers,
+            workspace_state.show_3d_object_trees,
+            workspace_state.show_3d_object_bushes,
+            workspace_state.show_3d_object_reeds,
+            workspace_state.show_3d_object_ruins,
+            workspace_state.show_3d_object_cover,
+            workspace_state.show_3d_object_loot,
+            workspace_state.show_3d_object_structures,
+            workspace_state.show_3d_object_trenches,
+            workspace_state.show_3d_object_unknown,
         };
         RaylibChunkVisibilityMode raylib_visibility_mode = RaylibChunkVisibilityMode::kAllChunks;
         if (workspace_state.visibility_mode == WorkspaceVisibilityMode::kRadiusFade) {

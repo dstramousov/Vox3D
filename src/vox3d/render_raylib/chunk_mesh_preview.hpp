@@ -63,7 +63,15 @@ struct RaylibChunkMeshDebugOverlayOptions {
     bool show_world_grid = false;
     bool show_collision = false;
     bool show_height = false;
-    bool show_object_markers = false;
+    bool show_object_trees = false;
+    bool show_object_bushes = false;
+    bool show_object_reeds = false;
+    bool show_object_ruins = false;
+    bool show_object_cover = false;
+    bool show_object_loot = false;
+    bool show_object_structures = false;
+    bool show_object_trenches = false;
+    bool show_object_unknown = false;
 };
 
 /**

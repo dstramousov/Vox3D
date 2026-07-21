@@ -616,11 +616,6 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 2,
                 workspace.runtime_map.info.elevation_loaded,
                 workspace.show_3d_height_overlay));
-            items.push_back(Checkbox(
-                Item::kRenderObjectMarkers,
-                2,
-                workspace.runtime_map.info.object_markers_loaded,
-                workspace.show_3d_object_markers));
         }
 
         if (AddGroup(Item::k3DVisibilityGroup)) {
@@ -663,6 +658,30 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             items.push_back(Checkbox(Item::k3DTerrainPassCliffs, 1, terrain_passes_enabled, workspace.show_terrain_cliffs));
         }
 
+
+
+        if (AddGroup(Item::k3DObjectsGroup)) {
+            const bool object_markers_enabled = workspace.runtime_map.info.object_markers_loaded;
+            const bool all_objects_checked = workspace.show_3d_object_trees
+                && workspace.show_3d_object_bushes
+                && workspace.show_3d_object_reeds
+                && workspace.show_3d_object_ruins
+                && workspace.show_3d_object_cover
+                && workspace.show_3d_object_loot
+                && workspace.show_3d_object_structures
+                && workspace.show_3d_object_trenches
+                && workspace.show_3d_object_unknown;
+            items.push_back(Checkbox(Item::k3DObjectsAll, 1, object_markers_enabled, all_objects_checked));
+            items.push_back(Checkbox(Item::k3DObjectsTrees, 1, object_markers_enabled, workspace.show_3d_object_trees));
+            items.push_back(Checkbox(Item::k3DObjectsBushes, 1, object_markers_enabled, workspace.show_3d_object_bushes));
+            items.push_back(Checkbox(Item::k3DObjectsReeds, 1, object_markers_enabled, workspace.show_3d_object_reeds));
+            items.push_back(Checkbox(Item::k3DObjectsRuins, 1, object_markers_enabled, workspace.show_3d_object_ruins));
+            items.push_back(Checkbox(Item::k3DObjectsCover, 1, object_markers_enabled, workspace.show_3d_object_cover));
+            items.push_back(Checkbox(Item::k3DObjectsLoot, 1, object_markers_enabled, workspace.show_3d_object_loot));
+            items.push_back(Checkbox(Item::k3DObjectsStructures, 1, object_markers_enabled, workspace.show_3d_object_structures));
+            items.push_back(Checkbox(Item::k3DObjectsTrenches, 1, object_markers_enabled, workspace.show_3d_object_trenches));
+            items.push_back(Checkbox(Item::k3DObjectsUnknown, 1, object_markers_enabled, workspace.show_3d_object_unknown));
+        }
         const bool transition_features_enabled = workspace.transition_features.IsValid()
             && !workspace.transition_features.features.empty();
         if (AddGroup(Item::k3DTransitionGroup)) {

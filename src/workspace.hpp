@@ -190,7 +190,17 @@ enum class WorkspacePanelItem {
     kRenderWorldGrid,
     kRenderCollision,
     kRenderHeight,
-    kRenderObjectMarkers,
+    k3DObjectsGroup,
+    k3DObjectsAll,
+    k3DObjectsTrees,
+    k3DObjectsBushes,
+    k3DObjectsReeds,
+    k3DObjectsRuins,
+    k3DObjectsCover,
+    k3DObjectsLoot,
+    k3DObjectsStructures,
+    k3DObjectsTrenches,
+    k3DObjectsUnknown,
     k3DMeshGroup,
     k3DChunkSizeGroup,
     k3DChunkSize16,
@@ -360,10 +370,12 @@ struct WorkspaceState {
     WorkspaceTool selected_tool = WorkspaceTool::kMode;
     bool selected_tool_expanded = true;
     std::vector<WorkspacePanelItem> collapsed_panel_groups{
+        WorkspacePanelItem::kMenuModeGroup,
         WorkspacePanelItem::k3DCameraGroup,
         WorkspacePanelItem::k3DRenderGroup,
         WorkspacePanelItem::k3DVisibilityGroup,
         WorkspacePanelItem::k3DTerrainPassGroup,
+        WorkspacePanelItem::k3DObjectsGroup,
         WorkspacePanelItem::k3DTransitionGroup,
         WorkspacePanelItem::k3DMovementGroup,
         WorkspacePanelItem::k3DPathGroup,
@@ -394,7 +406,15 @@ struct WorkspaceState {
     bool show_3d_world_grid = false;
     bool show_3d_collision_overlay = false;
     bool show_3d_height_overlay = false;
-    bool show_3d_object_markers = true;
+    bool show_3d_object_trees = false;
+    bool show_3d_object_bushes = false;
+    bool show_3d_object_reeds = false;
+    bool show_3d_object_ruins = false;
+    bool show_3d_object_cover = false;
+    bool show_3d_object_loot = false;
+    bool show_3d_object_structures = false;
+    bool show_3d_object_trenches = false;
+    bool show_3d_object_unknown = false;
     WorkspaceColorMode color_mode = WorkspaceColorMode::kGeographic;
     WorkspaceVisibilityMode visibility_mode = WorkspaceVisibilityMode::kFrustumCull;
     int visibility_radius_chunks = 2;

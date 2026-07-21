@@ -137,7 +137,16 @@ void ToggleOverlayFlag(
                 : 0;
         case WorkspacePanelItem::kRenderHeight:
             return HeightMarkerCount(workspace.runtime_map);
-        case WorkspacePanelItem::kRenderObjectMarkers:
+        case WorkspacePanelItem::k3DObjectsAll:
+        case WorkspacePanelItem::k3DObjectsTrees:
+        case WorkspacePanelItem::k3DObjectsBushes:
+        case WorkspacePanelItem::k3DObjectsReeds:
+        case WorkspacePanelItem::k3DObjectsRuins:
+        case WorkspacePanelItem::k3DObjectsCover:
+        case WorkspacePanelItem::k3DObjectsLoot:
+        case WorkspacePanelItem::k3DObjectsStructures:
+        case WorkspacePanelItem::k3DObjectsTrenches:
+        case WorkspacePanelItem::k3DObjectsUnknown:
             return workspace.runtime_map.info.object_markers_loaded
                 ? static_cast<std::uint64_t>(workspace.runtime_map.info.object_markers)
                 : 0;
@@ -1900,13 +1909,55 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
                 logger_,
                 layout_dirty_);
             break;
-        case WorkspacePanelItem::kRenderObjectMarkers:
-            ToggleOverlayFlag(
-                workspace_.show_3d_object_markers,
-                "object_markers",
-                OverlayPrimitiveCount(workspace_, item),
-                logger_,
-                layout_dirty_);
+        case WorkspacePanelItem::k3DObjectsAll: {
+            const bool enable_all = !(workspace_.show_3d_object_trees
+                && workspace_.show_3d_object_bushes
+                && workspace_.show_3d_object_reeds
+                && workspace_.show_3d_object_ruins
+                && workspace_.show_3d_object_cover
+                && workspace_.show_3d_object_loot
+                && workspace_.show_3d_object_structures
+                && workspace_.show_3d_object_trenches
+                && workspace_.show_3d_object_unknown);
+            workspace_.show_3d_object_trees = enable_all;
+            workspace_.show_3d_object_bushes = enable_all;
+            workspace_.show_3d_object_reeds = enable_all;
+            workspace_.show_3d_object_ruins = enable_all;
+            workspace_.show_3d_object_cover = enable_all;
+            workspace_.show_3d_object_loot = enable_all;
+            workspace_.show_3d_object_structures = enable_all;
+            workspace_.show_3d_object_trenches = enable_all;
+            workspace_.show_3d_object_unknown = enable_all;
+            layout_dirty_ = true;
+            logger_.Info("workspace", std::string("object_filters all=") + (enable_all ? "on" : "off"));
+            break;
+        }
+        case WorkspacePanelItem::k3DObjectsTrees:
+            ToggleOverlayFlag(workspace_.show_3d_object_trees, "objects_trees", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsBushes:
+            ToggleOverlayFlag(workspace_.show_3d_object_bushes, "objects_bushes", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsReeds:
+            ToggleOverlayFlag(workspace_.show_3d_object_reeds, "objects_reeds", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsRuins:
+            ToggleOverlayFlag(workspace_.show_3d_object_ruins, "objects_ruins", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsCover:
+            ToggleOverlayFlag(workspace_.show_3d_object_cover, "objects_cover", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsLoot:
+            ToggleOverlayFlag(workspace_.show_3d_object_loot, "objects_loot", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsStructures:
+            ToggleOverlayFlag(workspace_.show_3d_object_structures, "objects_structures", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsTrenches:
+            ToggleOverlayFlag(workspace_.show_3d_object_trenches, "objects_trenches", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
+            break;
+        case WorkspacePanelItem::k3DObjectsUnknown:
+            ToggleOverlayFlag(workspace_.show_3d_object_unknown, "objects_unknown", OverlayPrimitiveCount(workspace_, item), logger_, layout_dirty_);
             break;
         case WorkspacePanelItem::k3DColorTraversal:
             SetColorMode(WorkspaceColorMode::kTraversal, "panel");

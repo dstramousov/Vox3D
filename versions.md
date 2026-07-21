@@ -387,3 +387,9 @@
 - Replaced thin vegetation/object marker lines with uniform colored cube markers so map objects remain visible in 3D overview.
 - Kept marker size identical across trees, reeds, bushes, ruins, cover, loot, structures, and unknown objects so color remains the primary type hint.
 - Continued drawing object markers only for visible chunks and kept them separate from the terrain mesh.
+
+## v0.5.24 -> v0.5.25
+
+- Removed the always-visible Reset View action from the right-panel View section and made the Mode section collapsed by default.
+- Moved object marker control out of Display into a separate Objects section with per-type filters.
+- Made all object marker filters disabled by default; users can enable All Objects or individual Trees, Bushes, Reeds, Ruins, Cover, Loot/Cache, Structures, Trenches, and Unknown markers.
