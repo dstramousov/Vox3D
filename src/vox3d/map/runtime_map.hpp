@@ -108,6 +108,9 @@ struct RuntimeMapInfo {
     bool collision_loaded = false;
     bool start_goal_loaded = false;
     bool object_markers_loaded = false;
+    bool runtime_binary_checked = false;
+    bool runtime_binary_valid = false;
+    std::string runtime_binary_fallback_reason;
     int blocked_cells = 0;
     int object_markers = 0;
 

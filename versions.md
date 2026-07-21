@@ -403,3 +403,9 @@
 - Reworked Path picking around F3: first click sets Start, second click sets Goal and runs pathfinding.
 - Added Path status/start/goal rows in the Path panel and explicit status bar prompts while picking.
 - Kept Path closed by default and preserved existing 2D/3D camera state behavior.
+
+## v0.5.27 -> v0.5.28
+
+- Added a vxmap-runtime-v1 binary reader skeleton that validates map_runtime.vxmap header, section table, section CRCs, required global sections, region index, terrain catalog, and map.json build_id metadata.
+- Added runtime_binary discovery from map.json and package logging for the binary fast path.
+- Kept RuntimeMap construction on the existing JSON loader for now; binary validation only records whether the fast path is usable and falls back safely to JSON on any mismatch.

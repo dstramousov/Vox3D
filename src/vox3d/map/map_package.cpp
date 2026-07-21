@@ -97,6 +97,82 @@ constexpr std::size_t kMaxOverviewCells = 512U * 512U;
     return {};
 }
 
+[[nodiscard]] std::optional<std::string> ExtractBalancedAfterKey(
+    const std::string& text,
+    std::string_view key,
+    char open_char,
+    char close_char)
+{
+    const std::string pattern = "\"" + std::string(key) + "\"";
+    std::size_t key_pos = 0;
+    while ((key_pos = text.find(pattern, key_pos)) != std::string::npos) {
+        const std::size_t pos = text.find(open_char, key_pos + pattern.size());
+        if (pos == std::string::npos) {
+            return std::nullopt;
+        }
+
+        int depth = 0;
+        bool in_string = false;
+        bool escaped = false;
+        for (std::size_t i = pos; i < text.size(); ++i) {
+            const char c = text[i];
+            if (in_string) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    in_string = false;
+                }
+                continue;
+            }
+
+            if (c == '"') {
+                in_string = true;
+            } else if (c == open_char) {
+                ++depth;
+            } else if (c == close_char) {
+                --depth;
+                if (depth == 0) {
+                    return text.substr(pos, i - pos + 1);
+                }
+            }
+        }
+        key_pos += pattern.size();
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> ExtractObjectAfterKey(const std::string& text, std::string_view key)
+{
+    return ExtractBalancedAfterKey(text, key, '{', '}');
+}
+
+void ExtractRuntimeBinary(MapPackageInfo& info, const std::string& text)
+{
+    const std::optional<std::string> object = ExtractObjectAfterKey(text, "runtime_binary");
+    if (!object.has_value()) {
+        return;
+    }
+
+    info.runtime_binary.declared = true;
+    info.runtime_binary.relative_path = ExtractStringByKeys(*object, {"path"});
+    info.runtime_binary.format = ExtractStringByKeys(*object, {"format"});
+    info.runtime_binary.format_major = ExtractIntByKeys(*object, {"format_major"}).value_or(0);
+    info.runtime_binary.format_minor = ExtractIntByKeys(*object, {"format_minor"}).value_or(0);
+    info.runtime_binary.build_id_hex = ExtractStringByKeys(*object, {"build_id"});
+    info.runtime_binary.file_size = static_cast<std::uint64_t>(ExtractLongLongByKeys(*object, {"file_size"}).value_or(0));
+    info.runtime_binary.section_count = static_cast<std::uint32_t>(ExtractIntByKeys(*object, {"section_count"}).value_or(0));
+    info.runtime_binary.region_size_tiles = static_cast<std::uint16_t>(ExtractIntByKeys(*object, {"region_size_tiles"}).value_or(0));
+
+    const std::optional<std::string> regions = ExtractObjectAfterKey(*object, "regions");
+    if (regions.has_value()) {
+        info.runtime_binary.regions_x = ExtractIntByKeys(*regions, {"x"}).value_or(0);
+        info.runtime_binary.regions_y = ExtractIntByKeys(*regions, {"y"}).value_or(0);
+        info.runtime_binary.regions_total = ExtractIntByKeys(*regions, {"total"}).value_or(0);
+    }
+}
+
 [[nodiscard]] std::filesystem::path RelativeToPackage(const std::filesystem::path& package_path, const std::filesystem::path& path)
 {
     std::error_code error;
@@ -142,6 +218,7 @@ void ExtractMetadata(MapPackageInfo& info, const std::filesystem::path& source_p
     if (info.profile.empty()) {
         info.profile = ExtractStringByKeys(text, {"profile"});
     }
+    ExtractRuntimeBinary(info, text);
     info.metadata_available = info.width.has_value() || info.height.has_value() || info.tile_size.has_value()
         || info.min_level.has_value() || info.max_level.has_value() || !info.schema_version.empty()
         || !info.generator_version.empty();
@@ -167,8 +244,9 @@ void ExtractMetadata(MapPackageInfo& info, const std::filesystem::path& source_p
 
 void DiscoverKnownFiles(MapPackageInfo& info)
 {
-    constexpr std::array<std::string_view, 23> known_files{
+    constexpr std::array<std::string_view, 24> known_files{
         "map.json",
+        "map_runtime.vxmap",
         "runtime_grids.json",
         "layers/tile_grid.json",
         "layers/terrain.json",
@@ -778,6 +856,9 @@ std::string ToLogString(const MapPackageInfo& info)
     }
     if (!info.source_file.empty()) {
         out << " metadata=" << info.source_file;
+    }
+    if (info.runtime_binary.declared) {
+        out << " runtime_binary=" << info.runtime_binary.relative_path.string();
     }
     if (info.overview.IsValid()) {
         out << " overview=" << info.overview.source_file;

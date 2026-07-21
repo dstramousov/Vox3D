@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VoX3D VERSION 0.5.27 LANGUAGES CXX)
+project(VoX3D VERSION 0.5.28 LANGUAGES CXX)
 
 option(VOX3D_FETCH_RAYLIB "Fetch raylib with CMake FetchContent when no system package is found" ON)
 set(VOX3D_DEPS_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "Persistent dependency cache directory")
@@ -22,6 +22,7 @@ add_library(vox3d_core STATIC
     src/vox3d/voxel/voxel_world.cpp
     src/vox3d/map/map_package.cpp
     src/vox3d/map/runtime_map.cpp
+    src/vox3d/map/vxmap_runtime_reader.cpp
 )
 
 target_compile_features(vox3d_core PUBLIC cxx_std_20)

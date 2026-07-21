@@ -1,4 +1,5 @@
 #include "vox3d/map/runtime_map.hpp"
+#include "vox3d/map/vxmap_runtime_reader.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -814,6 +815,50 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
     }));
 }
 
+
+[[nodiscard]] VxmapRuntimeManifest ToVxmapManifest(const RuntimeBinaryInfo& info)
+{
+    VxmapRuntimeManifest manifest;
+    manifest.declared = info.declared;
+    manifest.relative_path = info.relative_path;
+    manifest.format = info.format;
+    manifest.format_major = info.format_major;
+    manifest.format_minor = info.format_minor;
+    manifest.build_id_hex = info.build_id_hex;
+    manifest.file_size = info.file_size;
+    manifest.section_count = info.section_count;
+    manifest.region_size_tiles = info.region_size_tiles;
+    manifest.regions_x = info.regions_x;
+    manifest.regions_y = info.regions_y;
+    manifest.regions_total = info.regions_total;
+    return manifest;
+}
+
+void ValidateRuntimeBinaryFastPath(RuntimeMap& runtime, const MapPackageInfo& package)
+{
+    if (!package.runtime_binary.declared) {
+        runtime.info.runtime_binary_checked = false;
+        return;
+    }
+
+    const VxmapRuntimeValidationReport report = ValidateVxmapRuntimeBinary(package.path, ToVxmapManifest(package.runtime_binary));
+    runtime.info.runtime_binary_checked = true;
+    runtime.info.runtime_binary_valid = report.valid;
+    runtime.info.runtime_binary_fallback_reason = report.fallback_reason;
+
+    if (!report.valid) {
+        runtime.diagnostics.AddWarning("runtime binary fast path unavailable reason=" + report.fallback_reason);
+        return;
+    }
+
+    if (static_cast<int>(report.width_tiles) != runtime.info.width || static_cast<int>(report.height_tiles) != runtime.info.height) {
+        runtime.info.runtime_binary_valid = false;
+        runtime.info.runtime_binary_fallback_reason = "binary_dimensions_mismatch";
+        runtime.diagnostics.AddWarning("runtime binary fast path unavailable reason=binary_dimensions_mismatch");
+        return;
+    }
+}
+
 [[nodiscard]] std::string FormatPoint(const std::optional<TileCoord>& coord)
 {
     if (!coord.has_value()) {
@@ -857,6 +902,8 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
         return runtime;
     }
 
+    ValidateRuntimeBinaryFastPath(runtime, package);
+
     runtime.terrain = ReadTerrainGrid(package, runtime.diagnostics);
     runtime.collision = ReadCollisionGrid(package, runtime.diagnostics);
     runtime.height = ReadHeightGrid(package, runtime.diagnostics);
@@ -890,6 +937,12 @@ std::string ToLogString(const RuntimeMap& map)
     out << " start=" << FormatPoint(map.info.start);
     out << " goal=" << FormatPoint(map.info.goal);
     out << " object_markers=" << map.info.object_markers;
+    if (map.info.runtime_binary_checked) {
+        out << " runtime_binary=" << (map.info.runtime_binary_valid ? "validated" : "fallback");
+        if (!map.info.runtime_binary_valid && !map.info.runtime_binary_fallback_reason.empty()) {
+            out << " reason=" << map.info.runtime_binary_fallback_reason;
+        }
+    }
     if (!map.info.generator_version.empty()) {
         out << " generator=" << map.info.generator_version;
     }

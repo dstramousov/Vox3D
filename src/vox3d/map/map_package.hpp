@@ -43,6 +43,25 @@ struct MapOverview {
     [[nodiscard]] bool IsValid() const;
 };
 
+
+/**
+ * @brief runtime_binary block from map.json for the vxmap fast path.
+ */
+struct RuntimeBinaryInfo {
+    bool declared = false;
+    std::filesystem::path relative_path;
+    std::string format;
+    int format_major = 0;
+    int format_minor = 0;
+    std::string build_id_hex;
+    std::uint64_t file_size = 0;
+    std::uint32_t section_count = 0;
+    std::uint16_t region_size_tiles = 0;
+    int regions_x = 0;
+    int regions_y = 0;
+    int regions_total = 0;
+};
+
 /**
  * @brief Lightweight metadata discovered from a map package directory.
  */
@@ -73,6 +92,7 @@ struct MapPackageInfo {
     std::string profile;
     std::string source_file;
     std::string status;
+    RuntimeBinaryInfo runtime_binary;
     MapOverview overview;
     std::vector<std::string> present_files;
     std::vector<std::string> warnings;
