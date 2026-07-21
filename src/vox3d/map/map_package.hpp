@@ -93,6 +93,8 @@ struct MapPackageInfo {
     std::string source_file;
     std::string status;
     RuntimeBinaryInfo runtime_binary;
+    bool fast_vxmap_package_mode = false;
+    std::vector<std::string> skipped_core_json_files;
     MapOverview overview;
     std::vector<std::string> present_files;
     std::vector<std::string> warnings;

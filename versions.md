@@ -460,3 +460,11 @@
 - Limited initial face-visibility analysis to the same 256x256-tile startup window used by partial mesh builds.
 - Kept neighbor checks against the full voxel world so window-edge meshes preserve the same culling semantics as regular chunk builds.
 - Reduced large-map startup work in `initial_area=window` mode without changing full-build behavior.
+
+
+## v0.5.35 -> v0.5.36
+
+- Added a fast map-package inspection path when `map.json` declares `runtime_binary=map_runtime.vxmap`.
+- Skipped diagnostic reads of heavy core JSON grid files on the `.vxmap` fast path: runtime grids, terrain/tile/elevation/collision layers, and elevation model.
+- Marked terrain, elevation, collision, and runtime grids as available through the binary runtime package metadata instead of probing large JSON files.
+- Extended the map-package log with `fast_vxmap=yes` and the skipped core JSON file list for startup diagnostics.

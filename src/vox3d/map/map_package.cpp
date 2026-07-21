@@ -292,6 +292,36 @@ void DiscoverKnownFiles(MapPackageInfo& info)
     });
 }
 
+
+[[nodiscard]] bool HasRuntimeBinaryFastPath(const MapPackageInfo& info)
+{
+    return info.runtime_binary.declared && !info.runtime_binary.relative_path.empty();
+}
+
+void EnableFastVxmapPackageMode(MapPackageInfo& info)
+{
+    info.fast_vxmap_package_mode = true;
+    info.runtime_grids_available = true;
+    info.terrain_available = true;
+    info.elevation_available = true;
+    info.collision_available = true;
+
+    constexpr std::array<std::string_view, 6> core_json_files{
+        "runtime_grids.json",
+        "layers/terrain.json",
+        "layers/tile_grid.json",
+        "layers/elevation.json",
+        "layers/collision.json",
+        "elevation_model.json",
+    };
+
+    for (std::string_view relative : core_json_files) {
+        if (Exists(info.path / relative)) {
+            info.skipped_core_json_files.emplace_back(relative);
+        }
+    }
+}
+
 void TryReadMetadata(MapPackageInfo& info)
 {
     constexpr std::array<std::string_view, 3> metadata_candidates{
@@ -821,8 +851,12 @@ MapPackageInfo LoadMapPackageInfo(const std::filesystem::path& package_path)
 
     DiscoverKnownFiles(info);
     TryReadMetadata(info);
-    TryReadOverview(info);
-    TryReadElevationRange(info);
+    if (HasRuntimeBinaryFastPath(info)) {
+        EnableFastVxmapPackageMode(info);
+    } else {
+        TryReadOverview(info);
+        TryReadElevationRange(info);
+    }
     TryReadItemCounts(info);
     info.loaded = true;
     info.status = BuildStatus(info);
@@ -859,6 +893,18 @@ std::string ToLogString(const MapPackageInfo& info)
     }
     if (info.runtime_binary.declared) {
         out << " runtime_binary=" << info.runtime_binary.relative_path.string();
+    }
+    if (info.fast_vxmap_package_mode) {
+        out << " fast_vxmap=yes";
+        if (!info.skipped_core_json_files.empty()) {
+            out << " skipped_core_json=";
+            for (std::size_t i = 0; i < info.skipped_core_json_files.size(); ++i) {
+                if (i > 0) {
+                    out << ',';
+                }
+                out << info.skipped_core_json_files[i];
+            }
+        }
     }
     if (info.overview.IsValid()) {
         out << " overview=" << info.overview.source_file;
