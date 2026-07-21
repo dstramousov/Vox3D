@@ -506,3 +506,10 @@
 - Added a progressive build time budget with cooldown to reduce repeated heavy chunk-build spikes.
 - Added `VOX3D_PROGRESSIVE_TIME_BUDGET_MS` for tuning the per-frame progressive build budget.
 - Kept `versions.md` updates appended to the end of the file.
+
+
+## v0.5.41 -> v0.5.42
+
+- Reworked the VXMAP fast path to read the container once and decode from the same validated memory buffer.
+- Removed the second header, section-table, required-section, and CRC validation pass during runtime core loading.
+- Added VXMAP read, validation, decode, and total load timings to runtime-map diagnostics.

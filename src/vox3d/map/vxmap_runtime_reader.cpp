@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -102,6 +103,13 @@ struct SectionEntry {
     std::uint32_t aux_1 = 0;
 };
 
+struct ValidatedContainer {
+    std::vector<std::uint8_t> data;
+    Header header;
+    std::vector<SectionEntry> entries;
+    VxmapRuntimeValidationReport report;
+};
+
 struct RegionRecord {
     std::uint32_t region_id = 0;
     std::uint16_t region_x = 0;
@@ -115,6 +123,13 @@ struct RegionRecord {
     std::uint16_t flags = 0;
     std::uint32_t tile_count = 0;
 };
+
+[[nodiscard]] int ElapsedMilliseconds(
+    std::chrono::steady_clock::time_point start,
+    std::chrono::steady_clock::time_point end)
+{
+    return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+}
 
 [[nodiscard]] bool CheckedAdd(std::uint64_t left, std::uint64_t right, std::uint64_t& result)
 {
@@ -519,6 +534,117 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
 }
 
 
+[[nodiscard]] bool ValidateContainerData(
+    const std::vector<std::uint8_t>& data,
+    const VxmapRuntimeManifest& manifest,
+    Header& header,
+    std::vector<SectionEntry>& entries,
+    VxmapRuntimeValidationReport& report)
+{
+    if (data.size() < kHeaderSize) {
+        Fail(report, "truncated_header");
+        return false;
+    }
+    if (!ParseHeader(data, header)) {
+        Fail(report, "bad_header");
+        return false;
+    }
+
+    report.format_major = header.format_major;
+    report.format_minor = header.format_minor;
+    report.section_count = header.section_count;
+    report.width_tiles = header.width_tiles;
+    report.height_tiles = header.height_tiles;
+    report.tile_size_px = header.tile_size_px;
+    report.min_elevation = header.min_elevation;
+    report.max_elevation = header.max_elevation;
+    report.build_id_hex = BuildIdToHex(header.build_id);
+
+    if (header.format_major != kSupportedMajor || header.format_minor > kSupportedMinor) {
+        Fail(report, "unsupported_version");
+        return false;
+    }
+    if (header.header_flags != kExpectedHeaderFlags || (header.header_flags & ~kKnownHeaderFlags) != 0U) {
+        Fail(report, "bad_header_flags");
+        return false;
+    }
+    if (header.file_size != report.file_size) {
+        Fail(report, "declared_file_size_mismatch");
+        return false;
+    }
+    if (header.width_tiles == 0 || header.height_tiles == 0 || header.tile_size_px == 0
+        || header.region_size_tiles == 0) {
+        Fail(report, "invalid_dimensions");
+        return false;
+    }
+    if (!ValidateHeaderCrc(data, header)) {
+        Fail(report, "bad_header_crc");
+        return false;
+    }
+
+    std::string manifest_reason;
+    if (!ManifestMatches(manifest, header, report, manifest_reason)) {
+        Fail(report, manifest_reason);
+        return false;
+    }
+    if (!ValidateTableAndSections(data, header, entries, report)) {
+        return false;
+    }
+    if (!ValidateRequiredSections(data, header, entries, report)) {
+        return false;
+    }
+
+    report.valid = true;
+    report.fallback_reason.clear();
+    return true;
+}
+
+[[nodiscard]] ValidatedContainer LoadValidatedContainer(
+    const std::filesystem::path& package_path,
+    const VxmapRuntimeManifest& manifest)
+{
+    const auto total_start = std::chrono::steady_clock::now();
+    ValidatedContainer container;
+    VxmapRuntimeValidationReport& report = container.report;
+
+    if (!manifest.declared) {
+        Fail(report, "map_index_missing_runtime_binary");
+        report.total_ms = ElapsedMilliseconds(total_start, std::chrono::steady_clock::now());
+        return container;
+    }
+
+    report.path = package_path / manifest.relative_path;
+    report.present = std::filesystem::exists(report.path);
+    if (!report.present) {
+        Fail(report, "binary_missing");
+        report.total_ms = ElapsedMilliseconds(total_start, std::chrono::steady_clock::now());
+        return container;
+    }
+
+    const auto read_start = std::chrono::steady_clock::now();
+    std::string read_error;
+    const bool read_ok = ReadFile(report.path, container.data, report.file_size, read_error);
+    const auto read_end = std::chrono::steady_clock::now();
+    report.read_ms = ElapsedMilliseconds(read_start, read_end);
+    if (!read_ok) {
+        Fail(report, read_error);
+        report.total_ms = ElapsedMilliseconds(total_start, read_end);
+        return container;
+    }
+
+    const auto validate_start = std::chrono::steady_clock::now();
+    report.valid = ValidateContainerData(
+        container.data,
+        manifest,
+        container.header,
+        container.entries,
+        report);
+    const auto validate_end = std::chrono::steady_clock::now();
+    report.validate_ms = ElapsedMilliseconds(validate_start, validate_end);
+    report.total_ms = ElapsedMilliseconds(total_start, validate_end);
+    return container;
+}
+
 [[nodiscard]] bool ReadStringTable(
     const std::vector<std::uint8_t>& data,
     const SectionEntry& section,
@@ -814,126 +940,44 @@ VxmapRuntimeValidationReport ValidateVxmapRuntimeBinary(
     const std::filesystem::path& package_path,
     const VxmapRuntimeManifest& manifest)
 {
-    VxmapRuntimeValidationReport report;
-    if (!manifest.declared) {
-        Fail(report, "map_index_missing_runtime_binary");
-        return report;
-    }
-
-    report.path = package_path / manifest.relative_path;
-    report.present = std::filesystem::exists(report.path);
-    if (!report.present) {
-        Fail(report, "binary_missing");
-        return report;
-    }
-
-    std::vector<std::uint8_t> data;
-    std::string read_error;
-    if (!ReadFile(report.path, data, report.file_size, read_error)) {
-        Fail(report, read_error);
-        return report;
-    }
-    if (data.size() < kHeaderSize) {
-        Fail(report, "truncated_header");
-        return report;
-    }
-
-    Header header;
-    if (!ParseHeader(data, header)) {
-        Fail(report, "bad_header");
-        return report;
-    }
-    report.format_major = header.format_major;
-    report.format_minor = header.format_minor;
-    report.section_count = header.section_count;
-    report.width_tiles = header.width_tiles;
-    report.height_tiles = header.height_tiles;
-    report.tile_size_px = header.tile_size_px;
-    report.min_elevation = header.min_elevation;
-    report.max_elevation = header.max_elevation;
-    report.build_id_hex = BuildIdToHex(header.build_id);
-
-    if (header.format_major != kSupportedMajor || header.format_minor > kSupportedMinor) {
-        Fail(report, "unsupported_version");
-        return report;
-    }
-    if (header.header_flags != kExpectedHeaderFlags || (header.header_flags & ~kKnownHeaderFlags) != 0U) {
-        Fail(report, "bad_header_flags");
-        return report;
-    }
-    if (header.file_size != report.file_size) {
-        Fail(report, "declared_file_size_mismatch");
-        return report;
-    }
-    if (header.width_tiles == 0 || header.height_tiles == 0 || header.tile_size_px == 0 || header.region_size_tiles == 0) {
-        Fail(report, "invalid_dimensions");
-        return report;
-    }
-    if (!ValidateHeaderCrc(data, header)) {
-        Fail(report, "bad_header_crc");
-        return report;
-    }
-
-    std::string manifest_reason;
-    if (!ManifestMatches(manifest, header, report, manifest_reason)) {
-        Fail(report, manifest_reason);
-        return report;
-    }
-
-    std::vector<SectionEntry> entries;
-    if (!ValidateTableAndSections(data, header, entries, report)) {
-        return report;
-    }
-    if (!ValidateRequiredSections(data, header, entries, report)) {
-        return report;
-    }
-
-    report.valid = true;
-    report.fallback_reason.clear();
-    return report;
+    ValidatedContainer container = LoadValidatedContainer(package_path, manifest);
+    return std::move(container.report);
 }
-
 
 VxmapRuntimeCore LoadVxmapRuntimeCore(
     const std::filesystem::path& package_path,
     const VxmapRuntimeManifest& manifest)
 {
+    const auto total_start = std::chrono::steady_clock::now();
+    ValidatedContainer container = LoadValidatedContainer(package_path, manifest);
+
     VxmapRuntimeCore core;
-    core.validation = ValidateVxmapRuntimeBinary(package_path, manifest);
+    core.validation = std::move(container.report);
     core.path = core.validation.path;
     core.fallback_reason = core.validation.fallback_reason;
     if (!core.validation.valid) {
+        core.total_ms = ElapsedMilliseconds(total_start, std::chrono::steady_clock::now());
         return core;
     }
 
-    std::vector<std::uint8_t> data;
-    std::uint64_t file_size = 0;
-    std::string read_error;
-    if (!ReadFile(core.validation.path, data, file_size, read_error)) {
-        core.fallback_reason = read_error;
-        return core;
-    }
-
-    Header header;
-    if (!ParseHeader(data, header)) {
-        core.fallback_reason = "bad_header";
-        return core;
-    }
-    std::vector<SectionEntry> entries;
-    VxmapRuntimeValidationReport decode_report = core.validation;
-    if (!ValidateTableAndSections(data, header, entries, decode_report)
-        || !ValidateRequiredSections(data, header, entries, decode_report)) {
-        core.fallback_reason = decode_report.fallback_reason;
-        return core;
-    }
-
+    const Header& header = container.header;
     core.width_tiles = header.width_tiles;
     core.height_tiles = header.height_tiles;
     core.tile_size_px = header.tile_size_px;
     core.min_elevation = header.min_elevation;
     core.max_elevation = header.max_elevation;
     core.build_id_hex = BuildIdToHex(header.build_id);
-    if (!DecodeBinaryCorePayloads(data, header, entries, core)) {
+
+    const auto decode_start = std::chrono::steady_clock::now();
+    const bool decoded = DecodeBinaryCorePayloads(
+        container.data,
+        header,
+        container.entries,
+        core);
+    const auto decode_end = std::chrono::steady_clock::now();
+    core.decode_ms = ElapsedMilliseconds(decode_start, decode_end);
+    core.total_ms = ElapsedMilliseconds(total_start, decode_end);
+    if (!decoded) {
         return core;
     }
 
@@ -941,6 +985,7 @@ VxmapRuntimeCore LoadVxmapRuntimeCore(
     core.fallback_reason.clear();
     return core;
 }
+
 
 std::string ToLogString(const VxmapRuntimeValidationReport& report)
 {
@@ -970,6 +1015,9 @@ std::string ToLogString(const VxmapRuntimeValidationReport& report)
     if (!report.build_id_hex.empty()) {
         out << " build_id=" << report.build_id_hex;
     }
+    out << " read_ms=" << report.read_ms;
+    out << " validate_ms=" << report.validate_ms;
+    out << " total_ms=" << report.total_ms;
     return out.str();
 }
 

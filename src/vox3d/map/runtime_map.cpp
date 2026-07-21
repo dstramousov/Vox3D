@@ -964,6 +964,10 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
     runtime.info.runtime_binary_checked = true;
     runtime.info.runtime_binary_valid = core.validation.valid;
     runtime.info.runtime_binary_fallback_reason = core.fallback_reason;
+    runtime.info.runtime_binary_read_ms = core.validation.read_ms;
+    runtime.info.runtime_binary_validate_ms = core.validation.validate_ms;
+    runtime.info.runtime_binary_decode_ms = core.decode_ms;
+    runtime.info.runtime_binary_total_ms = core.total_ms;
 
     if (!core.loaded) {
         runtime.info.runtime_binary_loaded = false;
@@ -1112,6 +1116,10 @@ std::string ToLogString(const RuntimeMap& map)
         if (!map.info.runtime_binary_valid && !map.info.runtime_binary_fallback_reason.empty()) {
             out << " reason=" << map.info.runtime_binary_fallback_reason;
         }
+        out << " vxmap_read_ms=" << map.info.runtime_binary_read_ms;
+        out << " vxmap_validate_ms=" << map.info.runtime_binary_validate_ms;
+        out << " vxmap_decode_ms=" << map.info.runtime_binary_decode_ms;
+        out << " vxmap_total_ms=" << map.info.runtime_binary_total_ms;
     }
     if (map.info.runtime_binary_json_compare_checked) {
         out << " binary_vs_json=" << (map.info.runtime_binary_json_compare_ok ? "ok" : "mismatch");

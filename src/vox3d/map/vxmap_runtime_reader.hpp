@@ -53,6 +53,9 @@ struct VxmapRuntimeValidationReport {
     std::int16_t max_elevation = 0;
     std::uint64_t file_size = 0;
     std::string build_id_hex;
+    int read_ms = 0;
+    int validate_ms = 0;
+    int total_ms = 0;
     Diagnostics diagnostics;
 };
 
@@ -78,6 +81,8 @@ struct VxmapRuntimeCore {
     std::vector<std::uint8_t> collision;
     std::optional<TileCoord> start;
     std::optional<TileCoord> goal;
+    int decode_ms = 0;
+    int total_ms = 0;
     VxmapRuntimeValidationReport validation;
 };
 
