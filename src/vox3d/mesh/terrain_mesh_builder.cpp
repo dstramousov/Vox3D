@@ -582,4 +582,58 @@ ChunkMeshBuildResult BuildTerrainChunkMeshes(const RuntimeMap& map, const ChunkG
     return result;
 }
 
+ChunkMeshBuildResult BuildTerrainChunkMeshesForSelectedChunks(
+    const RuntimeMap& map,
+    const ChunkGrid& chunks,
+    const std::vector<std::uint8_t>& selected_chunks)
+{
+    ChunkMeshBuildResult result;
+
+    if (!map.IsValid()) {
+        result.diagnostics.AddWarning("cannot build selected terrain mesh from invalid runtime map");
+        return result;
+    }
+    if (!map.HasCoreGrids()) {
+        result.diagnostics.AddWarning("cannot build selected terrain mesh without runtime map core grids");
+        return result;
+    }
+    if (!chunks.IsValid()) {
+        result.diagnostics.AddWarning("cannot build selected terrain mesh from invalid chunk grid");
+        return result;
+    }
+    if (map.info.width != chunks.info.map_width || map.info.height != chunks.info.map_height) {
+        result.diagnostics.AddWarning("cannot build selected terrain mesh because runtime map and chunk grid dimensions differ");
+        return result;
+    }
+    if (chunks.info.total_chunks <= 0 || ExpectedChunkCount(chunks.info.chunks_x, chunks.info.chunks_y) != static_cast<std::uint64_t>(chunks.info.total_chunks)) {
+        result.diagnostics.AddWarning("cannot build selected terrain mesh because chunk grid shape is inconsistent");
+        return result;
+    }
+    if (selected_chunks.size() != chunks.chunks.size()) {
+        result.diagnostics.AddWarning("cannot build selected terrain mesh because selection size differs from chunk grid");
+        return result;
+    }
+
+    CopyMapShape(map, chunks, result.info);
+    result.chunks.reserve(chunks.chunks.size());
+
+    for (std::size_t index = 0; index < chunks.chunks.size(); ++index) {
+        const ChunkInfo& chunk = chunks.chunks[index];
+        ChunkMeshData mesh;
+        mesh.coord = chunk.coord;
+        mesh.bounds = chunk.bounds;
+
+        if (selected_chunks[index] != 0U) {
+            BuildTerrainChunkMesh(map, chunk, mesh, result.info, result.diagnostics);
+        }
+        AccumulateChunkStats(mesh, result.info);
+        result.chunks.push_back(std::move(mesh));
+    }
+
+    if (!result.IsValid()) {
+        result.diagnostics.AddWarning("selected terrain mesh validation failed after build");
+    }
+    return result;
+}
+
 }  // namespace vox3d

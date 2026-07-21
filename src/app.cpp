@@ -19,9 +19,11 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <cmath>
 #include <filesystem>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -112,6 +114,93 @@ void ToggleOverlayFlag(
     out << " debug_primitives=" << primitive_count;
     out << " delta=" << (flag ? "+" : "-") << primitive_count;
     logger.Info("render3d", out.str());
+}
+
+
+[[nodiscard]] std::optional<int> ReadIntegerEnvironment(std::string_view name)
+{
+    const std::string key{name};
+    const char* raw_value = std::getenv(key.c_str());
+    if (raw_value == nullptr || raw_value[0] == '\0') {
+        return std::nullopt;
+    }
+
+    try {
+        std::size_t consumed = 0;
+        const int value = std::stoi(std::string(raw_value), &consumed, 10);
+        if (consumed == std::string_view(raw_value).size()) {
+            return value;
+        }
+    } catch (...) {
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] bool IsLargeMapForDeferredInitialMesh(const RuntimeMap& map)
+{
+    constexpr int kDeferredMeshTileThreshold = 320 * 320;
+    return map.info.width > 0 && map.info.height > 0 && map.info.width * map.info.height >= kDeferredMeshTileThreshold;
+}
+
+[[nodiscard]] int ResolveInitialChunkBuildRadius(const RuntimeMap& map)
+{
+    const std::optional<int> env_radius = ReadIntegerEnvironment("VOX3D_INITIAL_CHUNK_RADIUS");
+    if (env_radius.has_value()) {
+        return *env_radius;
+    }
+    return IsLargeMapForDeferredInitialMesh(map) ? 3 : -1;
+}
+
+[[nodiscard]] ChunkCoord InitialMeshFocusChunk(const RuntimeMap& map, const ChunkGrid& chunks)
+{
+    TileCoord focus_tile{map.info.width / 2, map.info.height / 2};
+    if (map.info.start.has_value()) {
+        focus_tile = *map.info.start;
+    }
+    const int chunk_x = std::clamp(focus_tile.x / std::max(1, chunks.info.chunk_size_x), 0, std::max(0, chunks.info.chunks_x - 1));
+    const int chunk_y = std::clamp(focus_tile.y / std::max(1, chunks.info.chunk_size_y), 0, std::max(0, chunks.info.chunks_y - 1));
+    return ChunkCoord{chunk_x, chunk_y};
+}
+
+[[nodiscard]] std::vector<std::uint8_t> BuildInitialChunkSelection(
+    const RuntimeMap& map,
+    const ChunkGrid& chunks,
+    int radius,
+    ChunkCoord* focus_chunk,
+    int* selected_count)
+{
+    std::vector<std::uint8_t> selected(chunks.chunks.size(), 1U);
+    if (focus_chunk != nullptr) {
+        *focus_chunk = ChunkCoord{};
+    }
+    if (selected_count != nullptr) {
+        *selected_count = static_cast<int>(selected.size());
+    }
+    if (radius < 0 || !chunks.IsValid()) {
+        return selected;
+    }
+
+    selected.assign(chunks.chunks.size(), 0U);
+    const ChunkCoord focus = InitialMeshFocusChunk(map, chunks);
+    if (focus_chunk != nullptr) {
+        *focus_chunk = focus;
+    }
+
+    int count = 0;
+    const int clamped_radius = std::max(0, radius);
+    for (std::size_t index = 0; index < chunks.chunks.size(); ++index) {
+        const ChunkCoord coord = chunks.chunks[index].coord;
+        const int dx = std::abs(coord.x - focus.x);
+        const int dy = std::abs(coord.y - focus.y);
+        if (dx <= clamped_radius && dy <= clamped_radius) {
+            selected[index] = 1U;
+            ++count;
+        }
+    }
+    if (selected_count != nullptr) {
+        *selected_count = count;
+    }
+    return selected;
 }
 
 [[nodiscard]] std::uint64_t WorldGridLineCount(const ChunkMeshBuildResult& mesh)
@@ -1125,12 +1214,36 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         logger_.Warn("chunk_grid", warning);
     }
 
+    const int initial_chunk_radius = ResolveInitialChunkBuildRadius(workspace_.runtime_map);
+    ChunkCoord initial_focus_chunk;
+    int initial_selected_chunks = 0;
+    const std::vector<std::uint8_t> initial_chunk_selection = BuildInitialChunkSelection(
+        workspace_.runtime_map,
+        next_chunk_grid,
+        initial_chunk_radius,
+        &initial_focus_chunk,
+        &initial_selected_chunks);
+    const bool partial_initial_mesh = initial_chunk_radius >= 0
+        && initial_selected_chunks < static_cast<int>(next_chunk_grid.chunks.size());
+
     const SteadyTimePoint voxel_world_start = Now();
     VoxelWorld next_voxel_world = BuildVoxelWorld(workspace_.runtime_map, next_chunk_grid);
     const SteadyTimePoint voxel_world_finish = Now();
     logger_.Info("voxel_world", "reason=" + std::string(reason) + " " + ToLogString(next_voxel_world));
     for (const auto& warning : next_voxel_world.diagnostics.warnings) {
         logger_.Warn("voxel_world", warning);
+    }
+
+    if (partial_initial_mesh) {
+        std::ostringstream out;
+        out << "reason=" << reason;
+        out << " mode=initial_visible_mesh_only";
+        out << " radius=" << initial_chunk_radius;
+        out << " focus=" << initial_focus_chunk.x << ',' << initial_focus_chunk.y;
+        out << " initial_chunks=" << initial_selected_chunks;
+        out << " pending_chunks=" << (next_chunk_grid.info.total_chunks - initial_selected_chunks);
+        out << " total_chunks=" << next_chunk_grid.info.total_chunks;
+        logger_.Info("chunk_pipeline", out.str());
     }
 
     const SteadyTimePoint face_visibility_start = Now();
@@ -1142,10 +1255,16 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     }
 
     const SteadyTimePoint mesh_simple_start = Now();
-    ChunkMeshCache next_simple_cache = BuildChunkMeshCache(
-        next_voxel_world,
-        next_chunk_grid,
-        ChunkMeshBuildMode::kSimpleFaces);
+    ChunkMeshCache next_simple_cache = partial_initial_mesh
+        ? BuildChunkMeshCacheForSelectedChunks(
+            next_voxel_world,
+            next_chunk_grid,
+            ChunkMeshBuildMode::kSimpleFaces,
+            initial_chunk_selection)
+        : BuildChunkMeshCache(
+            next_voxel_world,
+            next_chunk_grid,
+            ChunkMeshBuildMode::kSimpleFaces);
     const SteadyTimePoint mesh_simple_finish = Now();
     logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_simple_cache));
     for (const auto& warning : next_simple_cache.diagnostics.warnings) {
@@ -1153,10 +1272,16 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     }
 
     const SteadyTimePoint mesh_greedy_start = Now();
-    ChunkMeshCache next_greedy_cache = BuildChunkMeshCache(
-        next_voxel_world,
-        next_chunk_grid,
-        ChunkMeshBuildMode::kGreedyFaces);
+    ChunkMeshCache next_greedy_cache = partial_initial_mesh
+        ? BuildChunkMeshCacheForSelectedChunks(
+            next_voxel_world,
+            next_chunk_grid,
+            ChunkMeshBuildMode::kGreedyFaces,
+            initial_chunk_selection)
+        : BuildChunkMeshCache(
+            next_voxel_world,
+            next_chunk_grid,
+            ChunkMeshBuildMode::kGreedyFaces);
     const SteadyTimePoint mesh_greedy_finish = Now();
     logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_greedy_cache));
     for (const auto& warning : next_greedy_cache.diagnostics.warnings) {
@@ -1164,7 +1289,9 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     }
 
     const SteadyTimePoint terrain_mesh_start = Now();
-    ChunkMeshBuildResult next_terrain_meshes = BuildTerrainChunkMeshes(workspace_.runtime_map, next_chunk_grid);
+    ChunkMeshBuildResult next_terrain_meshes = partial_initial_mesh
+        ? BuildTerrainChunkMeshesForSelectedChunks(workspace_.runtime_map, next_chunk_grid, initial_chunk_selection)
+        : BuildTerrainChunkMeshes(workspace_.runtime_map, next_chunk_grid);
     const SteadyTimePoint terrain_mesh_finish = Now();
     logger_.Info("terrain_mesh", "reason=" + std::string(reason) + " " + ToLogString(next_terrain_meshes));
     for (const auto& warning : next_terrain_meshes.diagnostics.warnings) {
@@ -1239,6 +1366,12 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         out << " terrain_mesh_ms=" << ElapsedMs(terrain_mesh_start, terrain_mesh_finish);
         out << " transitions_ms=" << ElapsedMs(transitions_start, transitions_finish);
         out << " render_upload_ms=" << ElapsedMs(render_upload_start, render_upload_finish);
+        out << " initial_mesh=" << (partial_initial_mesh ? "partial" : "full");
+        if (partial_initial_mesh) {
+            out << " initial_radius=" << initial_chunk_radius;
+            out << " initial_chunks=" << initial_selected_chunks;
+            out << " pending_chunks=" << (next_chunk_grid.info.total_chunks - initial_selected_chunks);
+        }
         out << " total_ms=" << ElapsedMs(pipeline_start, pipeline_finish);
         logger_.Info("chunk_pipeline_profile", out.str());
     }

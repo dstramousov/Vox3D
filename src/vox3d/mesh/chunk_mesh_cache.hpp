@@ -165,6 +165,25 @@ struct ChunkMeshCache {
     ChunkMeshBuildMode mode);
 
 /**
+ * @brief Builds a chunk mesh cache only for selected chunk indices.
+ *
+ * Unselected chunks are kept as valid empty cache entries so existing render
+ * and UI code can continue to consume a full-grid cache while startup builds
+ * only the near-camera subset.
+ *
+ * @param world Source voxel world.
+ * @param chunks Chunk grid describing chunk bounds.
+ * @param mode Mesh generation algorithm used for selected cache entries.
+ * @param selected_chunks Per-chunk mask, non-zero means build this chunk.
+ * @return Partially populated mesh cache with unselected chunks left empty.
+ */
+[[nodiscard]] ChunkMeshCache BuildChunkMeshCacheForSelectedChunks(
+    const VoxelWorld& world,
+    const ChunkGrid& chunks,
+    ChunkMeshBuildMode mode,
+    const std::vector<std::uint8_t>& selected_chunks);
+
+/**
  * @brief Rebuilds only chunks marked dirty in a mesh cache.
  *
  * @param world Source voxel world.

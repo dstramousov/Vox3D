@@ -58,6 +58,20 @@ void AppendPercent(std::ostringstream& out, double ratio)
     out << ratio * 100.0 << '%';
 }
 
+
+void CopyGridShape(const VoxelWorld& world, const ChunkGrid& chunks, ChunkMeshBuildMode mode, ChunkMeshCacheInfo& info)
+{
+    info.mode = mode;
+    info.map_width = chunks.info.map_width;
+    info.map_height = chunks.info.map_height;
+    info.chunk_size_x = chunks.info.chunk_size_x;
+    info.chunk_size_y = chunks.info.chunk_size_y;
+    info.chunks_x = chunks.info.chunks_x;
+    info.chunks_y = chunks.info.chunks_y;
+    info.total_chunks = chunks.info.total_chunks;
+    info.levels = world.info.levels;
+}
+
 void CopyBuildInfo(const ChunkMeshBuildInfo& source, ChunkMeshCacheInfo& target)
 {
     target.mode = source.mode;
@@ -234,6 +248,61 @@ ChunkMeshCache BuildChunkMeshCache(const VoxelWorld& world, const ChunkGrid& chu
 
     if (!cache.IsValid()) {
         cache.diagnostics.AddWarning("chunk mesh cache validation failed after build");
+    }
+    return cache;
+}
+
+
+ChunkMeshCache BuildChunkMeshCacheForSelectedChunks(
+    const VoxelWorld& world,
+    const ChunkGrid& chunks,
+    ChunkMeshBuildMode mode,
+    const std::vector<std::uint8_t>& selected_chunks)
+{
+    ChunkMeshCache cache;
+
+    if (!world.IsValid()) {
+        cache.diagnostics.AddWarning("cannot build selected chunk mesh cache from invalid voxel world");
+        return cache;
+    }
+    if (!chunks.IsValid()) {
+        cache.diagnostics.AddWarning("cannot build selected chunk mesh cache from invalid chunk grid");
+        return cache;
+    }
+    if (selected_chunks.size() != chunks.chunks.size()) {
+        cache.diagnostics.AddWarning("cannot build selected chunk mesh cache because selection size differs from chunk grid");
+        return cache;
+    }
+
+    CopyGridShape(world, chunks, mode, cache.info);
+    cache.chunks.reserve(chunks.chunks.size());
+    cache.dirty.assign(chunks.chunks.size(), 0);
+
+    for (std::size_t index = 0; index < chunks.chunks.size(); ++index) {
+        const ChunkInfo& chunk = chunks.chunks[index];
+        if (selected_chunks[index] == 0U) {
+            ChunkMeshData empty_mesh;
+            empty_mesh.coord = chunk.coord;
+            empty_mesh.bounds = chunk.bounds;
+            cache.chunks.push_back(std::move(empty_mesh));
+            continue;
+        }
+
+        ChunkMeshBuildChunkResult chunk_result = BuildChunkMeshForChunk(world, chunk, mode);
+        AppendDiagnostics(chunk_result.diagnostics, cache.diagnostics);
+        if (!chunk_result.IsValid()) {
+            ChunkMeshData empty_mesh;
+            empty_mesh.coord = chunk.coord;
+            empty_mesh.bounds = chunk.bounds;
+            cache.chunks.push_back(std::move(empty_mesh));
+            continue;
+        }
+        cache.chunks.push_back(std::move(chunk_result.mesh));
+    }
+
+    RecalculateCacheCounters(cache);
+    if (!cache.IsValid()) {
+        cache.diagnostics.AddWarning("selected chunk mesh cache validation failed after build");
     }
     return cache;
 }

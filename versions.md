@@ -1,5 +1,13 @@
 # Versions
  
+## v0.5.32 -> v0.5.33
+
+- Added an initial visible-mesh-only startup path for large maps.
+- Large maps now build the first mesh subset around the start/focus chunk and leave far chunks empty for follow-up streaming work.
+- Added `VOX3D_INITIAL_CHUNK_RADIUS` to force or disable the initial chunk build radius for diagnostics.
+- Extended chunk pipeline profiling with initial/full mesh mode, initial chunk count, and pending chunk count.
+
+
 ## v0.1.0 -> v0.1.1
 
 - Initial C++20 + raylib bootstrap.
