@@ -290,6 +290,12 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_path_profile_shortest";
         case WorkspacePanelItem::k3DPathProfileSafe:
             return "3d_path_profile_safe";
+        case WorkspacePanelItem::k3DPathStatusValue:
+            return "3d_path_status";
+        case WorkspacePanelItem::k3DPathStartValue:
+            return "3d_path_start";
+        case WorkspacePanelItem::k3DPathGoalValue:
+            return "3d_path_goal";
         case WorkspacePanelItem::k3DPathToolSelect:
             return "3d_path_tool_select";
         case WorkspacePanelItem::k3DPathToolPickStart:
@@ -651,16 +657,6 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 workspace.show_3d_hidden_chunk_bounds));
         }
 
-        const bool terrain_passes_enabled = workspace.mesh_mode == ChunkMeshBuildMode::kTerrainSurface
-            && workspace.terrain_chunk_meshes.IsValid();
-        if (AddGroup(Item::k3DTerrainPassGroup)) {
-            items.push_back(Checkbox(Item::k3DTerrainPassTops, 1, terrain_passes_enabled, workspace.show_terrain_tops));
-            items.push_back(Checkbox(Item::k3DTerrainPassWalls, 1, terrain_passes_enabled, workspace.show_terrain_walls));
-            items.push_back(Checkbox(Item::k3DTerrainPassCliffs, 1, terrain_passes_enabled, workspace.show_terrain_cliffs));
-        }
-
-
-
         if (AddGroup(Item::k3DObjectsGroup)) {
             const bool object_markers_enabled = workspace.runtime_map.info.object_markers_loaded;
             const bool all_objects_checked = workspace.show_3d_object_trees
@@ -713,21 +709,15 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 workspace.show_transition_drops));
         }
 
-        const bool movement_probe_enabled = workspace.selected_tile.IsValid() && workspace.movement_probe.IsValid();
-        if (AddGroup(Item::k3DMovementGroup)) {
-            items.push_back(Checkbox(
-                Item::k3DShowMovementProbe,
-                1,
-                movement_probe_enabled,
-                workspace.show_movement_probe));
-        }
-
         const bool path_can_run = workspace.runtime_map.IsValid() && workspace.transition_features.IsValid()
             && workspace.has_path_start && workspace.has_path_goal;
         const bool path_available = workspace.path_probe.IsValid();
         if (AddGroup(Item::k3DPathGroup)) {
             items.push_back(Radio(Item::k3DPathProfileShortest, 1, true, workspace.path_profile == PathProfile::kShortest));
             items.push_back(Radio(Item::k3DPathProfileSafe, 1, true, workspace.path_profile == PathProfile::kSafe));
+            items.push_back({Item::k3DPathStatusValue, Kind::kValue, 1, true, false});
+            items.push_back({Item::k3DPathStartValue, Kind::kValue, 1, true, false});
+            items.push_back({Item::k3DPathGoalValue, Kind::kValue, 1, true, false});
             const bool path_pick_active = workspace.path_pick_mode != WorkspacePathPickMode::kSelect;
             items.push_back(Action(Item::k3DPathToolPickStart, 1, workspace.runtime_map.IsValid()));
             items.push_back(Action(Item::k3DPathToolSelect, 1, path_pick_active));

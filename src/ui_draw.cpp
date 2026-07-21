@@ -269,8 +269,34 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 [[nodiscard]] std::string MapTileText(const MapPackageInfo& map, const UiLabels& labels);
 [[nodiscard]] std::string TileCoordText(TileCoord tile);
 
+[[nodiscard]] std::string PathPickStatusText(const WorkspaceState& workspace_state)
+{
+    switch (workspace_state.path_pick_mode) {
+        case WorkspacePathPickMode::kSelect:
+            break;
+        case WorkspacePathPickMode::kPickStart:
+            return "Path pick: select START";
+        case WorkspacePathPickMode::kPickGoal:
+            return "Path pick: select GOAL";
+    }
+
+    if (workspace_state.path_probe.HasPath()) {
+        return "Path found";
+    }
+    if (workspace_state.path_probe.IsValid()) {
+        return "Path " + PathStatusLabel(workspace_state.path_probe.status);
+    }
+    if (workspace_state.has_path_start || workspace_state.has_path_goal) {
+        return "Path endpoints";
+    }
+    return "Path idle";
+}
+
 [[nodiscard]] std::string PathStatusCompactText(const WorkspaceState& workspace_state)
 {
+    if (workspace_state.path_pick_mode != WorkspacePathPickMode::kSelect) {
+        return PathPickStatusText(workspace_state);
+    }
     if (workspace_state.path_probe.HasPath()) {
         return "Path " + std::to_string(workspace_state.path_probe.path.size())
             + " / cost " + CompactFloat(static_cast<float>(workspace_state.path_probe.cost.total));
@@ -971,7 +997,7 @@ struct TextPanelRow {
 }
 
 
-[[nodiscard]] std::string WorkspacePanelItemLabel(WorkspacePanelItem item, const UiLabels& labels)
+[[nodiscard]] std::string WorkspacePanelItemLabel(WorkspacePanelItem item, const WorkspaceState& workspace_state, const UiLabels& labels)
 {
     switch (item) {
         case WorkspacePanelItem::kMenuModeGroup:
@@ -1098,10 +1124,16 @@ struct TextPanelRow {
             return "Shortest";
         case WorkspacePanelItem::k3DPathProfileSafe:
             return "Safe";
+        case WorkspacePanelItem::k3DPathStatusValue:
+            return "Status: " + PathPickStatusText(workspace_state);
+        case WorkspacePanelItem::k3DPathStartValue:
+            return "Start: " + (workspace_state.has_path_start ? TileCoordText(workspace_state.path_start) : std::string("none"));
+        case WorkspacePanelItem::k3DPathGoalValue:
+            return "Goal: " + (workspace_state.has_path_goal ? TileCoordText(workspace_state.path_goal) : std::string("none"));
         case WorkspacePanelItem::k3DPathToolSelect:
             return "Cancel Pick";
         case WorkspacePanelItem::k3DPathToolPickStart:
-            return "Pick Start";
+            return "F3 Pick Path";
         case WorkspacePanelItem::k3DPathToolPickGoal:
             return "Pick Goal";
         case WorkspacePanelItem::k3DRunPathProbe:
@@ -2084,7 +2116,7 @@ void DrawWorkspace(
                 item_bounds.checked,
             };
             const std::string marker = WorkspacePanelItemMarker(item);
-            const std::string label = WorkspacePanelItemLabel(item.item, labels);
+            const std::string label = WorkspacePanelItemLabel(item.item, workspace_state, labels);
             const bool is_group = item_bounds.kind == WorkspacePanelItemKind::kGroup;
             const Color color = is_group
                 ? kEditorViewportText

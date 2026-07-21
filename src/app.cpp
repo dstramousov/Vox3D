@@ -636,17 +636,8 @@ void App::HandleWorkspaceInput(float dt)
         return;
     }
 
-    if (IsKeyPressed(KEY_F3) && chunk_mesh_preview_.IsUploaded()) {
-        workspace_.show_3d_preview = !workspace_.show_3d_preview;
-        if (workspace_.show_3d_preview) {
-            if (!preview_camera_.IsInitialized()) {
-                FitPreviewCameraToViewport("hotkey");
-            }
-        } else {
-            preview_camera_.ReleaseMouse();
-        }
-        layout_dirty_ = true;
-        logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "2d"));
+    if (IsKeyPressed(KEY_F3) && workspace_.show_3d_preview && workspace_.runtime_map.IsValid()) {
+        BeginPathPickMode("hotkey_f3");
     }
 
     if (layout_dirty_) {
@@ -1740,6 +1731,8 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
         return;
     }
 
+    const bool path_pick_active = workspace_.path_pick_mode != WorkspacePathPickMode::kSelect;
+
     const auto picked_tile = chunk_mesh_preview_.PickTile(
         mouse,
         layout_cache_.workspace.map_overview,
@@ -1748,7 +1741,9 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
     if (!picked_tile.has_value()) {
         workspace_.selected_tile = TileInspectResult{};
         workspace_.movement_probe = MovementProbeResult{};
-        workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+        if (!path_pick_active) {
+            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+        }
         layout_dirty_ = true;
         logger_.Debug("inspect", "tile pick missed reason=" + std::string(reason));
         return;
@@ -1763,7 +1758,9 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
         workspace_.runtime_map,
         workspace_.transition_features,
         workspace_.selected_tile.tile);
-    workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+    if (!path_pick_active) {
+        workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+    }
     layout_dirty_ = true;
     logger_.Info("inspect", "reason=" + std::string(reason) + " " + ToLogString(workspace_.selected_tile));
     logger_.Info("movement", "reason=" + std::string(reason) + " " + ToLogString(workspace_.movement_probe));

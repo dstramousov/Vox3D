@@ -397,3 +397,9 @@
 ## v0.5.25 -> v0.5.26
 - Fixed the Objects filter section so it is a normal top-level View panel group instead of a permanently expanded nested row.
 - Changed initial panel state so all View, Stats, Info, and 2D menu sections start collapsed by default.
+## v0.5.26 -> v0.5.27
+
+- Removed unused Terrain and Probes groups from the 3D View panel.
+- Reworked Path picking around F3: first click sets Start, second click sets Goal and runs pathfinding.
+- Added Path status/start/goal rows in the Path panel and explicit status bar prompts while picking.
+- Kept Path closed by default and preserved existing 2D/3D camera state behavior.
