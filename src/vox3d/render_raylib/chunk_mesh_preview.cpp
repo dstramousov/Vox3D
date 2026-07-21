@@ -21,8 +21,8 @@ namespace vox3d {
 std::string_view ToString(RaylibChunkMeshColorMode mode)
 {
     switch (mode) {
-        case RaylibChunkMeshColorMode::kMaterial:
-            return "material";
+        case RaylibChunkMeshColorMode::kTraversal:
+            return "traversal";
         case RaylibChunkMeshColorMode::kGeographic:
             return "geographic";
         case RaylibChunkMeshColorMode::kChunkId:
@@ -99,6 +99,32 @@ struct RgbaColor {
     };
 }
 
+
+[[nodiscard]] RgbaColor TraversalBaseColor(TerrainSurfaceKind kind, BlockTypeId fallback_type)
+{
+    switch (kind) {
+        case TerrainSurfaceKind::kWalkableGround:
+            return RgbaColor{73, 151, 73, 255};
+        case TerrainSurfaceKind::kWalkableSlow:
+            return RgbaColor{180, 148, 76, 255};
+        case TerrainSurfaceKind::kBlockedTerrain:
+            return RgbaColor{111, 70, 58, 255};
+        case TerrainSurfaceKind::kWaterWetTerrain:
+            return RgbaColor{40, 101, 155, 255};
+        case TerrainSurfaceKind::kStructuralDepth:
+            return RgbaColor{119, 72, 176, 255};
+        case TerrainSurfaceKind::kTreeBlocker:
+            return RgbaColor{31, 95, 45, 255};
+        case TerrainSurfaceKind::kStart:
+            return RgbaColor{239, 235, 214, 255};
+        case TerrainSurfaceKind::kGoal:
+            return RgbaColor{242, 208, 73, 255};
+        case TerrainSurfaceKind::kUnknown:
+            break;
+    }
+    return BaseColor(fallback_type);
+}
+
 [[nodiscard]] RgbaColor GeographicBaseColor(int level)
 {
     if (level <= -3) {
@@ -160,8 +186,8 @@ struct RgbaColor {
     RaylibChunkMeshColorMode color_mode)
 {
     switch (color_mode) {
-        case RaylibChunkMeshColorMode::kMaterial:
-            return BaseColor(vertex.block_type);
+        case RaylibChunkMeshColorMode::kTraversal:
+            return TraversalBaseColor(vertex.surface_kind, vertex.block_type);
         case RaylibChunkMeshColorMode::kGeographic:
             return GeographicBaseColor(vertex.level);
         case RaylibChunkMeshColorMode::kChunkId:
@@ -169,7 +195,7 @@ struct RgbaColor {
         case RaylibChunkMeshColorMode::kFaceType:
             return FaceTypeBaseColor(vertex.face_direction);
     }
-    return BaseColor(vertex.block_type);
+    return TraversalBaseColor(vertex.surface_kind, vertex.block_type);
 }
 
 [[nodiscard]] RgbaColor VertexColor(

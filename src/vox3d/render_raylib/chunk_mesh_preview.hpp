@@ -23,7 +23,7 @@ namespace vox3d {
  * @brief Vertex-color palette used when uploading chunk meshes to raylib.
  */
 enum class RaylibChunkMeshColorMode : std::uint8_t {
-    kMaterial,
+    kTraversal,
     kGeographic,
     kChunkId,
     kFaceType,

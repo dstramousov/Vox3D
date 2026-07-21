@@ -157,23 +157,23 @@ void ToggleOverlayFlag(
 [[nodiscard]] WorkspaceColorMode NextColorMode(WorkspaceColorMode mode)
 {
     switch (mode) {
-        case WorkspaceColorMode::kMaterial:
+        case WorkspaceColorMode::kTraversal:
             return WorkspaceColorMode::kGeographic;
         case WorkspaceColorMode::kGeographic:
             return WorkspaceColorMode::kChunkId;
         case WorkspaceColorMode::kChunkId:
             return WorkspaceColorMode::kFaceType;
         case WorkspaceColorMode::kFaceType:
-            return WorkspaceColorMode::kMaterial;
+            return WorkspaceColorMode::kTraversal;
     }
-    return WorkspaceColorMode::kMaterial;
+    return WorkspaceColorMode::kTraversal;
 }
 
 [[nodiscard]] RaylibChunkMeshColorMode ToRaylibColorMode(WorkspaceColorMode mode)
 {
     switch (mode) {
-        case WorkspaceColorMode::kMaterial:
-            return RaylibChunkMeshColorMode::kMaterial;
+        case WorkspaceColorMode::kTraversal:
+            return RaylibChunkMeshColorMode::kTraversal;
         case WorkspaceColorMode::kGeographic:
             return RaylibChunkMeshColorMode::kGeographic;
         case WorkspaceColorMode::kChunkId:
@@ -181,7 +181,7 @@ void ToggleOverlayFlag(
         case WorkspaceColorMode::kFaceType:
             return RaylibChunkMeshColorMode::kFaceType;
     }
-    return RaylibChunkMeshColorMode::kMaterial;
+    return RaylibChunkMeshColorMode::kTraversal;
 }
 
 [[nodiscard]] WorkspaceVisibilityMode NextVisibilityMode(WorkspaceVisibilityMode mode)
@@ -1896,8 +1896,8 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
                 logger_,
                 layout_dirty_);
             break;
-        case WorkspacePanelItem::k3DColorMaterial:
-            SetColorMode(WorkspaceColorMode::kMaterial, "panel");
+        case WorkspacePanelItem::k3DColorTraversal:
+            SetColorMode(WorkspaceColorMode::kTraversal, "panel");
             break;
         case WorkspacePanelItem::k3DColorGeographic:
             SetColorMode(WorkspaceColorMode::kGeographic, "panel");

@@ -77,8 +77,8 @@ std::string_view ToString(WorkspacePanelTab tab)
 std::string_view ToString(WorkspaceColorMode mode)
 {
     switch (mode) {
-        case WorkspaceColorMode::kMaterial:
-            return "material";
+        case WorkspaceColorMode::kTraversal:
+            return "traversal";
         case WorkspaceColorMode::kGeographic:
             return "geographic";
         case WorkspaceColorMode::kChunkId:
@@ -230,8 +230,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_terrain_mesh";
         case WorkspacePanelItem::k3DColorModeGroup:
             return "3d_color_mode";
-        case WorkspacePanelItem::k3DColorMaterial:
-            return "3d_color_material";
+        case WorkspacePanelItem::k3DColorTraversal:
+            return "3d_color_traversal";
         case WorkspacePanelItem::k3DColorGeographic:
             return "3d_color_geographic";
         case WorkspacePanelItem::k3DColorChunkId:
@@ -575,10 +575,10 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         if (AddGroup(Item::k3DRenderGroup)) {
             items.push_back(Group(Item::k3DColorModeGroup, 1));
             items.push_back(Radio(
-                Item::k3DColorMaterial,
+                Item::k3DColorTraversal,
                 2,
                 workspace.chunk_meshes.IsValid(),
-                workspace.color_mode == WorkspaceColorMode::kMaterial));
+                workspace.color_mode == WorkspaceColorMode::kTraversal));
             items.push_back(Radio(
                 Item::k3DColorGeographic,
                 2,

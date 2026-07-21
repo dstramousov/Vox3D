@@ -150,7 +150,7 @@ void EmitQuad(
     mesh.faces.push_back(face);
 
     for (const MeshPosition& position : corners) {
-        mesh.vertices.push_back(MeshVertex{position, block_type, direction, TerrainRenderPass::kBody, block_coord.z});
+        mesh.vertices.push_back(MeshVertex{position, block_type, direction, TerrainRenderPass::kBody, TerrainSurfaceKind::kUnknown, block_coord.z});
     }
 
     mesh.indices.push_back(first_vertex + 0U);

@@ -172,8 +172,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 [[nodiscard]] std::string ColorModeLabel(WorkspaceColorMode mode)
 {
     switch (mode) {
-        case WorkspaceColorMode::kMaterial:
-            return "material";
+        case WorkspaceColorMode::kTraversal:
+            return "traversal";
         case WorkspaceColorMode::kGeographic:
             return "geographic";
         case WorkspaceColorMode::kChunkId:
@@ -1037,8 +1037,8 @@ struct TextPanelRow {
             return "Terrain Mesh";
         case WorkspacePanelItem::k3DColorModeGroup:
             return "Color";
-        case WorkspacePanelItem::k3DColorMaterial:
-            return "Material";
+        case WorkspacePanelItem::k3DColorTraversal:
+            return "Traversal";
         case WorkspacePanelItem::k3DColorGeographic:
             return "Geographic";
         case WorkspacePanelItem::k3DColorChunkId:

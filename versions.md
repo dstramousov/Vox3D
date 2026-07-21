@@ -369,3 +369,9 @@
 - Enlarged and centered the right-panel View/Stats/Info tab header while preserving red V/S/I hotkey hints.
 - Reduced Stats and Info value-row indentation so values start closer to their section headers.
 - Added hover tooltips for Stats/Info rows whose full text does not fit in the right panel.
+
+## v0.5.21 -> v0.5.22
+
+- Renamed the 3D color mode from Material to Traversal to match its actual terrain/traversal overlay role.
+- Added terrain/traversal surface categories to terrain mesh vertices and faces so the overlay can color grass, slow terrain, blocked terrain, water/wet terrain, tree blockers, start, and goal separately.
+- Prevented terrain-surface greedy merging from combining different traversal categories, preserving meaningful overlay colors across large top faces.

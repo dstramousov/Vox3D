@@ -34,6 +34,21 @@ enum class TerrainRenderPass : std::uint8_t {
 };
 
 /**
+ * @brief Compact traversal category used by the 3D traversal color overlay.
+ */
+enum class TerrainSurfaceKind : std::uint8_t {
+    kUnknown,
+    kWalkableGround,
+    kWalkableSlow,
+    kBlockedTerrain,
+    kWaterWetTerrain,
+    kStructuralDepth,
+    kTreeBlocker,
+    kStart,
+    kGoal,
+};
+
+/**
  * @brief Converts a terrain render pass to a stable diagnostic name.
  *
  * @param pass Terrain render pass identifier.
@@ -66,6 +81,7 @@ struct MeshVertex {
     BlockTypeId block_type = BlockTypeId::kEmpty;
     FaceDirection face_direction = FaceDirection::kUp;
     TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
+    TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
     int level = 0;
 };
 
@@ -77,6 +93,7 @@ struct MeshFace {
     FaceDirection direction = FaceDirection::kUp;
     BlockTypeId block_type = BlockTypeId::kEmpty;
     TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
+    TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
     std::uint32_t first_vertex = 0;
     std::uint32_t first_index = 0;
 };

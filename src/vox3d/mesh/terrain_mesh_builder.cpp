@@ -4,8 +4,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cctype>
 #include <limits>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace vox3d {
@@ -21,6 +24,7 @@ struct TopMaskCell {
     bool visible = false;
     int height = 0;
     BlockTypeId block_type = BlockTypeId::kEmpty;
+    TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
 };
 
 struct TopSpan {
@@ -29,6 +33,7 @@ struct TopSpan {
     int height_tiles = 1;
     int level = 0;
     BlockTypeId block_type = BlockTypeId::kEmpty;
+    TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
 };
 
 struct WallCell {
@@ -36,6 +41,7 @@ struct WallCell {
     int bottom_level = 0;
     int top_level = 0;
     BlockTypeId block_type = BlockTypeId::kEmpty;
+    TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
 };
 
 struct WallSpan {
@@ -45,6 +51,7 @@ struct WallSpan {
     int top_level = 0;
     FaceDirection direction = FaceDirection::kWest;
     BlockTypeId block_type = BlockTypeId::kEmpty;
+    TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
 };
 
 constexpr std::array<TerrainEdge, 4> kTerrainEdges{{
@@ -85,6 +92,65 @@ constexpr std::array<TerrainEdge, 4> kTerrainEdges{{
     return coord.x >= 0 && coord.y >= 0 && coord.x < map.info.width && coord.y < map.info.height;
 }
 
+[[nodiscard]] std::string NormalizeToken(std::string_view raw_value)
+{
+    std::string normalized;
+    normalized.reserve(raw_value.size());
+    for (unsigned char c : raw_value) {
+        if (std::isalnum(c) != 0) {
+            normalized.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+    return normalized;
+}
+
+[[nodiscard]] bool Contains(std::string_view text, std::string_view needle)
+{
+    return text.find(needle) != std::string_view::npos;
+}
+
+[[nodiscard]] bool IsStartOrGoal(const std::optional<TileCoord>& point, TileCoord tile)
+{
+    return point.has_value() && point->x == tile.x && point->y == tile.y;
+}
+
+[[nodiscard]] TerrainSurfaceKind SurfaceKind(const RuntimeMap& map, TileCoord tile)
+{
+    if (IsStartOrGoal(map.info.start, tile)) {
+        return TerrainSurfaceKind::kStart;
+    }
+    if (IsStartOrGoal(map.info.goal, tile)) {
+        return TerrainSurfaceKind::kGoal;
+    }
+
+    const std::size_t index = GridIndex(tile.x, tile.y, map.info.width);
+    const bool blocked = map.collision.cells[index] != 0U;
+    const std::string terrain = map.terrain.IsValid() ? NormalizeToken(map.terrain.cells[index]) : std::string{};
+
+    if (Contains(terrain, "start") || Contains(terrain, "spawn")) {
+        return TerrainSurfaceKind::kStart;
+    }
+    if (Contains(terrain, "goal") || Contains(terrain, "exit")) {
+        return TerrainSurfaceKind::kGoal;
+    }
+    if (Contains(terrain, "water") || Contains(terrain, "wet") || Contains(terrain, "river") || Contains(terrain, "lake")) {
+        return TerrainSurfaceKind::kWaterWetTerrain;
+    }
+    if (Contains(terrain, "tree") || Contains(terrain, "forest") || Contains(terrain, "woods")) {
+        return TerrainSurfaceKind::kTreeBlocker;
+    }
+    if (Contains(terrain, "structure") || Contains(terrain, "depth")) {
+        return TerrainSurfaceKind::kStructuralDepth;
+    }
+    if (Contains(terrain, "bush") || Contains(terrain, "slow") || Contains(terrain, "swamp") || Contains(terrain, "marsh")) {
+        return TerrainSurfaceKind::kWalkableSlow;
+    }
+    if (blocked) {
+        return TerrainSurfaceKind::kBlockedTerrain;
+    }
+    return TerrainSurfaceKind::kWalkableGround;
+}
+
 [[nodiscard]] BlockTypeId SurfaceBlockType(const RuntimeMap& map, TileCoord tile)
 {
     const std::size_t index = GridIndex(tile.x, tile.y, map.info.width);
@@ -98,13 +164,14 @@ constexpr std::array<TerrainEdge, 4> kTerrainEdges{{
 
 [[nodiscard]] bool SameTopMaskType(const TopMaskCell& a, const TopMaskCell& b)
 {
-    return a.visible && b.visible && a.height == b.height && a.block_type == b.block_type;
+    return a.visible && b.visible && a.height == b.height && a.block_type == b.block_type
+        && a.surface_kind == b.surface_kind;
 }
 
 [[nodiscard]] bool SameWallMaskType(const WallCell& a, const WallCell& b)
 {
     return a.visible && b.visible && a.bottom_level == b.bottom_level && a.top_level == b.top_level
-        && a.block_type == b.block_type;
+        && a.block_type == b.block_type && a.surface_kind == b.surface_kind;
 }
 
 void EmitQuad(
@@ -113,6 +180,7 @@ void EmitQuad(
     BlockTypeId block_type,
     FaceDirection direction,
     TerrainRenderPass terrain_pass,
+    TerrainSurfaceKind surface_kind,
     const std::array<MeshPosition, 4>& corners)
 {
     const auto first_vertex = static_cast<std::uint32_t>(mesh.vertices.size());
@@ -123,12 +191,13 @@ void EmitQuad(
     face.direction = direction;
     face.block_type = block_type;
     face.terrain_pass = terrain_pass;
+    face.surface_kind = surface_kind;
     face.first_vertex = first_vertex;
     face.first_index = first_index;
     mesh.faces.push_back(face);
 
     for (const MeshPosition& position : corners) {
-        mesh.vertices.push_back(MeshVertex{position, block_type, direction, terrain_pass, block_coord.z});
+        mesh.vertices.push_back(MeshVertex{position, block_type, direction, terrain_pass, surface_kind, block_coord.z});
     }
 
     mesh.indices.push_back(first_vertex + 0U);
@@ -195,6 +264,7 @@ void EmitTopSpan(ChunkMeshData& mesh, const TopSpan& span, ChunkMeshBuildInfo& i
         span.block_type,
         FaceDirection::kUp,
         TerrainRenderPass::kTops,
+        span.surface_kind,
         TopSpanCorners(span));
     ++info.terrain_top_faces;
 }
@@ -215,6 +285,7 @@ void EmitWallSpan(ChunkMeshData& mesh, const WallSpan& span, ChunkMeshBuildInfo&
         span.block_type,
         span.direction,
         terrain_pass,
+        span.surface_kind,
         WallSpanCorners(span));
     if (terrain_pass == TerrainRenderPass::kCliffs) {
         ++info.terrain_cliff_faces;
@@ -250,6 +321,7 @@ void BuildTopMask(const RuntimeMap& map, const ChunkInfo& chunk, std::vector<Top
             cell.visible = true;
             cell.height = TileHeight(map, tile);
             cell.block_type = SurfaceBlockType(map, tile);
+            cell.surface_kind = SurfaceKind(map, tile);
             ++info.terrain_raw_top_faces;
         }
     }
@@ -299,6 +371,7 @@ void EmitMergedTopSpans(
                     span_height,
                     start.height,
                     start.block_type,
+                    start.surface_kind,
                 },
                 info,
                 diagnostics);
@@ -328,6 +401,7 @@ void EmitMergedTopSpans(
     cell.bottom_level = neighbor_height;
     cell.top_level = height;
     cell.block_type = SurfaceBlockType(map, tile);
+    cell.surface_kind = SurfaceKind(map, tile);
     return cell;
 }
 
@@ -362,7 +436,7 @@ void EmitMergedYWallSpans(
 
             EmitWallSpan(
                 mesh,
-                WallSpan{tile, length, start.bottom_level, start.top_level, edge.direction, start.block_type},
+                WallSpan{tile, length, start.bottom_level, start.top_level, edge.direction, start.block_type, start.surface_kind},
                 info,
                 diagnostics);
             y += length;
@@ -401,7 +475,7 @@ void EmitMergedXWallSpans(
 
             EmitWallSpan(
                 mesh,
-                WallSpan{tile, length, start.bottom_level, start.top_level, edge.direction, start.block_type},
+                WallSpan{tile, length, start.bottom_level, start.top_level, edge.direction, start.block_type, start.surface_kind},
                 info,
                 diagnostics);
             x += length;

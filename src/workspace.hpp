@@ -57,7 +57,7 @@ enum class WorkspacePanelItemKind {
  * @brief Diagnostic vertex-color mode used by the 3D workspace preview.
  */
 enum class WorkspaceColorMode {
-    kMaterial,
+    kTraversal,
     kGeographic,
     kChunkId,
     kFaceType,
@@ -138,7 +138,7 @@ enum class WorkspacePanelItem {
     k3DRenderGroup,
     kRenderTerrainMesh,
     k3DColorModeGroup,
-    k3DColorMaterial,
+    k3DColorTraversal,
     k3DColorGeographic,
     k3DColorChunkId,
     k3DColorFaceType,
