@@ -499,3 +499,10 @@
 - Added render chunk budget, hard limit, keep radius, and per-frame eviction controls for large maps.
 - Distant resident chunks can be evicted from GPU/render mesh while CPU runtime map data remains loaded.
 - Status bar now reports resident chunks instead of implying the whole map must be built.
+
+## v0.5.40 -> v0.5.41
+
+- Changed progressive eviction to use the hard render chunk limit instead of evicting immediately above the soft budget.
+- Added a progressive build time budget with cooldown to reduce repeated heavy chunk-build spikes.
+- Added `VOX3D_PROGRESSIVE_TIME_BUDGET_MS` for tuning the per-frame progressive build budget.
+- Kept `versions.md` updates appended to the end of the file.

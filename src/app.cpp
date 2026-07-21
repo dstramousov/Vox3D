@@ -439,6 +439,11 @@ struct ProgressiveBuildPriority {
     return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_EVICTS_PER_FRAME").value_or(4), 0, 256);
 }
 
+[[nodiscard]] int ResolveProgressiveTimeBudgetMs()
+{
+    return std::clamp(ReadIntegerEnvironment("VOX3D_PROGRESSIVE_TIME_BUDGET_MS").value_or(6), 0, 250);
+}
+
 void RecalculateCacheCountersLocal(ChunkMeshCache& cache)
 {
     cache.info.non_empty_chunks = 0;
@@ -584,7 +589,7 @@ void AddPendingChunkIfMissing(std::vector<std::size_t>& pending, std::size_t chu
 {
     std::vector<std::size_t> evictable;
     const int resident_count = static_cast<int>(std::count(resident.begin(), resident.end(), static_cast<std::uint8_t>(1)));
-    if (!chunks.IsValid() || resident_count <= resident_budget || evicts_per_frame <= 0) {
+    if (!chunks.IsValid() || resident_count < resident_hard_limit || evicts_per_frame <= 0) {
         return evictable;
     }
 
@@ -1553,6 +1558,36 @@ void App::AdvanceProgressiveChunkBuild(float dt)
     const int render_budget = ResolveRenderChunkBudget();
     const int hard_limit = std::max(render_budget, ResolveRenderChunkHardLimit());
     const int evicts_per_frame = ResolveProgressiveEvictsPerFrame();
+    const int time_budget_ms = ResolveProgressiveTimeBudgetMs();
+
+    if (workspace_.progressive_budget_wait_timer > 0.0F) {
+        workspace_.progressive_budget_wait_timer =
+            std::max(0.0F, workspace_.progressive_budget_wait_timer - dt);
+        workspace_.progressive_log_timer += dt;
+        if (workspace_.progressive_log_timer >= 1.0F) {
+            std::ostringstream out;
+            out << "state=budget_wait";
+            out << " resident=" << workspace_.progressive_chunks_built << '/' << workspace_.progressive_chunks_total;
+            out << " pending=" << workspace_.progressive_chunks_pending;
+            out << " built_batch=0";
+            out << " evicted_batch=0";
+            out << " time_budget_ms=" << time_budget_ms;
+            out << " cooldown_ms=" << static_cast<int>(std::lround(workspace_.progressive_budget_wait_timer * 1000.0F));
+            out << " interest_radius=" << interest_radius_chunks;
+            out << " keep_radius=" << keep_radius_chunks;
+            out << " budget=" << render_budget;
+            out << " hard_limit=" << hard_limit;
+            out << " priority=" << (priority.camera_based ? "camera" : "map");
+            out << " target=" << static_cast<int>(std::lround(priority.target_x)) << ','
+                << static_cast<int>(std::lround(priority.target_y));
+            out << " lookahead=" << static_cast<int>(std::lround(priority.lookahead_x)) << ','
+                << static_cast<int>(std::lround(priority.lookahead_y));
+            out << " models=" << chunk_mesh_preview_.Stats().models;
+            logger_.Info("progressive_build", out.str());
+            workspace_.progressive_log_timer = 0.0F;
+        }
+        return;
+    }
 
     int evicted_count = 0;
     const std::vector<std::size_t> evicted_chunks = SelectProgressiveEvictionChunks(
@@ -1678,6 +1713,11 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         static_cast<std::uint8_t>(1)));
     workspace_.progressive_chunks_pending = static_cast<std::uint64_t>(workspace_.progressive_pending_chunks.size());
     const SteadyTimePoint batch_finish = Now();
+    const long long batch_ms = ElapsedMs(batch_start, batch_finish);
+    if (selected_count > 0 && time_budget_ms > 0 && batch_ms > time_budget_ms) {
+        const float over_budget_seconds = static_cast<float>(batch_ms - time_budget_ms) / 1000.0F;
+        workspace_.progressive_budget_wait_timer = std::clamp(over_budget_seconds, 0.0F, 0.25F);
+    }
     workspace_.progressive_log_timer += dt;
 
     const bool idle = selected_count == 0 && evicted_count == 0;
@@ -1688,7 +1728,9 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         out << " pending=" << workspace_.progressive_chunks_pending;
         out << " built_batch=" << selected_count;
         out << " evicted_batch=" << evicted_count;
-        out << " batch_ms=" << ElapsedMs(batch_start, batch_finish);
+        out << " batch_ms=" << batch_ms;
+        out << " time_budget_ms=" << time_budget_ms;
+        out << " cooldown_ms=" << static_cast<int>(std::lround(workspace_.progressive_budget_wait_timer * 1000.0F));
         out << " interest_radius=" << interest_radius_chunks;
         out << " keep_radius=" << keep_radius_chunks;
         out << " budget=" << render_budget;

@@ -485,6 +485,7 @@ struct WorkspaceState {
     std::uint64_t progressive_chunks_built = 0;
     std::uint64_t progressive_chunks_pending = 0;
     float progressive_log_timer = 0.0F;
+    float progressive_budget_wait_timer = 0.0F;
     std::vector<std::size_t> progressive_pending_chunks;
     std::vector<std::uint8_t> progressive_built_chunks;
 };
