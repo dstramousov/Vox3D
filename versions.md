@@ -447,3 +447,10 @@
 - Large maps now build the first mesh subset around the start/focus chunk and leave far chunks empty for follow-up streaming work.
 - Added `VOX3D_INITIAL_CHUNK_RADIUS` to force or disable the initial chunk build radius for diagnostics.
 - Extended chunk pipeline profiling with initial/full mesh mode, initial chunk count, and pending chunk count.
+
+## v0.5.33 -> v0.5.34
+
+- Replaced the aggressive start-chunk partial mesh path with a safer 256x256-tile initial build window for maps larger than 256x256 tiles.
+- The initial window is centered on the map so the startup camera has drawable terrain immediately after upload.
+- Added `VOX3D_INITIAL_TILE_WINDOW` to override the initial tile window size; `0` disables the limit and forces a full mesh build.
+- Updated chunk pipeline logs to report `initial_area`, `initial_window`, selected initial chunks, and skipped chunks.

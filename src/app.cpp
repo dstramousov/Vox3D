@@ -136,66 +136,90 @@ void ToggleOverlayFlag(
     return std::nullopt;
 }
 
-[[nodiscard]] bool IsLargeMapForDeferredInitialMesh(const RuntimeMap& map)
+struct InitialTileWindow {
+    bool limited = false;
+    int left = 0;
+    int top = 0;
+    int width = 0;
+    int height = 0;
+};
+
+[[nodiscard]] int ResolveInitialTileWindowSize(const RuntimeMap& map)
 {
-    constexpr int kDeferredMeshTileThreshold = 320 * 320;
-    return map.info.width > 0 && map.info.height > 0 && map.info.width * map.info.height >= kDeferredMeshTileThreshold;
+    const std::optional<int> env_size = ReadIntegerEnvironment("VOX3D_INITIAL_TILE_WINDOW");
+    if (env_size.has_value()) {
+        return std::max(0, *env_size);
+    }
+
+    constexpr int kDefaultInitialTileWindow = 256;
+    if (map.info.width > kDefaultInitialTileWindow || map.info.height > kDefaultInitialTileWindow) {
+        return kDefaultInitialTileWindow;
+    }
+    return 0;
 }
 
-[[nodiscard]] int ResolveInitialChunkBuildRadius(const RuntimeMap& map)
+[[nodiscard]] InitialTileWindow ResolveInitialTileWindow(const RuntimeMap& map, int requested_size)
 {
-    const std::optional<int> env_radius = ReadIntegerEnvironment("VOX3D_INITIAL_CHUNK_RADIUS");
-    if (env_radius.has_value()) {
-        return *env_radius;
+    InitialTileWindow window;
+    window.width = std::max(0, map.info.width);
+    window.height = std::max(0, map.info.height);
+
+    if (requested_size <= 0 || map.info.width <= 0 || map.info.height <= 0) {
+        return window;
     }
-    return IsLargeMapForDeferredInitialMesh(map) ? 3 : -1;
+
+    const int window_width = std::min(requested_size, map.info.width);
+    const int window_height = std::min(requested_size, map.info.height);
+    if (window_width >= map.info.width && window_height >= map.info.height) {
+        return window;
+    }
+
+    const int center_x = map.info.width / 2;
+    const int center_y = map.info.height / 2;
+    window.limited = true;
+    window.width = window_width;
+    window.height = window_height;
+    window.left = std::clamp(center_x - window_width / 2, 0, map.info.width - window_width);
+    window.top = std::clamp(center_y - window_height / 2, 0, map.info.height - window_height);
+    return window;
 }
 
-[[nodiscard]] ChunkCoord InitialMeshFocusChunk(const RuntimeMap& map, const ChunkGrid& chunks)
+[[nodiscard]] bool ChunkIntersectsTileWindow(const ChunkInfo& chunk, const InitialTileWindow& window)
 {
-    TileCoord focus_tile{map.info.width / 2, map.info.height / 2};
-    if (map.info.start.has_value()) {
-        focus_tile = *map.info.start;
-    }
-    const int chunk_x = std::clamp(focus_tile.x / std::max(1, chunks.info.chunk_size_x), 0, std::max(0, chunks.info.chunks_x - 1));
-    const int chunk_y = std::clamp(focus_tile.y / std::max(1, chunks.info.chunk_size_y), 0, std::max(0, chunks.info.chunks_y - 1));
-    return ChunkCoord{chunk_x, chunk_y};
+    const int chunk_left = chunk.bounds.min_x;
+    const int chunk_top = chunk.bounds.min_y;
+    const int chunk_right = chunk.bounds.max_x;
+    const int chunk_bottom = chunk.bounds.max_y;
+    const int window_right = window.left + window.width;
+    const int window_bottom = window.top + window.height;
+    return chunk_left < window_right && chunk_right > window.left && chunk_top < window_bottom && chunk_bottom > window.top;
 }
 
 [[nodiscard]] std::vector<std::uint8_t> BuildInitialChunkSelection(
-    const RuntimeMap& map,
     const ChunkGrid& chunks,
-    int radius,
-    ChunkCoord* focus_chunk,
+    const InitialTileWindow& window,
     int* selected_count)
 {
     std::vector<std::uint8_t> selected(chunks.chunks.size(), 1U);
-    if (focus_chunk != nullptr) {
-        *focus_chunk = ChunkCoord{};
-    }
     if (selected_count != nullptr) {
         *selected_count = static_cast<int>(selected.size());
     }
-    if (radius < 0 || !chunks.IsValid()) {
+    if (!window.limited || !chunks.IsValid()) {
         return selected;
     }
 
     selected.assign(chunks.chunks.size(), 0U);
-    const ChunkCoord focus = InitialMeshFocusChunk(map, chunks);
-    if (focus_chunk != nullptr) {
-        *focus_chunk = focus;
-    }
-
     int count = 0;
-    const int clamped_radius = std::max(0, radius);
     for (std::size_t index = 0; index < chunks.chunks.size(); ++index) {
-        const ChunkCoord coord = chunks.chunks[index].coord;
-        const int dx = std::abs(coord.x - focus.x);
-        const int dy = std::abs(coord.y - focus.y);
-        if (dx <= clamped_radius && dy <= clamped_radius) {
+        if (ChunkIntersectsTileWindow(chunks.chunks[index], window)) {
             selected[index] = 1U;
             ++count;
         }
+    }
+
+    if (count == 0) {
+        selected.assign(chunks.chunks.size(), 1U);
+        count = static_cast<int>(selected.size());
     }
     if (selected_count != nullptr) {
         *selected_count = count;
@@ -1214,16 +1238,16 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         logger_.Warn("chunk_grid", warning);
     }
 
-    const int initial_chunk_radius = ResolveInitialChunkBuildRadius(workspace_.runtime_map);
-    ChunkCoord initial_focus_chunk;
+    const int initial_tile_window_size = ResolveInitialTileWindowSize(workspace_.runtime_map);
+    const InitialTileWindow initial_tile_window = ResolveInitialTileWindow(
+        workspace_.runtime_map,
+        initial_tile_window_size);
     int initial_selected_chunks = 0;
     const std::vector<std::uint8_t> initial_chunk_selection = BuildInitialChunkSelection(
-        workspace_.runtime_map,
         next_chunk_grid,
-        initial_chunk_radius,
-        &initial_focus_chunk,
+        initial_tile_window,
         &initial_selected_chunks);
-    const bool partial_initial_mesh = initial_chunk_radius >= 0
+    const bool partial_initial_mesh = initial_tile_window.limited
         && initial_selected_chunks < static_cast<int>(next_chunk_grid.chunks.size());
 
     const SteadyTimePoint voxel_world_start = Now();
@@ -1237,11 +1261,11 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     if (partial_initial_mesh) {
         std::ostringstream out;
         out << "reason=" << reason;
-        out << " mode=initial_visible_mesh_only";
-        out << " radius=" << initial_chunk_radius;
-        out << " focus=" << initial_focus_chunk.x << ',' << initial_focus_chunk.y;
+        out << " mode=initial_tile_window";
+        out << " window=" << initial_tile_window.left << ',' << initial_tile_window.top << ','
+            << initial_tile_window.width << 'x' << initial_tile_window.height;
         out << " initial_chunks=" << initial_selected_chunks;
-        out << " pending_chunks=" << (next_chunk_grid.info.total_chunks - initial_selected_chunks);
+        out << " skipped_chunks=" << (next_chunk_grid.info.total_chunks - initial_selected_chunks);
         out << " total_chunks=" << next_chunk_grid.info.total_chunks;
         logger_.Info("chunk_pipeline", out.str());
     }
@@ -1366,11 +1390,12 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         out << " terrain_mesh_ms=" << ElapsedMs(terrain_mesh_start, terrain_mesh_finish);
         out << " transitions_ms=" << ElapsedMs(transitions_start, transitions_finish);
         out << " render_upload_ms=" << ElapsedMs(render_upload_start, render_upload_finish);
-        out << " initial_mesh=" << (partial_initial_mesh ? "partial" : "full");
+        out << " initial_area=" << (partial_initial_mesh ? "window" : "full");
         if (partial_initial_mesh) {
-            out << " initial_radius=" << initial_chunk_radius;
+            out << " initial_window=" << initial_tile_window.left << ',' << initial_tile_window.top << ','
+                << initial_tile_window.width << 'x' << initial_tile_window.height;
             out << " initial_chunks=" << initial_selected_chunks;
-            out << " pending_chunks=" << (next_chunk_grid.info.total_chunks - initial_selected_chunks);
+            out << " skipped_chunks=" << (next_chunk_grid.info.total_chunks - initial_selected_chunks);
         }
         out << " total_ms=" << ElapsedMs(pipeline_start, pipeline_finish);
         logger_.Info("chunk_pipeline_profile", out.str());
