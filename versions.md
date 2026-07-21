@@ -484,3 +484,10 @@
 - Added VOX3D_CHUNK_BUILDS_PER_FRAME and VOX3D_DISABLE_PROGRESSIVE_BUILD controls.
 - Added incremental raylib chunk upload for progressive builds without unloading existing models.
 - Status bar now shows built/total chunk progress.
+
+## v0.5.38 -> v0.5.39
+
+- Changed progressive chunk building to prioritize chunks near the current camera target/look direction instead of consuming the original startup-window ring order.
+- Added a camera lookahead score so newly built chunks tend to appear where the user is looking first.
+- Reduced the default progressive build rate to 1 chunk per frame; `VOX3D_CHUNK_BUILDS_PER_FRAME` still overrides it.
+- Extended progressive build logs with camera/map priority, target tile, and lookahead tile diagnostics.

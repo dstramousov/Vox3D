@@ -19,10 +19,12 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <cstddef>
 #include <cstdlib>
 #include <cmath>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -288,6 +290,84 @@ struct InitialTileWindow {
     return pending;
 }
 
+struct ProgressiveBuildPriority {
+    double target_x = 0.0;
+    double target_y = 0.0;
+    double lookahead_x = 0.0;
+    double lookahead_y = 0.0;
+    bool camera_based = false;
+};
+
+[[nodiscard]] ProgressiveBuildPriority BuildProgressivePriority(
+    const RuntimeMap& map,
+    const FreeFlyCameraStatus& camera,
+    int chunk_size_tiles)
+{
+    ProgressiveBuildPriority priority;
+    const double map_width = static_cast<double>(std::max(1, map.info.width));
+    const double map_height = static_cast<double>(std::max(1, map.info.height));
+    priority.target_x = map_width * 0.5;
+    priority.target_y = map_height * 0.5;
+    priority.lookahead_x = priority.target_x;
+    priority.lookahead_y = priority.target_y;
+
+    if (!camera.initialized) {
+        return priority;
+    }
+
+    priority.target_x = std::clamp(static_cast<double>(camera.target.x) + map_width * 0.5, 0.0, map_width - 1.0);
+    priority.target_y = std::clamp(map_height * 0.5 - static_cast<double>(camera.target.z), 0.0, map_height - 1.0);
+    priority.lookahead_x = priority.target_x;
+    priority.lookahead_y = priority.target_y;
+    priority.camera_based = true;
+
+    const double forward_x = static_cast<double>(camera.target.x - camera.position.x);
+    const double forward_y = static_cast<double>(camera.position.z - camera.target.z);
+    const double forward_len = std::sqrt(forward_x * forward_x + forward_y * forward_y);
+    if (forward_len > 0.000001) {
+        const double lookahead_tiles = static_cast<double>(std::max(1, chunk_size_tiles))
+            * static_cast<double>(ReadIntegerEnvironment("VOX3D_PROGRESSIVE_LOOKAHEAD_CHUNKS").value_or(6));
+        priority.lookahead_x = std::clamp(priority.target_x + forward_x / forward_len * lookahead_tiles, 0.0, map_width - 1.0);
+        priority.lookahead_y = std::clamp(priority.target_y + forward_y / forward_len * lookahead_tiles, 0.0, map_height - 1.0);
+    }
+    return priority;
+}
+
+[[nodiscard]] double ChunkPriorityScore(const ChunkInfo& chunk, const ProgressiveBuildPriority& priority)
+{
+    const double center_x = (static_cast<double>(chunk.bounds.min_x) + static_cast<double>(chunk.bounds.max_x)) * 0.5;
+    const double center_y = (static_cast<double>(chunk.bounds.min_y) + static_cast<double>(chunk.bounds.max_y)) * 0.5;
+    const double look_dx = center_x - priority.lookahead_x;
+    const double look_dy = center_y - priority.lookahead_y;
+    const double target_dx = center_x - priority.target_x;
+    const double target_dy = center_y - priority.target_y;
+    return look_dx * look_dx + look_dy * look_dy + (target_dx * target_dx + target_dy * target_dy) * 0.35;
+}
+
+[[nodiscard]] std::size_t PopBestProgressiveChunk(
+    const ChunkGrid& chunks,
+    std::vector<std::size_t>& pending,
+    const ProgressiveBuildPriority& priority)
+{
+    std::size_t best_position = 0;
+    double best_score = std::numeric_limits<double>::infinity();
+    for (std::size_t position = 0; position < pending.size(); ++position) {
+        const std::size_t chunk_index = pending[position];
+        if (chunk_index >= chunks.chunks.size()) {
+            continue;
+        }
+        const double score = ChunkPriorityScore(chunks.chunks[chunk_index], priority);
+        if (score < best_score || (score == best_score && chunk_index < pending[best_position])) {
+            best_score = score;
+            best_position = position;
+        }
+    }
+
+    const std::size_t chunk_index = pending[best_position];
+    pending.erase(pending.begin() + static_cast<std::ptrdiff_t>(best_position));
+    return chunk_index;
+}
+
 [[nodiscard]] int ResolveProgressiveBuildsPerFrame(bool partial_initial_mesh)
 {
     if (!partial_initial_mesh) {
@@ -296,7 +376,7 @@ struct InitialTileWindow {
     if (ReadIntegerEnvironment("VOX3D_DISABLE_PROGRESSIVE_BUILD").value_or(0) != 0) {
         return 0;
     }
-    return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_BUILDS_PER_FRAME").value_or(2), 0, 32);
+    return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_BUILDS_PER_FRAME").value_or(1), 0, 32);
 }
 
 void RecalculateCacheCountersLocal(ChunkMeshCache& cache)
@@ -1321,10 +1401,20 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         return;
     }
 
+    const ProgressiveBuildPriority priority = BuildProgressivePriority(
+        workspace_.runtime_map,
+        preview_camera_.Status(),
+        workspace_.chunk_size_tiles);
+
     std::vector<std::uint8_t> selected(workspace_.chunk_grid.chunks.size(), 0U);
     for (int index = 0; index < batch_size; ++index) {
-        const std::size_t chunk_index = workspace_.progressive_pending_chunks.front();
-        workspace_.progressive_pending_chunks.erase(workspace_.progressive_pending_chunks.begin());
+        if (workspace_.progressive_pending_chunks.empty()) {
+            break;
+        }
+        const std::size_t chunk_index = PopBestProgressiveChunk(
+            workspace_.chunk_grid,
+            workspace_.progressive_pending_chunks,
+            priority);
         if (chunk_index >= selected.size()) {
             continue;
         }
@@ -1391,6 +1481,11 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         out << " pending=" << workspace_.progressive_chunks_pending;
         out << " batch=" << batch_size;
         out << " batch_ms=" << ElapsedMs(batch_start, batch_finish);
+        out << " priority=" << (priority.camera_based ? "camera" : "map");
+        out << " target=" << static_cast<int>(std::lround(priority.target_x)) << ','
+            << static_cast<int>(std::lround(priority.target_y));
+        out << " lookahead=" << static_cast<int>(std::lround(priority.lookahead_x)) << ','
+            << static_cast<int>(std::lround(priority.lookahead_y));
         out << " models=" << chunk_mesh_preview_.Stats().models;
         logger_.Info("progressive_build", out.str());
         workspace_.progressive_log_timer = 0.0F;
@@ -1668,6 +1763,7 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         out << "started built=" << workspace_.progressive_chunks_built << '/' << workspace_.progressive_chunks_total;
         out << " pending=" << workspace_.progressive_chunks_pending;
         out << " chunks_per_frame=" << workspace_.progressive_build_per_frame;
+        out << " priority=camera_target";
         logger_.Info("progressive_build", out.str());
     }
 
