@@ -159,6 +159,69 @@ FaceVisibilityResult BuildFaceVisibility(const VoxelWorld& world)
     return result;
 }
 
+
+FaceVisibilityResult BuildFaceVisibilityForSelectedChunks(
+    const VoxelWorld& world,
+    const ChunkGrid& chunks,
+    const std::vector<std::uint8_t>& selected_chunks)
+{
+    FaceVisibilityResult result;
+
+    if (!world.IsValid()) {
+        result.diagnostics.AddWarning("cannot build selected face visibility from invalid voxel world");
+        return result;
+    }
+    if (!world.info.levels.has_value()) {
+        result.diagnostics.AddWarning("cannot build selected face visibility without valid level range");
+        return result;
+    }
+    if (!chunks.IsValid()) {
+        result.diagnostics.AddWarning("cannot build selected face visibility from invalid chunk grid");
+        return result;
+    }
+    if (selected_chunks.size() != chunks.chunks.size()) {
+        result.diagnostics.AddWarning("cannot build selected face visibility because selection size differs from chunk grid");
+        return result;
+    }
+
+    CopyWorldShape(world.info, result.info);
+    result.info.solid_blocks = 0;
+    result.info.naive_faces = 0;
+
+    for (std::size_t chunk_index = 0; chunk_index < chunks.chunks.size(); ++chunk_index) {
+        if (selected_chunks[chunk_index] == 0U) {
+            continue;
+        }
+
+        const ChunkInfo& chunk = chunks.chunks[chunk_index];
+        if (!chunk.bounds.IsValid()) {
+            continue;
+        }
+
+        for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
+            for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
+                const VoxelColumn* column = world.FindColumn(TileCoord{x, y});
+                if (column == nullptr) {
+                    continue;
+                }
+
+                const std::uint64_t column_solid_blocks = column->SolidBlockCount();
+                result.info.solid_blocks += column_solid_blocks;
+                result.info.naive_faces += SafeNaiveFaceCount(column_solid_blocks);
+                for (int level = column->base_level; level <= column->surface_level; ++level) {
+                    CountBlockFaces(world, BlockCoord{x, y, level}, result.info);
+                }
+            }
+        }
+    }
+
+    if (!result.IsValid()) {
+        result.diagnostics.AddWarning("selected face visibility validation failed after build");
+    }
+
+    return result;
+}
+
 std::string ToLogString(const FaceVisibilityResult& result)
 {
     std::ostringstream out;

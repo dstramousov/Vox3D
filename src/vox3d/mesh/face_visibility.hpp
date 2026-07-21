@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace vox3d {
 
@@ -71,6 +72,23 @@ struct FaceVisibilityResult {
  * @return Face visibility counters and diagnostics.
  */
 [[nodiscard]] FaceVisibilityResult BuildFaceVisibility(const VoxelWorld& world);
+
+/**
+ * @brief Computes face-visibility statistics only for selected chunks.
+ *
+ * Blocks inside selected chunks are counted while neighbor checks still use the
+ * complete voxel world. This keeps counters aligned with partial startup mesh
+ * builds without treating unbuilt neighboring chunks as empty space.
+ *
+ * @param world Voxel world to analyze.
+ * @param chunks Chunk grid that defines selected chunk bounds.
+ * @param selected_chunks Per-chunk mask, non-zero means analyze this chunk.
+ * @return Face visibility counters and diagnostics for selected chunks.
+ */
+[[nodiscard]] FaceVisibilityResult BuildFaceVisibilityForSelectedChunks(
+    const VoxelWorld& world,
+    const ChunkGrid& chunks,
+    const std::vector<std::uint8_t>& selected_chunks);
 
 /**
  * @brief Builds a compact stable log string for face-visibility diagnostics.

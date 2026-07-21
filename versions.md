@@ -454,3 +454,9 @@
 - The initial window is centered on the map so the startup camera has drawable terrain immediately after upload.
 - Added `VOX3D_INITIAL_TILE_WINDOW` to override the initial tile window size; `0` disables the limit and forces a full mesh build.
 - Updated chunk pipeline logs to report `initial_area`, `initial_window`, selected initial chunks, and skipped chunks.
+
+## v0.5.34 -> v0.5.35
+
+- Limited initial face-visibility analysis to the same 256x256-tile startup window used by partial mesh builds.
+- Kept neighbor checks against the full voxel world so window-edge meshes preserve the same culling semantics as regular chunk builds.
+- Reduced large-map startup work in `initial_area=window` mode without changing full-build behavior.

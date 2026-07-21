@@ -1271,7 +1271,9 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     }
 
     const SteadyTimePoint face_visibility_start = Now();
-    FaceVisibilityResult next_face_visibility = BuildFaceVisibility(next_voxel_world);
+    FaceVisibilityResult next_face_visibility = partial_initial_mesh
+        ? BuildFaceVisibilityForSelectedChunks(next_voxel_world, next_chunk_grid, initial_chunk_selection)
+        : BuildFaceVisibility(next_voxel_world);
     const SteadyTimePoint face_visibility_finish = Now();
     logger_.Info("face_visibility", "reason=" + std::string(reason) + " " + ToLogString(next_face_visibility));
     for (const auto& warning : next_face_visibility.diagnostics.warnings) {
