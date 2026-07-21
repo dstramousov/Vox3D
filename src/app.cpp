@@ -333,6 +333,22 @@ struct ProgressiveBuildPriority {
     return priority;
 }
 
+[[nodiscard]] double ChunkCenterDistanceSq(const ChunkInfo& chunk, double tile_x, double tile_y)
+{
+    const double center_x = (static_cast<double>(chunk.bounds.min_x) + static_cast<double>(chunk.bounds.max_x)) * 0.5;
+    const double center_y = (static_cast<double>(chunk.bounds.min_y) + static_cast<double>(chunk.bounds.max_y)) * 0.5;
+    const double dx = center_x - tile_x;
+    const double dy = center_y - tile_y;
+    return dx * dx + dy * dy;
+}
+
+[[nodiscard]] double ChunkInterestDistanceSq(const ChunkInfo& chunk, const ProgressiveBuildPriority& priority)
+{
+    return std::min(
+        ChunkCenterDistanceSq(chunk, priority.target_x, priority.target_y),
+        ChunkCenterDistanceSq(chunk, priority.lookahead_x, priority.lookahead_y));
+}
+
 [[nodiscard]] double ChunkPriorityScore(const ChunkInfo& chunk, const ProgressiveBuildPriority& priority)
 {
     const double center_x = (static_cast<double>(chunk.bounds.min_x) + static_cast<double>(chunk.bounds.max_x)) * 0.5;
@@ -344,23 +360,40 @@ struct ProgressiveBuildPriority {
     return look_dx * look_dx + look_dy * look_dy + (target_dx * target_dx + target_dy * target_dy) * 0.35;
 }
 
-[[nodiscard]] std::size_t PopBestProgressiveChunk(
+[[nodiscard]] std::optional<std::size_t> PopBestProgressiveChunk(
     const ChunkGrid& chunks,
     std::vector<std::size_t>& pending,
-    const ProgressiveBuildPriority& priority)
+    const ProgressiveBuildPriority& priority,
+    int interest_radius_chunks,
+    int chunk_size_tiles)
 {
-    std::size_t best_position = 0;
+    if (pending.empty()) {
+        return std::nullopt;
+    }
+
+    const double radius_tiles = static_cast<double>(std::max(1, interest_radius_chunks))
+        * static_cast<double>(std::max(1, chunk_size_tiles));
+    const double radius_sq = radius_tiles * radius_tiles;
+    std::size_t best_position = pending.size();
     double best_score = std::numeric_limits<double>::infinity();
     for (std::size_t position = 0; position < pending.size(); ++position) {
         const std::size_t chunk_index = pending[position];
         if (chunk_index >= chunks.chunks.size()) {
             continue;
         }
+        if (ChunkInterestDistanceSq(chunks.chunks[chunk_index], priority) > radius_sq) {
+            continue;
+        }
         const double score = ChunkPriorityScore(chunks.chunks[chunk_index], priority);
-        if (score < best_score || (score == best_score && chunk_index < pending[best_position])) {
+        if (score < best_score
+            || (score == best_score && (best_position >= pending.size() || chunk_index < pending[best_position]))) {
             best_score = score;
             best_position = position;
         }
+    }
+
+    if (best_position >= pending.size()) {
+        return std::nullopt;
     }
 
     const std::size_t chunk_index = pending[best_position];
@@ -377,6 +410,33 @@ struct ProgressiveBuildPriority {
         return 0;
     }
     return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_BUILDS_PER_FRAME").value_or(1), 0, 32);
+}
+
+
+[[nodiscard]] int ResolveProgressiveInterestRadiusChunks()
+{
+    return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_INTEREST_RADIUS").value_or(10), 1, 64);
+}
+
+[[nodiscard]] int ResolveProgressiveKeepRadiusChunks()
+{
+    return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_KEEP_RADIUS").value_or(14), 1, 96);
+}
+
+[[nodiscard]] int ResolveRenderChunkBudget()
+{
+    return std::clamp(ReadIntegerEnvironment("VOX3D_RENDER_CHUNK_BUDGET").value_or(640), 1, 100000);
+}
+
+[[nodiscard]] int ResolveRenderChunkHardLimit()
+{
+    const int budget = ResolveRenderChunkBudget();
+    return std::max(budget, std::clamp(ReadIntegerEnvironment("VOX3D_RENDER_CHUNK_HARD_LIMIT").value_or(768), 1, 100000));
+}
+
+[[nodiscard]] int ResolveProgressiveEvictsPerFrame()
+{
+    return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_EVICTS_PER_FRAME").value_or(4), 0, 256);
 }
 
 void RecalculateCacheCountersLocal(ChunkMeshCache& cache)
@@ -467,6 +527,96 @@ void MergeSelectedMeshBuildChunks(
         target.chunks[index] = source.chunks[index];
     }
     RecalculateMeshBuildInfoLocal(target);
+}
+
+
+void ClearSelectedCacheChunks(ChunkMeshCache& target, const std::vector<std::uint8_t>& selected)
+{
+    if (selected.size() != target.chunks.size()) {
+        return;
+    }
+    for (std::size_t index = 0; index < selected.size(); ++index) {
+        if (selected[index] == 0U) {
+            continue;
+        }
+        target.chunks[index].vertices.clear();
+        target.chunks[index].indices.clear();
+        target.chunks[index].faces.clear();
+        if (index < target.dirty.size()) {
+            target.dirty[index] = 0U;
+        }
+    }
+    RecalculateCacheCountersLocal(target);
+}
+
+void ClearSelectedMeshBuildChunks(ChunkMeshBuildResult& target, const std::vector<std::uint8_t>& selected)
+{
+    if (selected.size() != target.chunks.size()) {
+        return;
+    }
+    for (std::size_t index = 0; index < selected.size(); ++index) {
+        if (selected[index] == 0U) {
+            continue;
+        }
+        target.chunks[index].vertices.clear();
+        target.chunks[index].indices.clear();
+        target.chunks[index].faces.clear();
+    }
+    RecalculateMeshBuildInfoLocal(target);
+}
+
+void AddPendingChunkIfMissing(std::vector<std::size_t>& pending, std::size_t chunk_index)
+{
+    if (std::find(pending.begin(), pending.end(), chunk_index) == pending.end()) {
+        pending.push_back(chunk_index);
+    }
+}
+
+[[nodiscard]] std::vector<std::size_t> SelectProgressiveEvictionChunks(
+    const ChunkGrid& chunks,
+    const std::vector<std::uint8_t>& resident,
+    const ProgressiveBuildPriority& priority,
+    int keep_radius_chunks,
+    int chunk_size_tiles,
+    int resident_budget,
+    int resident_hard_limit,
+    int evicts_per_frame)
+{
+    std::vector<std::size_t> evictable;
+    const int resident_count = static_cast<int>(std::count(resident.begin(), resident.end(), static_cast<std::uint8_t>(1)));
+    if (!chunks.IsValid() || resident_count <= resident_budget || evicts_per_frame <= 0) {
+        return evictable;
+    }
+
+    const double keep_tiles = static_cast<double>(std::max(1, keep_radius_chunks))
+        * static_cast<double>(std::max(1, chunk_size_tiles));
+    const double keep_sq = keep_tiles * keep_tiles;
+    const bool over_hard_limit = resident_count > resident_hard_limit;
+    for (std::size_t index = 0; index < resident.size() && index < chunks.chunks.size(); ++index) {
+        if (resident[index] == 0U) {
+            continue;
+        }
+        const double distance_sq = ChunkInterestDistanceSq(chunks.chunks[index], priority);
+        if (over_hard_limit || distance_sq > keep_sq) {
+            evictable.push_back(index);
+        }
+    }
+
+    std::sort(evictable.begin(), evictable.end(), [&](std::size_t lhs, std::size_t rhs) {
+        const double left = ChunkInterestDistanceSq(chunks.chunks[lhs], priority);
+        const double right = ChunkInterestDistanceSq(chunks.chunks[rhs], priority);
+        if (left == right) {
+            return lhs > rhs;
+        }
+        return left > right;
+    });
+
+    const int target_evict_count = std::max(0, resident_count - resident_budget);
+    const std::size_t limit = static_cast<std::size_t>(std::min(evicts_per_frame, target_evict_count));
+    if (evictable.size() > limit) {
+        evictable.resize(limit);
+    }
+    return evictable;
 }
 
 void MergeFaceVisibility(FaceVisibilityResult& target, const FaceVisibilityResult& source)
@@ -1394,27 +1544,75 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         return;
     }
 
-    const int batch_size = std::min(
-        workspace_.progressive_build_per_frame,
-        static_cast<int>(workspace_.progressive_pending_chunks.size()));
-    if (batch_size <= 0) {
-        return;
-    }
-
     const ProgressiveBuildPriority priority = BuildProgressivePriority(
         workspace_.runtime_map,
         preview_camera_.Status(),
         workspace_.chunk_size_tiles);
+    const int interest_radius_chunks = ResolveProgressiveInterestRadiusChunks();
+    const int keep_radius_chunks = std::max(interest_radius_chunks, ResolveProgressiveKeepRadiusChunks());
+    const int render_budget = ResolveRenderChunkBudget();
+    const int hard_limit = std::max(render_budget, ResolveRenderChunkHardLimit());
+    const int evicts_per_frame = ResolveProgressiveEvictsPerFrame();
+
+    int evicted_count = 0;
+    const std::vector<std::size_t> evicted_chunks = SelectProgressiveEvictionChunks(
+        workspace_.chunk_grid,
+        workspace_.progressive_built_chunks,
+        priority,
+        keep_radius_chunks,
+        workspace_.chunk_size_tiles,
+        render_budget,
+        hard_limit,
+        evicts_per_frame);
+    if (!evicted_chunks.empty()) {
+        std::vector<std::uint8_t> evicted_selection(workspace_.chunk_grid.chunks.size(), 0U);
+        std::vector<ChunkCoord> evicted_coords;
+        evicted_coords.reserve(evicted_chunks.size());
+        for (std::size_t chunk_index : evicted_chunks) {
+            if (chunk_index >= evicted_selection.size() || chunk_index >= workspace_.chunk_grid.chunks.size()) {
+                continue;
+            }
+            evicted_selection[chunk_index] = 1U;
+            evicted_coords.push_back(workspace_.chunk_grid.chunks[chunk_index].coord);
+            workspace_.progressive_built_chunks[chunk_index] = 0U;
+            AddPendingChunkIfMissing(workspace_.progressive_pending_chunks, chunk_index);
+            ++evicted_count;
+        }
+        if (evicted_count > 0) {
+            ClearSelectedCacheChunks(workspace_.simple_chunk_mesh_cache, evicted_selection);
+            ClearSelectedCacheChunks(workspace_.greedy_chunk_mesh_cache, evicted_selection);
+            ClearSelectedMeshBuildChunks(workspace_.simple_chunk_meshes, evicted_selection);
+            ClearSelectedMeshBuildChunks(workspace_.greedy_chunk_meshes, evicted_selection);
+            ClearSelectedMeshBuildChunks(workspace_.terrain_chunk_meshes, evicted_selection);
+            const std::size_t unloaded_chunks = chunk_mesh_preview_.UnloadChunks(evicted_coords);
+            (void)unloaded_chunks;
+            SetActiveMeshCacheFromMode();
+        }
+    }
+
+    const int resident_count = static_cast<int>(std::count(
+        workspace_.progressive_built_chunks.begin(),
+        workspace_.progressive_built_chunks.end(),
+        static_cast<std::uint8_t>(1)));
+    const int build_capacity = std::max(0, hard_limit - resident_count);
+    const int batch_size = std::min(
+        {workspace_.progressive_build_per_frame,
+         static_cast<int>(workspace_.progressive_pending_chunks.size()),
+         build_capacity});
 
     std::vector<std::uint8_t> selected(workspace_.chunk_grid.chunks.size(), 0U);
+    int selected_count = 0;
     for (int index = 0; index < batch_size; ++index) {
-        if (workspace_.progressive_pending_chunks.empty()) {
-            break;
-        }
-        const std::size_t chunk_index = PopBestProgressiveChunk(
+        std::optional<std::size_t> maybe_chunk_index = PopBestProgressiveChunk(
             workspace_.chunk_grid,
             workspace_.progressive_pending_chunks,
-            priority);
+            priority,
+            interest_radius_chunks,
+            workspace_.chunk_size_tiles);
+        if (!maybe_chunk_index.has_value()) {
+            break;
+        }
+        const std::size_t chunk_index = *maybe_chunk_index;
         if (chunk_index >= selected.size()) {
             continue;
         }
@@ -1422,45 +1620,55 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         if (chunk_index < workspace_.progressive_built_chunks.size()) {
             workspace_.progressive_built_chunks[chunk_index] = 1U;
         }
+        ++selected_count;
     }
 
     const SteadyTimePoint batch_start = Now();
-    FaceVisibilityResult batch_visibility = BuildFaceVisibilityForSelectedChunks(
-        workspace_.voxel_world,
-        workspace_.chunk_grid,
-        selected);
-    ChunkMeshCache batch_simple = BuildChunkMeshCacheForSelectedChunks(
-        workspace_.voxel_world,
-        workspace_.chunk_grid,
-        ChunkMeshBuildMode::kSimpleFaces,
-        selected);
-    ChunkMeshCache batch_greedy = BuildChunkMeshCacheForSelectedChunks(
-        workspace_.voxel_world,
-        workspace_.chunk_grid,
-        ChunkMeshBuildMode::kGreedyFaces,
-        selected);
-    ChunkMeshBuildResult batch_terrain = BuildTerrainChunkMeshesForSelectedChunks(
-        workspace_.runtime_map,
-        workspace_.chunk_grid,
-        selected);
+    bool uploaded = true;
+    if (selected_count > 0) {
+        FaceVisibilityResult batch_visibility = BuildFaceVisibilityForSelectedChunks(
+            workspace_.voxel_world,
+            workspace_.chunk_grid,
+            selected);
+        ChunkMeshCache batch_simple = BuildChunkMeshCacheForSelectedChunks(
+            workspace_.voxel_world,
+            workspace_.chunk_grid,
+            ChunkMeshBuildMode::kSimpleFaces,
+            selected);
+        ChunkMeshCache batch_greedy = BuildChunkMeshCacheForSelectedChunks(
+            workspace_.voxel_world,
+            workspace_.chunk_grid,
+            ChunkMeshBuildMode::kGreedyFaces,
+            selected);
+        ChunkMeshBuildResult batch_terrain = BuildTerrainChunkMeshesForSelectedChunks(
+            workspace_.runtime_map,
+            workspace_.chunk_grid,
+            selected);
 
-    MergeFaceVisibility(workspace_.face_visibility, batch_visibility);
-    MergeSelectedCacheChunks(workspace_.simple_chunk_mesh_cache, batch_simple, selected);
-    MergeSelectedCacheChunks(workspace_.greedy_chunk_mesh_cache, batch_greedy, selected);
-    MergeSelectedMeshBuildChunks(workspace_.terrain_chunk_meshes, batch_terrain, selected);
-    workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
-    workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
-    SetActiveMeshCacheFromMode();
+        MergeFaceVisibility(workspace_.face_visibility, batch_visibility);
+        MergeSelectedCacheChunks(workspace_.simple_chunk_mesh_cache, batch_simple, selected);
+        MergeSelectedCacheChunks(workspace_.greedy_chunk_mesh_cache, batch_greedy, selected);
+        MergeSelectedMeshBuildChunks(workspace_.terrain_chunk_meshes, batch_terrain, selected);
+        workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
+        workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
+        SetActiveMeshCacheFromMode();
 
-    ChunkMeshBuildResult active_batch;
-    if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
-        active_batch = std::move(batch_terrain);
-    } else if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
-        active_batch = ToChunkMeshBuildResult(batch_greedy);
+        ChunkMeshBuildResult active_batch;
+        if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
+            active_batch = std::move(batch_terrain);
+        } else if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
+            active_batch = ToChunkMeshBuildResult(batch_greedy);
+        } else {
+            active_batch = ToChunkMeshBuildResult(batch_simple);
+        }
+        uploaded = chunk_mesh_preview_.UploadAdditional(active_batch, ToRaylibColorMode(workspace_.color_mode));
+        if (!uploaded) {
+            logger_.Warn("progressive_build", "batch produced no uploaded chunks");
+        }
     } else {
-        active_batch = ToChunkMeshBuildResult(batch_simple);
+        SetActiveMeshCacheFromMode();
     }
-    const bool uploaded = chunk_mesh_preview_.UploadAdditional(active_batch, ToRaylibColorMode(workspace_.color_mode));
+
     RefreshMeshOptimizationStats();
     UpdateVisibilityStats();
 
@@ -1472,15 +1680,19 @@ void App::AdvanceProgressiveChunkBuild(float dt)
     const SteadyTimePoint batch_finish = Now();
     workspace_.progressive_log_timer += dt;
 
-    if (!uploaded) {
-        logger_.Warn("progressive_build", "batch produced no uploaded chunks");
-    }
+    const bool idle = selected_count == 0 && evicted_count == 0;
     if (workspace_.progressive_log_timer >= 1.0F || workspace_.progressive_pending_chunks.empty()) {
         std::ostringstream out;
-        out << "built=" << workspace_.progressive_chunks_built << '/' << workspace_.progressive_chunks_total;
+        out << "state=" << (idle ? "idle" : "active");
+        out << " resident=" << workspace_.progressive_chunks_built << '/' << workspace_.progressive_chunks_total;
         out << " pending=" << workspace_.progressive_chunks_pending;
-        out << " batch=" << batch_size;
+        out << " built_batch=" << selected_count;
+        out << " evicted_batch=" << evicted_count;
         out << " batch_ms=" << ElapsedMs(batch_start, batch_finish);
+        out << " interest_radius=" << interest_radius_chunks;
+        out << " keep_radius=" << keep_radius_chunks;
+        out << " budget=" << render_budget;
+        out << " hard_limit=" << hard_limit;
         out << " priority=" << (priority.camera_based ? "camera" : "map");
         out << " target=" << static_cast<int>(std::lround(priority.target_x)) << ','
             << static_cast<int>(std::lround(priority.target_y));
@@ -1496,7 +1708,7 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         workspace_.progressive_build_enabled = false;
         logger_.Info(
             "progressive_build",
-            "completed built=" + std::to_string(workspace_.progressive_chunks_built) + '/'
+            "completed resident=" + std::to_string(workspace_.progressive_chunks_built) + '/'
                 + std::to_string(workspace_.progressive_chunks_total));
     }
 

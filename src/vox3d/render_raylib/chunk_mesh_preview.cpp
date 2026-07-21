@@ -1510,6 +1510,63 @@ bool RaylibChunkMeshPreview::UploadAdditional(
     return stats_.models > before_models;
 }
 
+
+std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& coords)
+{
+    if (coords.empty() || chunks_.empty()) {
+        return 0;
+    }
+
+    auto should_remove = [&](ChunkCoord coord) {
+        return std::any_of(coords.begin(), coords.end(), [&](ChunkCoord removed) {
+            return removed.x == coord.x && removed.y == coord.y;
+        });
+    };
+
+    std::vector<RaylibUploadedChunkModel> kept;
+    kept.reserve(chunks_.size());
+    std::vector<ChunkCoord> removed_unique;
+    for (RaylibUploadedChunkModel& chunk : chunks_) {
+        if (!should_remove(chunk.coord)) {
+            kept.push_back(std::move(chunk));
+            continue;
+        }
+        if (chunk.model.meshCount > 0 && chunk.model.meshes != nullptr) {
+            UnloadModel(chunk.model);
+        }
+        const bool known = std::any_of(removed_unique.begin(), removed_unique.end(), [&](ChunkCoord removed) {
+            return removed.x == chunk.coord.x && removed.y == chunk.coord.y;
+        });
+        if (!known) {
+            removed_unique.push_back(chunk.coord);
+        }
+    }
+
+    chunks_ = std::move(kept);
+    visibility_items_.clear();
+    stats_ = RaylibChunkMeshPreviewStats{};
+    for (RaylibUploadedChunkModel& chunk : chunks_) {
+        auto existing = std::find_if(
+            visibility_items_.begin(),
+            visibility_items_.end(),
+            [&](const ChunkVisibilityItem& item) {
+                return item.coord.x == chunk.coord.x && item.coord.y == chunk.coord.y;
+            });
+        if (existing == visibility_items_.end()) {
+            chunk.visibility_item_index = visibility_items_.size();
+            visibility_items_.push_back(ChunkVisibilityItem{chunk.coord, chunk.world_bounds, chunk.faces});
+        } else {
+            chunk.visibility_item_index = static_cast<std::size_t>(std::distance(visibility_items_.begin(), existing));
+        }
+        ++stats_.models;
+        stats_.faces += chunk.faces;
+        stats_.vertices += chunk.faces * 4ULL;
+        stats_.indices += chunk.faces * 6ULL;
+    }
+    stats_.uploaded = !chunks_.empty();
+    return removed_unique.size();
+}
+
 void RaylibChunkMeshPreview::Draw(
     Rectangle viewport,
     const ChunkMeshBuildResult& build_result,

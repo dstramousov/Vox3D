@@ -332,7 +332,7 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             + " | " + VisibilityModeLabel(workspace_state.visibility_mode)
             + " | Visible " + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
             + std::to_string(workspace_state.visibility_stats.resident_chunks)
-            + " | Chunks " + std::to_string(workspace_state.progressive_chunks_built) + "/"
+            + " | Resident " + std::to_string(workspace_state.progressive_chunks_built) + "/"
             + std::to_string(workspace_state.progressive_chunks_total)
             + " | Drawn " + std::to_string(workspace_state.visibility_stats.drawn_models)
             + " | Faces " + std::to_string(workspace_state.visibility_stats.drawn_faces)
@@ -345,7 +345,7 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
         + " | Chunk " + std::to_string(workspace_state.chunk_size_tiles)
         + " | Faces " + std::to_string(workspace_state.mesh_stats.active_faces)
         + " | Models " + std::to_string(workspace_state.mesh_stats.draw_models)
-        + " | Chunks " + std::to_string(workspace_state.progressive_chunks_built) + "/"
+        + " | Resident " + std::to_string(workspace_state.progressive_chunks_built) + "/"
         + std::to_string(workspace_state.progressive_chunks_total)
         + " | Saved " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio())
         + " | " + PathStatusCompactText(workspace_state)

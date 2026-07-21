@@ -491,3 +491,11 @@
 - Added a camera lookahead score so newly built chunks tend to appear where the user is looking first.
 - Reduced the default progressive build rate to 1 chunk per frame; `VOX3D_CHUNK_BUILDS_PER_FRAME` still overrides it.
 - Extended progressive build logs with camera/map priority, target tile, and lookahead tile diagnostics.
+
+## v0.5.39 -> v0.5.40
+
+- Replaced progressive full-map chunk build with an interest-based render chunk cache.
+- Progressive startup now builds only chunks inside the camera interest radius and idles when the nearby area is ready.
+- Added render chunk budget, hard limit, keep radius, and per-frame eviction controls for large maps.
+- Distant resident chunks can be evicted from GPU/render mesh while CPU runtime map data remains loaded.
+- Status bar now reports resident chunks instead of implying the whole map must be built.

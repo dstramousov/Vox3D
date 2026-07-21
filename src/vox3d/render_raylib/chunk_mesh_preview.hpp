@@ -258,6 +258,18 @@ public:
     [[nodiscard]] bool UploadAdditional(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode);
 
     /**
+     * @brief Unloads uploaded models for the specified chunk coordinates.
+     *
+     * This is used by the large-map render cache to evict distant chunks while
+     * keeping the CPU-side runtime map available. Coordinates not present in
+     * the preview are ignored.
+     *
+     * @param coords Chunk coordinates to remove from the resident renderer set.
+     * @return Number of unique chunk coordinates removed.
+     */
+    [[nodiscard]] std::size_t UnloadChunks(const std::vector<ChunkCoord>& coords);
+
+    /**
      * @brief Draws uploaded chunk mesh models inside the viewport rectangle.
      *
      * @param viewport Screen-space viewport rectangle.
