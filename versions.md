@@ -476,3 +476,11 @@
 - Added `VOX3D_STARTUP_CORNER=nw|ne|sw|se` to choose the startup window corner; the default is `se`.
 - Added `VOX3D_STARTUP_VIEW=map` or `VOX3D_STARTUP_VIEW=flyin` to force the older full-map startup fly-in for diagnostics.
 - Added `startup_view` logging with corner, initial window, camera position, and target diagnostics.
+
+## v0.5.37 -> v0.5.38
+
+- Added progressive chunk build after the initial 256x256 startup window is shown.
+- Pending chunks are queued by distance from the startup window and built in small per-frame batches.
+- Added VOX3D_CHUNK_BUILDS_PER_FRAME and VOX3D_DISABLE_PROGRESSIVE_BUILD controls.
+- Added incremental raylib chunk upload for progressive builds without unloading existing models.
+- Status bar now shows built/total chunk progress.

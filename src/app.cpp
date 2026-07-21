@@ -246,6 +246,163 @@ struct InitialTileWindow {
     return selected;
 }
 
+
+[[nodiscard]] std::vector<std::size_t> BuildProgressivePendingChunks(
+    const ChunkGrid& chunks,
+    const std::vector<std::uint8_t>& initial_selection,
+    const InitialTileWindow& window)
+{
+    std::vector<std::size_t> pending;
+    if (!chunks.IsValid() || initial_selection.size() != chunks.chunks.size()) {
+        return pending;
+    }
+
+    const double window_center_x = static_cast<double>(window.left) + static_cast<double>(window.width) * 0.5;
+    const double window_center_y = static_cast<double>(window.top) + static_cast<double>(window.height) * 0.5;
+    pending.reserve(chunks.chunks.size());
+    for (std::size_t index = 0; index < chunks.chunks.size(); ++index) {
+        if (initial_selection[index] != 0U) {
+            continue;
+        }
+        pending.push_back(index);
+    }
+
+    std::sort(pending.begin(), pending.end(), [&](std::size_t lhs, std::size_t rhs) {
+        const ChunkInfo& left_chunk = chunks.chunks[lhs];
+        const ChunkInfo& right_chunk = chunks.chunks[rhs];
+        const double left_x = (static_cast<double>(left_chunk.bounds.min_x) + static_cast<double>(left_chunk.bounds.max_x)) * 0.5;
+        const double left_y = (static_cast<double>(left_chunk.bounds.min_y) + static_cast<double>(left_chunk.bounds.max_y)) * 0.5;
+        const double right_x = (static_cast<double>(right_chunk.bounds.min_x) + static_cast<double>(right_chunk.bounds.max_x)) * 0.5;
+        const double right_y = (static_cast<double>(right_chunk.bounds.min_y) + static_cast<double>(right_chunk.bounds.max_y)) * 0.5;
+        const double left_dx = left_x - window_center_x;
+        const double left_dy = left_y - window_center_y;
+        const double right_dx = right_x - window_center_x;
+        const double right_dy = right_y - window_center_y;
+        const double left_distance = left_dx * left_dx + left_dy * left_dy;
+        const double right_distance = right_dx * right_dx + right_dy * right_dy;
+        if (left_distance == right_distance) {
+            return lhs < rhs;
+        }
+        return left_distance < right_distance;
+    });
+    return pending;
+}
+
+[[nodiscard]] int ResolveProgressiveBuildsPerFrame(bool partial_initial_mesh)
+{
+    if (!partial_initial_mesh) {
+        return 0;
+    }
+    if (ReadIntegerEnvironment("VOX3D_DISABLE_PROGRESSIVE_BUILD").value_or(0) != 0) {
+        return 0;
+    }
+    return std::clamp(ReadIntegerEnvironment("VOX3D_CHUNK_BUILDS_PER_FRAME").value_or(2), 0, 32);
+}
+
+void RecalculateCacheCountersLocal(ChunkMeshCache& cache)
+{
+    cache.info.non_empty_chunks = 0;
+    cache.info.faces = 0;
+    cache.info.vertices = 0;
+    cache.info.indices = 0;
+    cache.info.dirty_chunks = cache.DirtyCount();
+    for (const ChunkMeshData& mesh : cache.chunks) {
+        if (!mesh.faces.empty()) {
+            ++cache.info.non_empty_chunks;
+        }
+        cache.info.faces += static_cast<std::uint64_t>(mesh.faces.size());
+        cache.info.vertices += static_cast<std::uint64_t>(mesh.vertices.size());
+        cache.info.indices += static_cast<std::uint64_t>(mesh.indices.size());
+    }
+}
+
+void MergeSelectedCacheChunks(ChunkMeshCache& target, const ChunkMeshCache& source, const std::vector<std::uint8_t>& selected)
+{
+    if (target.chunks.size() != source.chunks.size() || selected.size() != source.chunks.size()) {
+        return;
+    }
+    for (std::size_t index = 0; index < selected.size(); ++index) {
+        if (selected[index] == 0U) {
+            continue;
+        }
+        target.chunks[index] = source.chunks[index];
+        if (index < target.dirty.size()) {
+            target.dirty[index] = 0U;
+        }
+    }
+    RecalculateCacheCountersLocal(target);
+}
+
+void RecalculateMeshBuildInfoLocal(ChunkMeshBuildResult& result)
+{
+    result.info.visible_faces = 0;
+    result.info.terrain_raw_top_faces = 0;
+    result.info.terrain_raw_wall_faces = 0;
+    result.info.terrain_top_faces = 0;
+    result.info.terrain_wall_faces = 0;
+    result.info.terrain_cliff_faces = 0;
+    result.info.vertices = 0;
+    result.info.indices = 0;
+    result.info.non_empty_chunks = 0;
+    for (const ChunkMeshData& mesh : result.chunks) {
+        if (!mesh.faces.empty()) {
+            ++result.info.non_empty_chunks;
+        }
+        result.info.visible_faces += static_cast<std::uint64_t>(mesh.faces.size());
+        result.info.vertices += static_cast<std::uint64_t>(mesh.vertices.size());
+        result.info.indices += static_cast<std::uint64_t>(mesh.indices.size());
+        for (const MeshFace& face : mesh.faces) {
+            switch (face.terrain_pass) {
+                case TerrainRenderPass::kTops:
+                    ++result.info.terrain_raw_top_faces;
+                    ++result.info.terrain_top_faces;
+                    break;
+                case TerrainRenderPass::kWalls:
+                    ++result.info.terrain_raw_wall_faces;
+                    ++result.info.terrain_wall_faces;
+                    break;
+                case TerrainRenderPass::kCliffs:
+                    ++result.info.terrain_raw_wall_faces;
+                    ++result.info.terrain_cliff_faces;
+                    break;
+                case TerrainRenderPass::kBody:
+                    break;
+            }
+        }
+    }
+}
+
+void MergeSelectedMeshBuildChunks(
+    ChunkMeshBuildResult& target,
+    const ChunkMeshBuildResult& source,
+    const std::vector<std::uint8_t>& selected)
+{
+    if (target.chunks.size() != source.chunks.size() || selected.size() != source.chunks.size()) {
+        return;
+    }
+    for (std::size_t index = 0; index < selected.size(); ++index) {
+        if (selected[index] == 0U) {
+            continue;
+        }
+        target.chunks[index] = source.chunks[index];
+    }
+    RecalculateMeshBuildInfoLocal(target);
+}
+
+void MergeFaceVisibility(FaceVisibilityResult& target, const FaceVisibilityResult& source)
+{
+    target.info.solid_blocks += source.info.solid_blocks;
+    target.info.naive_faces += source.info.naive_faces;
+    target.info.visible_faces += source.info.visible_faces;
+    target.info.culled_faces += source.info.culled_faces;
+    for (std::size_t index = 0; index < target.info.visible_by_direction.values.size(); ++index) {
+        target.info.visible_by_direction.values[index] += source.info.visible_by_direction.values[index];
+    }
+    for (const auto& warning : source.diagnostics.warnings) {
+        target.diagnostics.AddWarning(warning);
+    }
+}
+
 [[nodiscard]] std::uint64_t WorldGridLineCount(const ChunkMeshBuildResult& mesh)
 {
     if (!mesh.IsValid()) {
@@ -1124,6 +1281,8 @@ void App::HandleDialogInput()
 
 void App::Update(float dt)
 {
+    AdvanceProgressiveChunkBuild(dt);
+
     process_memory_sample_timer_ += dt;
     if (process_memory_sample_timer_ >= 0.50F) {
         RefreshProcessMemoryInfo();
@@ -1144,6 +1303,109 @@ void App::Update(float dt)
         "window",
         "resized window=" + std::to_string(window_config_.window_width) + "x"
             + std::to_string(window_config_.window_height) + " ui_scale=" + std::to_string(window_config_.ui_scale));
+}
+
+
+void App::AdvanceProgressiveChunkBuild(float dt)
+{
+    if (!workspace_.progressive_build_enabled || workspace_.progressive_build_complete
+        || workspace_.progressive_build_per_frame <= 0 || workspace_.progressive_pending_chunks.empty()
+        || !workspace_.chunk_grid.IsValid() || !workspace_.voxel_world.IsValid()) {
+        return;
+    }
+
+    const int batch_size = std::min(
+        workspace_.progressive_build_per_frame,
+        static_cast<int>(workspace_.progressive_pending_chunks.size()));
+    if (batch_size <= 0) {
+        return;
+    }
+
+    std::vector<std::uint8_t> selected(workspace_.chunk_grid.chunks.size(), 0U);
+    for (int index = 0; index < batch_size; ++index) {
+        const std::size_t chunk_index = workspace_.progressive_pending_chunks.front();
+        workspace_.progressive_pending_chunks.erase(workspace_.progressive_pending_chunks.begin());
+        if (chunk_index >= selected.size()) {
+            continue;
+        }
+        selected[chunk_index] = 1U;
+        if (chunk_index < workspace_.progressive_built_chunks.size()) {
+            workspace_.progressive_built_chunks[chunk_index] = 1U;
+        }
+    }
+
+    const SteadyTimePoint batch_start = Now();
+    FaceVisibilityResult batch_visibility = BuildFaceVisibilityForSelectedChunks(
+        workspace_.voxel_world,
+        workspace_.chunk_grid,
+        selected);
+    ChunkMeshCache batch_simple = BuildChunkMeshCacheForSelectedChunks(
+        workspace_.voxel_world,
+        workspace_.chunk_grid,
+        ChunkMeshBuildMode::kSimpleFaces,
+        selected);
+    ChunkMeshCache batch_greedy = BuildChunkMeshCacheForSelectedChunks(
+        workspace_.voxel_world,
+        workspace_.chunk_grid,
+        ChunkMeshBuildMode::kGreedyFaces,
+        selected);
+    ChunkMeshBuildResult batch_terrain = BuildTerrainChunkMeshesForSelectedChunks(
+        workspace_.runtime_map,
+        workspace_.chunk_grid,
+        selected);
+
+    MergeFaceVisibility(workspace_.face_visibility, batch_visibility);
+    MergeSelectedCacheChunks(workspace_.simple_chunk_mesh_cache, batch_simple, selected);
+    MergeSelectedCacheChunks(workspace_.greedy_chunk_mesh_cache, batch_greedy, selected);
+    MergeSelectedMeshBuildChunks(workspace_.terrain_chunk_meshes, batch_terrain, selected);
+    workspace_.simple_chunk_meshes = ToChunkMeshBuildResult(workspace_.simple_chunk_mesh_cache);
+    workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);
+    SetActiveMeshCacheFromMode();
+
+    ChunkMeshBuildResult active_batch;
+    if (workspace_.mesh_mode == ChunkMeshBuildMode::kTerrainSurface) {
+        active_batch = std::move(batch_terrain);
+    } else if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
+        active_batch = ToChunkMeshBuildResult(batch_greedy);
+    } else {
+        active_batch = ToChunkMeshBuildResult(batch_simple);
+    }
+    const bool uploaded = chunk_mesh_preview_.UploadAdditional(active_batch, ToRaylibColorMode(workspace_.color_mode));
+    RefreshMeshOptimizationStats();
+    UpdateVisibilityStats();
+
+    workspace_.progressive_chunks_built = static_cast<std::uint64_t>(std::count(
+        workspace_.progressive_built_chunks.begin(),
+        workspace_.progressive_built_chunks.end(),
+        static_cast<std::uint8_t>(1)));
+    workspace_.progressive_chunks_pending = static_cast<std::uint64_t>(workspace_.progressive_pending_chunks.size());
+    const SteadyTimePoint batch_finish = Now();
+    workspace_.progressive_log_timer += dt;
+
+    if (!uploaded) {
+        logger_.Warn("progressive_build", "batch produced no uploaded chunks");
+    }
+    if (workspace_.progressive_log_timer >= 1.0F || workspace_.progressive_pending_chunks.empty()) {
+        std::ostringstream out;
+        out << "built=" << workspace_.progressive_chunks_built << '/' << workspace_.progressive_chunks_total;
+        out << " pending=" << workspace_.progressive_chunks_pending;
+        out << " batch=" << batch_size;
+        out << " batch_ms=" << ElapsedMs(batch_start, batch_finish);
+        out << " models=" << chunk_mesh_preview_.Stats().models;
+        logger_.Info("progressive_build", out.str());
+        workspace_.progressive_log_timer = 0.0F;
+    }
+
+    if (workspace_.progressive_pending_chunks.empty()) {
+        workspace_.progressive_build_complete = true;
+        workspace_.progressive_build_enabled = false;
+        logger_.Info(
+            "progressive_build",
+            "completed built=" + std::to_string(workspace_.progressive_chunks_built) + '/'
+                + std::to_string(workspace_.progressive_chunks_total));
+    }
+
+    layout_dirty_ = true;
 }
 
 void App::Draw()
@@ -1380,6 +1642,35 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     workspace_.greedy_chunk_mesh_cache = std::move(next_greedy_cache);
     workspace_.terrain_chunk_meshes = std::move(next_terrain_meshes);
     workspace_.transition_features = std::move(next_transition_features);
+
+    workspace_.progressive_build_enabled = false;
+    workspace_.progressive_build_complete = true;
+    workspace_.progressive_build_per_frame = 0;
+    workspace_.progressive_chunks_total = static_cast<std::uint64_t>(workspace_.chunk_grid.info.total_chunks);
+    workspace_.progressive_chunks_built = static_cast<std::uint64_t>(initial_selected_chunks);
+    workspace_.progressive_chunks_pending = 0;
+    workspace_.progressive_log_timer = 0.0F;
+    workspace_.progressive_pending_chunks.clear();
+    workspace_.progressive_built_chunks = initial_chunk_selection;
+    if (partial_initial_mesh) {
+        workspace_.progressive_build_per_frame = ResolveProgressiveBuildsPerFrame(partial_initial_mesh);
+        workspace_.progressive_pending_chunks = BuildProgressivePendingChunks(
+            workspace_.chunk_grid,
+            initial_chunk_selection,
+            initial_tile_window);
+        workspace_.progressive_chunks_pending = static_cast<std::uint64_t>(workspace_.progressive_pending_chunks.size());
+        workspace_.progressive_build_enabled = workspace_.progressive_build_per_frame > 0
+            && !workspace_.progressive_pending_chunks.empty();
+        workspace_.progressive_build_complete = !workspace_.progressive_build_enabled;
+    }
+    if (workspace_.progressive_build_enabled) {
+        std::ostringstream out;
+        out << "started built=" << workspace_.progressive_chunks_built << '/' << workspace_.progressive_chunks_total;
+        out << " pending=" << workspace_.progressive_chunks_pending;
+        out << " chunks_per_frame=" << workspace_.progressive_build_per_frame;
+        logger_.Info("progressive_build", out.str());
+    }
+
     if (workspace_.validation_mode == WorkspaceValidationMode::kOff) {
         ClearPassabilityValidation("chunk_pipeline_disabled");
     } else if (workspace_.passability_validation_dirty) {

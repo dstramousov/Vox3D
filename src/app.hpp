@@ -71,6 +71,7 @@ private:
     void HandleWorkspaceInput(float dt);
     void HandleDialogInput();
     void Update(float dt);
+    void AdvanceProgressiveChunkBuild(float dt);
     void Draw();
     void RebuildLayout();
     void ActivateSelectedMenuItem();

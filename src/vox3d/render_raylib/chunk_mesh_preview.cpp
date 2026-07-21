@@ -1428,14 +1428,21 @@ RaylibChunkMeshPreview::~RaylibChunkMeshPreview()
 bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode)
 {
     Unload();
+    return UploadAdditional(build_result, color_mode);
+}
 
+bool RaylibChunkMeshPreview::UploadAdditional(
+    const ChunkMeshBuildResult& build_result,
+    RaylibChunkMeshColorMode color_mode)
+{
     if (!build_result.IsValid()) {
         return false;
     }
 
     const bool split_terrain_passes = build_result.info.mode == ChunkMeshBuildMode::kTerrainSurface;
-    chunks_.reserve(build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL));
-    visibility_items_.reserve(build_result.chunks.size());
+    chunks_.reserve(chunks_.size() + build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL));
+    visibility_items_.reserve(visibility_items_.size() + build_result.chunks.size());
+    const std::uint64_t before_models = stats_.models;
     for (const ChunkMeshData& chunk : build_result.chunks) {
         if (chunk.faces.empty()) {
             continue;
@@ -1500,7 +1507,7 @@ bool RaylibChunkMeshPreview::Upload(const ChunkMeshBuildResult& build_result, Ra
     }
 
     stats_.uploaded = !chunks_.empty();
-    return stats_.uploaded;
+    return stats_.models > before_models;
 }
 
 void RaylibChunkMeshPreview::Draw(

@@ -478,6 +478,15 @@ struct WorkspaceState {
     TransitionFeatureSet transition_features;
     MeshOptimizationStats mesh_stats;
     ChunkMeshRebuildReport last_mesh_rebuild;
+    bool progressive_build_enabled = false;
+    bool progressive_build_complete = false;
+    int progressive_build_per_frame = 0;
+    std::uint64_t progressive_chunks_total = 0;
+    std::uint64_t progressive_chunks_built = 0;
+    std::uint64_t progressive_chunks_pending = 0;
+    float progressive_log_timer = 0.0F;
+    std::vector<std::size_t> progressive_pending_chunks;
+    std::vector<std::uint8_t> progressive_built_chunks;
 };
 
 /**

@@ -245,6 +245,19 @@ public:
     [[nodiscard]] bool Upload(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode);
 
     /**
+     * @brief Uploads additional chunk mesh data without unloading existing models.
+     *
+     * Empty chunks are ignored. The caller must ensure chunks were not already
+     * uploaded for the same coordinates, because this method intentionally
+     * appends models for progressive startup builds.
+     *
+     * @param build_result Renderer-independent chunk mesh data for new chunks.
+     * @param color_mode Vertex-color mode applied during upload.
+     * @return True if at least one additional model was uploaded.
+     */
+    [[nodiscard]] bool UploadAdditional(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode);
+
+    /**
      * @brief Draws uploaded chunk mesh models inside the viewport rectangle.
      *
      * @param viewport Screen-space viewport rectangle.
