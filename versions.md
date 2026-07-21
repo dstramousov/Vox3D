@@ -430,3 +430,10 @@
 - The verifier compares terrain, collision, elevation, start, and goal tile-by-tile after a successful `.vxmap` load.
 - Runtime map logging now reports `binary_vs_json=ok` or mismatch counters plus JSON load/compare timings when verification is enabled.
 - If verification detects a mismatch or JSON core is unavailable, the loader rejects the binary fast path and falls back to JSON safely.
+
+
+## v0.5.31 -> v0.5.32
+
+- Added startup profiling logs for map package load, RuntimeMap build, chunk pipeline, font load, layout, camera setup, and total startup time.
+- Added chunk pipeline profiling logs for chunk grid, voxel world, face visibility, simple mesh, greedy mesh, terrain mesh, transitions, render upload, and total pipeline time.
+- Kept loading/rendering behavior unchanged; this patch only adds timing diagnostics for the next performance pass.

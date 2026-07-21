@@ -85,6 +85,18 @@ constexpr int kChunkSize32 = 32;
     return result;
 }
 
+using SteadyTimePoint = std::chrono::steady_clock::time_point;
+
+[[nodiscard]] SteadyTimePoint Now()
+{
+    return std::chrono::steady_clock::now();
+}
+
+[[nodiscard]] long long ElapsedMs(SteadyTimePoint start, SteadyTimePoint finish)
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count();
+}
+
 void ToggleOverlayFlag(
     bool& flag,
     std::string_view name,
@@ -367,6 +379,8 @@ App::App(AppConfig config, Logger& logger, UiLabels labels)
 
 bool App::Initialize()
 {
+    const SteadyTimePoint startup_start = Now();
+
     logger_.Info("app", "started version=" + config_.version + " mode=" + BuildMode());
     logger_.Info("app", "working_directory=" + CurrentWorkingDirectory());
     logger_.Info(
@@ -437,25 +451,55 @@ bool App::Initialize()
     }
     SetTargetFPS(config_.target_fps);
 
+    const SteadyTimePoint map_package_start = Now();
     workspace_.map = LoadMapPackageInfo(config_.map_package_path);
+    const SteadyTimePoint map_package_finish = Now();
     logger_.Info("map", ToLogString(workspace_.map));
     for (const auto& warning : workspace_.map.warnings) {
         logger_.Warn("map", warning);
     }
+
+    const SteadyTimePoint runtime_map_start = Now();
     workspace_.runtime_map = BuildRuntimeMap(workspace_.map);
+    const SteadyTimePoint runtime_map_finish = Now();
     logger_.Info("runtime_map", ToLogString(workspace_.runtime_map));
     for (const auto& warning : workspace_.runtime_map.diagnostics.warnings) {
         logger_.Warn("runtime_map", warning);
     }
+
+    const SteadyTimePoint chunk_pipeline_start = Now();
     RebuildChunkPipeline(workspace_.chunk_size_tiles, "initial");
+    const SteadyTimePoint chunk_pipeline_finish = Now();
     main_menu_.SetItemEnabled(MenuItemId::kLoadGame, workspace_.map.loaded);
 
+    const SteadyTimePoint fonts_start = Now();
     LoadUiFonts();
+    const SteadyTimePoint fonts_finish = Now();
+
     RefreshProcessMemoryInfo();
+
+    const SteadyTimePoint layout_start = Now();
     RebuildLayout();
+    const SteadyTimePoint layout_finish = Now();
+
+    const SteadyTimePoint camera_start = Now();
     if (chunk_mesh_preview_.IsUploaded()) {
         preview_camera_.StartFlyInToMap(workspace_.chunk_meshes, layout_cache_.workspace.map_overview);
         logger_.Info("camera3d", "startup fly-in " + ToLogString(preview_camera_.Status()));
+    }
+    const SteadyTimePoint camera_finish = Now();
+
+    {
+        const SteadyTimePoint startup_finish = Now();
+        std::ostringstream out;
+        out << "map_package_ms=" << ElapsedMs(map_package_start, map_package_finish);
+        out << " runtime_map_ms=" << ElapsedMs(runtime_map_start, runtime_map_finish);
+        out << " chunk_pipeline_ms=" << ElapsedMs(chunk_pipeline_start, chunk_pipeline_finish);
+        out << " fonts_ms=" << ElapsedMs(fonts_start, fonts_finish);
+        out << " layout_ms=" << ElapsedMs(layout_start, layout_finish);
+        out << " camera_ms=" << ElapsedMs(camera_start, camera_finish);
+        out << " total_startup_ms=" << ElapsedMs(startup_start, startup_finish);
+        logger_.Info("startup_profile", out.str());
     }
 
     {
@@ -1061,6 +1105,8 @@ void App::RefreshChunkSizeComparison(
 
 void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
 {
+    const SteadyTimePoint pipeline_start = Now();
+
     if (!IsSupportedChunkSize(chunk_size)) {
         logger_.Warn("chunk_pipeline", "unsupported chunk size=" + std::to_string(chunk_size));
         return;
@@ -1071,49 +1117,63 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     const ChunkGridInfo before_grid_info = workspace_.chunk_grid.info;
     const MeshOptimizationStats before_stats = workspace_.mesh_stats;
 
+    const SteadyTimePoint chunk_grid_start = Now();
     ChunkGrid next_chunk_grid = BuildChunkGrid(workspace_.runtime_map, ChunkGridOptions{chunk_size, chunk_size});
+    const SteadyTimePoint chunk_grid_finish = Now();
     logger_.Info("chunk_grid", "reason=" + std::string(reason) + " " + ToLogString(next_chunk_grid));
     for (const auto& warning : next_chunk_grid.diagnostics.warnings) {
         logger_.Warn("chunk_grid", warning);
     }
 
+    const SteadyTimePoint voxel_world_start = Now();
     VoxelWorld next_voxel_world = BuildVoxelWorld(workspace_.runtime_map, next_chunk_grid);
+    const SteadyTimePoint voxel_world_finish = Now();
     logger_.Info("voxel_world", "reason=" + std::string(reason) + " " + ToLogString(next_voxel_world));
     for (const auto& warning : next_voxel_world.diagnostics.warnings) {
         logger_.Warn("voxel_world", warning);
     }
 
+    const SteadyTimePoint face_visibility_start = Now();
     FaceVisibilityResult next_face_visibility = BuildFaceVisibility(next_voxel_world);
+    const SteadyTimePoint face_visibility_finish = Now();
     logger_.Info("face_visibility", "reason=" + std::string(reason) + " " + ToLogString(next_face_visibility));
     for (const auto& warning : next_face_visibility.diagnostics.warnings) {
         logger_.Warn("face_visibility", warning);
     }
 
+    const SteadyTimePoint mesh_simple_start = Now();
     ChunkMeshCache next_simple_cache = BuildChunkMeshCache(
         next_voxel_world,
         next_chunk_grid,
         ChunkMeshBuildMode::kSimpleFaces);
+    const SteadyTimePoint mesh_simple_finish = Now();
     logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_simple_cache));
     for (const auto& warning : next_simple_cache.diagnostics.warnings) {
         logger_.Warn("chunk_mesh_cache", warning);
     }
 
+    const SteadyTimePoint mesh_greedy_start = Now();
     ChunkMeshCache next_greedy_cache = BuildChunkMeshCache(
         next_voxel_world,
         next_chunk_grid,
         ChunkMeshBuildMode::kGreedyFaces);
+    const SteadyTimePoint mesh_greedy_finish = Now();
     logger_.Info("chunk_mesh_cache", "reason=" + std::string(reason) + " " + ToLogString(next_greedy_cache));
     for (const auto& warning : next_greedy_cache.diagnostics.warnings) {
         logger_.Warn("chunk_mesh_cache", warning);
     }
 
+    const SteadyTimePoint terrain_mesh_start = Now();
     ChunkMeshBuildResult next_terrain_meshes = BuildTerrainChunkMeshes(workspace_.runtime_map, next_chunk_grid);
+    const SteadyTimePoint terrain_mesh_finish = Now();
     logger_.Info("terrain_mesh", "reason=" + std::string(reason) + " " + ToLogString(next_terrain_meshes));
     for (const auto& warning : next_terrain_meshes.diagnostics.warnings) {
         logger_.Warn("terrain_mesh", warning);
     }
 
+    const SteadyTimePoint transitions_start = Now();
     TransitionFeatureSet next_transition_features = BuildTransitionFeatures(workspace_.runtime_map);
+    const SteadyTimePoint transitions_finish = Now();
     logger_.Info("transitions", "reason=" + std::string(reason) + " " + ToLogString(next_transition_features));
     for (const auto& warning : next_transition_features.diagnostics.warnings) {
         logger_.Warn("transitions", warning);
@@ -1163,7 +1223,26 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
         ? ChunkMeshRebuildReport{}
         : FullCacheBuildReport(workspace_.chunk_mesh_cache);
 
+    const SteadyTimePoint render_upload_start = Now();
     UploadActiveChunkMesh(reason);
+    const SteadyTimePoint render_upload_finish = Now();
+
+    {
+        const SteadyTimePoint pipeline_finish = Now();
+        std::ostringstream out;
+        out << "reason=" << reason;
+        out << " chunk_grid_ms=" << ElapsedMs(chunk_grid_start, chunk_grid_finish);
+        out << " voxel_world_ms=" << ElapsedMs(voxel_world_start, voxel_world_finish);
+        out << " face_visibility_ms=" << ElapsedMs(face_visibility_start, face_visibility_finish);
+        out << " mesh_simple_ms=" << ElapsedMs(mesh_simple_start, mesh_simple_finish);
+        out << " mesh_greedy_ms=" << ElapsedMs(mesh_greedy_start, mesh_greedy_finish);
+        out << " terrain_mesh_ms=" << ElapsedMs(terrain_mesh_start, terrain_mesh_finish);
+        out << " transitions_ms=" << ElapsedMs(transitions_start, transitions_finish);
+        out << " render_upload_ms=" << ElapsedMs(render_upload_start, render_upload_finish);
+        out << " total_ms=" << ElapsedMs(pipeline_start, pipeline_finish);
+        logger_.Info("chunk_pipeline_profile", out.str());
+    }
+
     RefreshChunkSizeComparison(before_chunk_size, before_grid_info, before_stats, had_before_stats);
     if (workspace_.chunk_size_comparison.available) {
         logger_.Info("chunk_profit", ChunkComparisonLogString(workspace_.chunk_size_comparison));
