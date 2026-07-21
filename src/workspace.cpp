@@ -495,6 +495,7 @@ bool IsCollapsibleWorkspacePanelGroup(WorkspacePanelItem item)
         case WorkspacePanelItem::k3DRenderGroup:
         case WorkspacePanelItem::k3DVisibilityGroup:
         case WorkspacePanelItem::k3DTerrainPassGroup:
+        case WorkspacePanelItem::k3DObjectsGroup:
         case WorkspacePanelItem::k3DTransitionGroup:
         case WorkspacePanelItem::k3DMovementGroup:
         case WorkspacePanelItem::k3DPathGroup:

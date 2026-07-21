@@ -371,6 +371,9 @@ struct WorkspaceState {
     bool selected_tool_expanded = true;
     std::vector<WorkspacePanelItem> collapsed_panel_groups{
         WorkspacePanelItem::kMenuModeGroup,
+        WorkspacePanelItem::k2DNavigationGroup,
+        WorkspacePanelItem::k2DBaseLayerGroup,
+        WorkspacePanelItem::k2DOverlayGroup,
         WorkspacePanelItem::k3DCameraGroup,
         WorkspacePanelItem::k3DRenderGroup,
         WorkspacePanelItem::k3DVisibilityGroup,
@@ -381,6 +384,7 @@ struct WorkspaceState {
         WorkspacePanelItem::k3DPathGroup,
         WorkspacePanelItem::k3DValidationGroup,
         WorkspacePanelItem::k3DMeshGroup,
+        WorkspacePanelItem::kStatsMapGroup,
         WorkspacePanelItem::kStatsColorGroup,
         WorkspacePanelItem::kStatsVisibilityGroup,
         WorkspacePanelItem::kStatsTransitionsGroup,
@@ -392,6 +396,7 @@ struct WorkspaceState {
         WorkspacePanelItem::kStatsChunkProfitGroup,
         WorkspacePanelItem::kStatsDirtyCacheGroup,
         WorkspacePanelItem::kStatsCameraGroup,
+        WorkspacePanelItem::kInfoSelectionGroup,
         WorkspacePanelItem::kInfoTransitionsGroup,
         WorkspacePanelItem::kInfoMovementGroup,
         WorkspacePanelItem::kInfoPathGroup,

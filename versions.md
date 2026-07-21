@@ -393,3 +393,7 @@
 - Removed the always-visible Reset View action from the right-panel View section and made the Mode section collapsed by default.
 - Moved object marker control out of Display into a separate Objects section with per-type filters.
 - Made all object marker filters disabled by default; users can enable All Objects or individual Trees, Bushes, Reeds, Ruins, Cover, Loot/Cache, Structures, Trenches, and Unknown markers.
+
+## v0.5.25 -> v0.5.26
+- Fixed the Objects filter section so it is a normal top-level View panel group instead of a permanently expanded nested row.
+- Changed initial panel state so all View, Stats, Info, and 2D menu sections start collapsed by default.
