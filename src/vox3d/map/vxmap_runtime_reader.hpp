@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vox3d/core/result.hpp"
+#include "vox3d/core/types.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -54,6 +55,46 @@ struct VxmapRuntimeValidationReport {
     std::string build_id_hex;
     Diagnostics diagnostics;
 };
+
+/**
+ * @brief Core runtime grids decoded from a validated vxmap-runtime-v1 file.
+ *
+ * This structure intentionally contains only the binary core covered by v1:
+ * terrain, elevation, collision, and start/goal. Higher-level map data stays
+ * in JSON and is loaded by RuntimeMap as before.
+ */
+struct VxmapRuntimeCore {
+    bool loaded = false;
+    std::filesystem::path path;
+    std::string fallback_reason;
+    std::uint32_t width_tiles = 0;
+    std::uint32_t height_tiles = 0;
+    std::uint16_t tile_size_px = 0;
+    std::int16_t min_elevation = 0;
+    std::int16_t max_elevation = 0;
+    std::string build_id_hex;
+    std::vector<std::string> terrain;
+    std::vector<std::int16_t> elevation;
+    std::vector<std::uint8_t> collision;
+    std::optional<TileCoord> start;
+    std::optional<TileCoord> goal;
+    VxmapRuntimeValidationReport validation;
+};
+
+/**
+ * @brief Loads binary core grids from a validated vxmap-runtime-v1 container.
+ *
+ * The function performs the same safety validation as ValidateVxmapRuntimeBinary
+ * before decoding payloads. On failure, loaded is false and fallback_reason
+ * explains why the caller should continue with the JSON loader.
+ *
+ * @param package_path Directory containing map.json and map_runtime.vxmap.
+ * @param manifest runtime_binary block parsed from map.json.
+ * @return Decoded binary core or a fallback reason.
+ */
+[[nodiscard]] VxmapRuntimeCore LoadVxmapRuntimeCore(
+    const std::filesystem::path& package_path,
+    const VxmapRuntimeManifest& manifest);
 
 /**
  * @brief Validates a vxmap-runtime-v1 container without building RuntimeMap.

@@ -36,6 +36,14 @@ constexpr std::uint32_t kTypeStringTable = 2;
 constexpr std::uint32_t kTypeStringIdPool = 3;
 constexpr std::uint32_t kTypeRegionIndex = 5;
 constexpr std::uint32_t kTypeTerrainCatalog = 10;
+constexpr std::uint32_t kTypeTerrainGrid = 20;
+constexpr std::uint32_t kTypeElevationGrid = 21;
+constexpr std::uint32_t kTypeMovementGrid = 22;
+constexpr std::uint32_t kTypeCollisionBits = 23;
+constexpr std::uint32_t kTypeProjectileBlockBits = 24;
+constexpr std::uint32_t kTypeVisionBlockBits = 25;
+constexpr std::uint32_t kTypeCoverGrid = 26;
+constexpr std::uint32_t kTypeConcealmentGrid = 27;
 constexpr std::uint32_t kTypeStartGoal = 30;
 
 constexpr std::array<std::uint32_t, 6> kRequiredGlobalSections{
@@ -48,14 +56,14 @@ constexpr std::array<std::uint32_t, 6> kRequiredGlobalSections{
 };
 
 constexpr std::array<std::uint32_t, 8> kRequiredRegionSections{
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
+    kTypeTerrainGrid,
+    kTypeElevationGrid,
+    kTypeMovementGrid,
+    kTypeCollisionBits,
+    kTypeProjectileBlockBits,
+    kTypeVisionBlockBits,
+    kTypeCoverGrid,
+    kTypeConcealmentGrid,
 };
 
 struct Header {
@@ -92,6 +100,20 @@ struct SectionEntry {
     std::uint32_t crc32 = 0;
     std::uint32_t aux_0 = 0;
     std::uint32_t aux_1 = 0;
+};
+
+struct RegionRecord {
+    std::uint32_t region_id = 0;
+    std::uint16_t region_x = 0;
+    std::uint16_t region_y = 0;
+    std::uint32_t origin_x = 0;
+    std::uint32_t origin_y = 0;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    std::uint32_t first_section_table_index = 0;
+    std::uint16_t section_count = 0;
+    std::uint16_t flags = 0;
+    std::uint32_t tile_count = 0;
 };
 
 [[nodiscard]] bool CheckedAdd(std::uint64_t left, std::uint64_t right, std::uint64_t& result)
@@ -147,6 +169,16 @@ struct SectionEntry {
         return false;
     }
     value = static_cast<std::int16_t>(raw);
+    return true;
+}
+
+[[nodiscard]] bool ReadI32Le(const std::vector<std::uint8_t>& data, std::uint64_t offset, std::int32_t& value)
+{
+    std::uint32_t raw = 0;
+    if (!ReadU32Le(data, offset, raw)) {
+        return false;
+    }
+    value = static_cast<std::int32_t>(raw);
     return true;
 }
 
@@ -486,6 +518,296 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     return true;
 }
 
+
+[[nodiscard]] bool ReadStringTable(
+    const std::vector<std::uint8_t>& data,
+    const SectionEntry& section,
+    std::vector<std::string>& strings,
+    std::string& reason)
+{
+    if (section.stored_size < 8U) {
+        reason = "bad_string_table";
+        return false;
+    }
+    std::uint32_t string_count = 0;
+    std::uint32_t bytes_size = 0;
+    if (!ReadU32Le(data, section.offset, string_count) || !ReadU32Le(data, section.offset + 4U, bytes_size)) {
+        reason = "bad_string_table";
+        return false;
+    }
+    std::uint64_t offsets_bytes = 0;
+    if (!CheckedMultiply(static_cast<std::uint64_t>(string_count) + 1U, 4U, offsets_bytes)) {
+        reason = "bad_string_table";
+        return false;
+    }
+    std::uint64_t header_and_offsets = 0;
+    if (!CheckedAdd(8U, offsets_bytes, header_and_offsets)) {
+        reason = "bad_string_table";
+        return false;
+    }
+    std::uint64_t expected_size = 0;
+    if (!CheckedAdd(header_and_offsets, bytes_size, expected_size) || expected_size != section.stored_size) {
+        reason = "bad_string_table";
+        return false;
+    }
+
+    std::vector<std::uint32_t> offsets;
+    offsets.reserve(static_cast<std::size_t>(string_count) + 1U);
+    for (std::uint32_t i = 0; i <= string_count; ++i) {
+        std::uint32_t value = 0;
+        if (!ReadU32Le(data, section.offset + 8U + static_cast<std::uint64_t>(i) * 4U, value)) {
+            reason = "bad_string_table";
+            return false;
+        }
+        offsets.push_back(value);
+    }
+    if (offsets.empty() || offsets.front() != 0U || offsets.back() != bytes_size) {
+        reason = "bad_string_table";
+        return false;
+    }
+    for (std::size_t i = 1; i < offsets.size(); ++i) {
+        if (offsets[i - 1U] > offsets[i]) {
+            reason = "bad_string_table";
+            return false;
+        }
+    }
+
+    const std::uint64_t bytes_offset = section.offset + header_and_offsets;
+    strings.clear();
+    strings.reserve(string_count);
+    for (std::uint32_t i = 0; i < string_count; ++i) {
+        const std::uint32_t begin = offsets[i];
+        const std::uint32_t end = offsets[i + 1U];
+        strings.emplace_back(
+            reinterpret_cast<const char*>(data.data() + static_cast<std::size_t>(bytes_offset + begin)),
+            static_cast<std::size_t>(end - begin));
+    }
+    return true;
+}
+
+[[nodiscard]] bool ReadTerrainNames(
+    const std::vector<std::uint8_t>& data,
+    const SectionEntry& section,
+    const std::vector<std::string>& strings,
+    std::vector<std::string>& terrain_names,
+    std::string& reason)
+{
+    if (section.stored_size < 8U) {
+        reason = "bad_terrain_catalog";
+        return false;
+    }
+    std::uint32_t terrain_count = 0;
+    std::uint16_t record_size = 0;
+    if (!ReadU32Le(data, section.offset, terrain_count) || !ReadU16Le(data, section.offset + 4U, record_size)) {
+        reason = "bad_terrain_catalog";
+        return false;
+    }
+    std::uint64_t records_size = 0;
+    if (terrain_count > kMaxTerrainCount || record_size != 32U
+        || !CheckedMultiply(terrain_count, record_size, records_size)
+        || 8U + records_size != section.stored_size) {
+        reason = "bad_terrain_catalog";
+        return false;
+    }
+    terrain_names.clear();
+    terrain_names.reserve(terrain_count);
+    for (std::uint32_t i = 0; i < terrain_count; ++i) {
+        const std::uint64_t record_offset = section.offset + 8U + static_cast<std::uint64_t>(i) * record_size;
+        std::uint32_t name_id = 0;
+        if (!ReadU32Le(data, record_offset, name_id) || name_id >= strings.size()) {
+            reason = "bad_terrain_catalog";
+            return false;
+        }
+        terrain_names.push_back(strings[name_id]);
+    }
+    return true;
+}
+
+[[nodiscard]] bool ReadRegionRecords(
+    const std::vector<std::uint8_t>& data,
+    const Header& header,
+    const SectionEntry& section,
+    std::vector<RegionRecord>& regions,
+    std::string& reason)
+{
+    if (section.stored_size < 8U) {
+        reason = "bad_region_index";
+        return false;
+    }
+    std::uint32_t region_count = 0;
+    std::uint16_t region_size = 0;
+    std::uint16_t record_size = 0;
+    if (!ReadU32Le(data, section.offset, region_count) || !ReadU16Le(data, section.offset + 4U, region_size)
+        || !ReadU16Le(data, section.offset + 6U, record_size)) {
+        reason = "bad_region_index";
+        return false;
+    }
+    if (region_size != header.region_size_tiles || record_size != 32U) {
+        reason = "bad_region_index";
+        return false;
+    }
+    std::uint64_t records_size = 0;
+    if (!CheckedMultiply(region_count, record_size, records_size) || 8U + records_size != section.stored_size) {
+        reason = "bad_region_index";
+        return false;
+    }
+    const std::uint32_t regions_x = (header.width_tiles + header.region_size_tiles - 1U) / header.region_size_tiles;
+    regions.clear();
+    regions.reserve(region_count);
+    for (std::uint32_t i = 0; i < region_count; ++i) {
+        const std::uint64_t offset = section.offset + 8U + static_cast<std::uint64_t>(i) * record_size;
+        RegionRecord region;
+        if (!ReadU32Le(data, offset + 0U, region.region_id) || !ReadU16Le(data, offset + 4U, region.region_x)
+            || !ReadU16Le(data, offset + 6U, region.region_y) || !ReadU32Le(data, offset + 8U, region.origin_x)
+            || !ReadU32Le(data, offset + 12U, region.origin_y) || !ReadU16Le(data, offset + 16U, region.width)
+            || !ReadU16Le(data, offset + 18U, region.height)
+            || !ReadU32Le(data, offset + 20U, region.first_section_table_index)
+            || !ReadU16Le(data, offset + 24U, region.section_count) || !ReadU16Le(data, offset + 26U, region.flags)
+            || !ReadU32Le(data, offset + 28U, region.tile_count)) {
+            reason = "bad_region_index";
+            return false;
+        }
+        if (region.region_id != i || region.region_x != i % regions_x || region.region_y != i / regions_x
+            || region.width == 0 || region.height == 0 || region.tile_count != static_cast<std::uint32_t>(region.width) * region.height
+            || region.section_count != 8U || region.first_section_table_index != 6U + i * 8U) {
+            reason = "invalid_region_index";
+            return false;
+        }
+        regions.push_back(region);
+    }
+    return true;
+}
+
+[[nodiscard]] const SectionEntry* FindRegionalSection(
+    const std::vector<SectionEntry>& entries,
+    const RegionRecord& region,
+    std::uint32_t section_type)
+{
+    const std::uint32_t begin = region.first_section_table_index;
+    const std::uint32_t end = begin + region.section_count;
+    if (end > entries.size()) {
+        return nullptr;
+    }
+    for (std::uint32_t i = begin; i < end; ++i) {
+        const SectionEntry& entry = entries[i];
+        if (entry.section_type == section_type && entry.parent_id == region.region_id) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] bool BitsetValue(const std::vector<std::uint8_t>& data, const SectionEntry& section, std::uint32_t local_index)
+{
+    const std::uint64_t byte_offset = section.offset + (local_index >> 3U);
+    const std::uint8_t bit = static_cast<std::uint8_t>(1U << (local_index & 7U));
+    return (data[static_cast<std::size_t>(byte_offset)] & bit) != 0U;
+}
+
+[[nodiscard]] bool DecodeBinaryCorePayloads(
+    const std::vector<std::uint8_t>& data,
+    const Header& header,
+    const std::vector<SectionEntry>& entries,
+    VxmapRuntimeCore& core)
+{
+    std::string reason;
+    const SectionEntry* string_table = FindSingleton(entries, kTypeStringTable);
+    const SectionEntry* terrain_catalog = FindSingleton(entries, kTypeTerrainCatalog);
+    const SectionEntry* region_index = FindSingleton(entries, kTypeRegionIndex);
+    const SectionEntry* start_goal = FindSingleton(entries, kTypeStartGoal);
+    if (string_table == nullptr || terrain_catalog == nullptr || region_index == nullptr || start_goal == nullptr) {
+        core.fallback_reason = "missing_required_section";
+        return false;
+    }
+
+    std::vector<std::string> strings;
+    std::vector<std::string> terrain_names;
+    std::vector<RegionRecord> regions;
+    if (!ReadStringTable(data, *string_table, strings, reason) || !ReadTerrainNames(data, *terrain_catalog, strings, terrain_names, reason)
+        || !ReadRegionRecords(data, header, *region_index, regions, reason)) {
+        core.fallback_reason = reason;
+        return false;
+    }
+
+    const std::size_t tile_count = static_cast<std::size_t>(header.width_tiles) * static_cast<std::size_t>(header.height_tiles);
+    core.terrain.assign(tile_count, std::string{});
+    core.elevation.assign(tile_count, 0);
+    core.collision.assign(tile_count, 0);
+
+    for (const RegionRecord& region : regions) {
+        const SectionEntry* terrain_grid = FindRegionalSection(entries, region, kTypeTerrainGrid);
+        const SectionEntry* elevation_grid = FindRegionalSection(entries, region, kTypeElevationGrid);
+        const SectionEntry* collision_bits = FindRegionalSection(entries, region, kTypeCollisionBits);
+        if (terrain_grid == nullptr || elevation_grid == nullptr || collision_bits == nullptr) {
+            core.fallback_reason = "missing_regional_grid";
+            return false;
+        }
+        if (terrain_grid->element_stride != 2U || elevation_grid->element_stride != 2U || terrain_grid->element_count != region.tile_count
+            || elevation_grid->element_count != region.tile_count || collision_bits->element_count != region.tile_count) {
+            core.fallback_reason = "bad_regional_grid";
+            return false;
+        }
+        const std::uint64_t expected_bitset_size = (static_cast<std::uint64_t>(region.tile_count) + 7U) / 8U;
+        if (collision_bits->stored_size != expected_bitset_size) {
+            core.fallback_reason = "bad_bitset_size";
+            return false;
+        }
+
+        for (std::uint32_t local_y = 0; local_y < region.height; ++local_y) {
+            for (std::uint32_t local_x = 0; local_x < region.width; ++local_x) {
+                const std::uint32_t local_index = local_y * region.width + local_x;
+                const std::uint32_t global_x = region.origin_x + local_x;
+                const std::uint32_t global_y = region.origin_y + local_y;
+                const std::size_t global_index = static_cast<std::size_t>(global_y) * header.width_tiles + global_x;
+                std::uint16_t terrain_id = 0;
+                std::int16_t elevation = 0;
+                if (!ReadU16Le(data, terrain_grid->offset + static_cast<std::uint64_t>(local_index) * 2U, terrain_id)
+                    || terrain_id >= terrain_names.size()
+                    || !ReadI16Le(data, elevation_grid->offset + static_cast<std::uint64_t>(local_index) * 2U, elevation)) {
+                    core.fallback_reason = "bad_regional_grid";
+                    return false;
+                }
+                core.terrain[global_index] = terrain_names[terrain_id];
+                core.elevation[global_index] = elevation;
+                core.collision[global_index] = BitsetValue(data, *collision_bits, local_index) ? 1U : 0U;
+            }
+        }
+    }
+
+    if (start_goal->stored_size != 32U) {
+        core.fallback_reason = "bad_start_goal";
+        return false;
+    }
+    std::int32_t start_x = -1;
+    std::int32_t start_y = -1;
+    std::int32_t goal_x = -1;
+    std::int32_t goal_y = -1;
+    std::uint32_t flags = 0;
+    if (!ReadI32Le(data, start_goal->offset + 0U, start_x) || !ReadI32Le(data, start_goal->offset + 4U, start_y)
+        || !ReadI32Le(data, start_goal->offset + 8U, goal_x) || !ReadI32Le(data, start_goal->offset + 12U, goal_y)
+        || !ReadU32Le(data, start_goal->offset + 16U, flags)) {
+        core.fallback_reason = "bad_start_goal";
+        return false;
+    }
+    if ((flags & 0x01U) != 0U) {
+        if (start_x < 0 || start_y < 0 || static_cast<std::uint32_t>(start_x) >= header.width_tiles
+            || static_cast<std::uint32_t>(start_y) >= header.height_tiles) {
+            core.fallback_reason = "bad_start_goal";
+            return false;
+        }
+        core.start = TileCoord{start_x, start_y};
+    }
+    if ((flags & 0x02U) != 0U) {
+        if (goal_x < 0 || goal_y < 0 || static_cast<std::uint32_t>(goal_x) >= header.width_tiles
+            || static_cast<std::uint32_t>(goal_y) >= header.height_tiles) {
+            core.fallback_reason = "bad_start_goal";
+            return false;
+        }
+        core.goal = TileCoord{goal_x, goal_y};
+    }
+    return true;
+}
+
 }  // namespace
 
 VxmapRuntimeValidationReport ValidateVxmapRuntimeBinary(
@@ -569,6 +891,55 @@ VxmapRuntimeValidationReport ValidateVxmapRuntimeBinary(
     report.valid = true;
     report.fallback_reason.clear();
     return report;
+}
+
+
+VxmapRuntimeCore LoadVxmapRuntimeCore(
+    const std::filesystem::path& package_path,
+    const VxmapRuntimeManifest& manifest)
+{
+    VxmapRuntimeCore core;
+    core.validation = ValidateVxmapRuntimeBinary(package_path, manifest);
+    core.path = core.validation.path;
+    core.fallback_reason = core.validation.fallback_reason;
+    if (!core.validation.valid) {
+        return core;
+    }
+
+    std::vector<std::uint8_t> data;
+    std::uint64_t file_size = 0;
+    std::string read_error;
+    if (!ReadFile(core.validation.path, data, file_size, read_error)) {
+        core.fallback_reason = read_error;
+        return core;
+    }
+
+    Header header;
+    if (!ParseHeader(data, header)) {
+        core.fallback_reason = "bad_header";
+        return core;
+    }
+    std::vector<SectionEntry> entries;
+    VxmapRuntimeValidationReport decode_report = core.validation;
+    if (!ValidateTableAndSections(data, header, entries, decode_report)
+        || !ValidateRequiredSections(data, header, entries, decode_report)) {
+        core.fallback_reason = decode_report.fallback_reason;
+        return core;
+    }
+
+    core.width_tiles = header.width_tiles;
+    core.height_tiles = header.height_tiles;
+    core.tile_size_px = header.tile_size_px;
+    core.min_elevation = header.min_elevation;
+    core.max_elevation = header.max_elevation;
+    core.build_id_hex = BuildIdToHex(header.build_id);
+    if (!DecodeBinaryCorePayloads(data, header, entries, core)) {
+        return core;
+    }
+
+    core.loaded = true;
+    core.fallback_reason.clear();
+    return core;
 }
 
 std::string ToLogString(const VxmapRuntimeValidationReport& report)

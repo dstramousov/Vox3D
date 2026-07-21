@@ -834,29 +834,51 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
     return manifest;
 }
 
-void ValidateRuntimeBinaryFastPath(RuntimeMap& runtime, const MapPackageInfo& package)
+bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package)
 {
     if (!package.runtime_binary.declared) {
         runtime.info.runtime_binary_checked = false;
-        return;
+        return false;
     }
 
-    const VxmapRuntimeValidationReport report = ValidateVxmapRuntimeBinary(package.path, ToVxmapManifest(package.runtime_binary));
+    const VxmapRuntimeCore core = LoadVxmapRuntimeCore(package.path, ToVxmapManifest(package.runtime_binary));
     runtime.info.runtime_binary_checked = true;
-    runtime.info.runtime_binary_valid = report.valid;
-    runtime.info.runtime_binary_fallback_reason = report.fallback_reason;
+    runtime.info.runtime_binary_valid = core.validation.valid;
+    runtime.info.runtime_binary_fallback_reason = core.fallback_reason;
 
-    if (!report.valid) {
-        runtime.diagnostics.AddWarning("runtime binary fast path unavailable reason=" + report.fallback_reason);
-        return;
+    if (!core.loaded) {
+        runtime.info.runtime_binary_loaded = false;
+        runtime.diagnostics.AddWarning("runtime binary fast path unavailable reason=" + core.fallback_reason);
+        return false;
     }
 
-    if (static_cast<int>(report.width_tiles) != runtime.info.width || static_cast<int>(report.height_tiles) != runtime.info.height) {
+    if (static_cast<int>(core.width_tiles) != runtime.info.width || static_cast<int>(core.height_tiles) != runtime.info.height
+        || static_cast<int>(core.tile_size_px) != runtime.info.tile_size_px) {
         runtime.info.runtime_binary_valid = false;
+        runtime.info.runtime_binary_loaded = false;
         runtime.info.runtime_binary_fallback_reason = "binary_dimensions_mismatch";
         runtime.diagnostics.AddWarning("runtime binary fast path unavailable reason=binary_dimensions_mismatch");
-        return;
+        return false;
     }
+
+    runtime.terrain.width = runtime.info.width;
+    runtime.terrain.height = runtime.info.height;
+    runtime.terrain.cells = core.terrain;
+
+    runtime.collision.width = runtime.info.width;
+    runtime.collision.height = runtime.info.height;
+    runtime.collision.cells = core.collision;
+
+    runtime.height.width = runtime.info.width;
+    runtime.height.height = runtime.info.height;
+    runtime.height.cells.assign(core.elevation.begin(), core.elevation.end());
+
+    runtime.info.start = core.start;
+    runtime.info.goal = core.goal;
+    runtime.info.start_goal_loaded = runtime.info.start.has_value() && runtime.info.goal.has_value();
+    runtime.info.runtime_binary_loaded = true;
+    runtime.info.runtime_binary_fallback_reason.clear();
+    return true;
 }
 
 [[nodiscard]] std::string FormatPoint(const std::optional<TileCoord>& coord)
@@ -902,17 +924,18 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
         return runtime;
     }
 
-    ValidateRuntimeBinaryFastPath(runtime, package);
-
-    runtime.terrain = ReadTerrainGrid(package, runtime.diagnostics);
-    runtime.collision = ReadCollisionGrid(package, runtime.diagnostics);
-    runtime.height = ReadHeightGrid(package, runtime.diagnostics);
+    const bool loaded_from_binary = TryLoadRuntimeBinaryCore(runtime, package);
+    if (!loaded_from_binary) {
+        runtime.terrain = ReadTerrainGrid(package, runtime.diagnostics);
+        runtime.collision = ReadCollisionGrid(package, runtime.diagnostics);
+        runtime.height = ReadHeightGrid(package, runtime.diagnostics);
+        ReadStartGoal(runtime, package);
+    }
     runtime.info.terrain_loaded = runtime.terrain.IsValid();
     runtime.info.collision_loaded = runtime.collision.IsValid();
     runtime.info.elevation_loaded = runtime.height.IsValid();
     runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
     UpdateHeightRange(runtime);
-    ReadStartGoal(runtime, package);
     ReadObjectMarkers(runtime, package);
     ValidateRuntimeMap(runtime);
     return runtime;
@@ -938,7 +961,12 @@ std::string ToLogString(const RuntimeMap& map)
     out << " goal=" << FormatPoint(map.info.goal);
     out << " object_markers=" << map.info.object_markers;
     if (map.info.runtime_binary_checked) {
-        out << " runtime_binary=" << (map.info.runtime_binary_valid ? "validated" : "fallback");
+        out << " runtime_binary=";
+        if (map.info.runtime_binary_loaded) {
+            out << "loaded";
+        } else {
+            out << (map.info.runtime_binary_valid ? "validated" : "fallback");
+        }
         if (!map.info.runtime_binary_valid && !map.info.runtime_binary_fallback_reason.empty()) {
             out << " reason=" << map.info.runtime_binary_fallback_reason;
         }

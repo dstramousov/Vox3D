@@ -409,3 +409,11 @@
 - Added a vxmap-runtime-v1 binary reader skeleton that validates map_runtime.vxmap header, section table, section CRCs, required global sections, region index, terrain catalog, and map.json build_id metadata.
 - Added runtime_binary discovery from map.json and package logging for the binary fast path.
 - Kept RuntimeMap construction on the existing JSON loader for now; binary validation only records whether the fast path is usable and falls back safely to JSON on any mismatch.
+
+## v0.5.28 -> v0.5.29
+
+- Added vxmap-runtime-v1 binary core loading into RuntimeMap for terrain, elevation, collision, and start/goal.
+- Kept JSON loader as a safe fallback and continued loading high-level objects/vegetation from JSON.
+- Runtime map log now reports runtime_binary=loaded when the binary core path is used.
+- Fixed WorkspacePanelItem switch warnings for Objects filter entries.
+- Made label JSON parser tolerate an optional UTF-8 BOM before the root object.

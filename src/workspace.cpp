@@ -238,6 +238,28 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_color_chunk_id";
         case WorkspacePanelItem::k3DColorFaceType:
             return "3d_color_face_type";
+        case WorkspacePanelItem::k3DObjectsGroup:
+            return "3d_objects";
+        case WorkspacePanelItem::k3DObjectsAll:
+            return "3d_objects_all";
+        case WorkspacePanelItem::k3DObjectsTrees:
+            return "3d_objects_trees";
+        case WorkspacePanelItem::k3DObjectsBushes:
+            return "3d_objects_bushes";
+        case WorkspacePanelItem::k3DObjectsReeds:
+            return "3d_objects_reeds";
+        case WorkspacePanelItem::k3DObjectsRuins:
+            return "3d_objects_ruins";
+        case WorkspacePanelItem::k3DObjectsCover:
+            return "3d_objects_cover";
+        case WorkspacePanelItem::k3DObjectsLoot:
+            return "3d_objects_loot";
+        case WorkspacePanelItem::k3DObjectsStructures:
+            return "3d_objects_structures";
+        case WorkspacePanelItem::k3DObjectsTrenches:
+            return "3d_objects_trenches";
+        case WorkspacePanelItem::k3DObjectsUnknown:
+            return "3d_objects_unknown";
         case WorkspacePanelItem::k3DDebugOverlaysGroup:
             return "3d_debug_overlays";
         case WorkspacePanelItem::k3DVisibilityGroup:

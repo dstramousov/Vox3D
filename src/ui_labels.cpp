@@ -91,6 +91,12 @@ private:
 
     void SkipWhitespace()
     {
+        if (position_ == 0 && input_.size() >= 3U
+            && static_cast<unsigned char>(input_[0]) == 0xEFU
+            && static_cast<unsigned char>(input_[1]) == 0xBBU
+            && static_cast<unsigned char>(input_[2]) == 0xBFU) {
+            position_ = 3U;
+        }
         while (!IsEnd() && std::isspace(static_cast<unsigned char>(Peek())) != 0) {
             ++position_;
         }
