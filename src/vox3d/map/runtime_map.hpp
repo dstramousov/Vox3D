@@ -65,6 +65,35 @@ struct RuntimeGrid {
 /**
  * @brief Normalized runtime map summary used by future voxel/chunk builders.
  */
+
+/**
+ * @brief Compact object-marker class used by the 3D diagnostic overlay.
+ */
+enum class RuntimeObjectMarkerKind : std::uint8_t {
+    kUnknown,
+    kTree,
+    kBush,
+    kReed,
+    kRuin,
+    kCover,
+    kLoot,
+    kStructure,
+    kTrench,
+};
+
+/**
+ * @brief Lightweight map object marker extracted from runtime objects or vegetation visuals.
+ */
+struct RuntimeObjectMarker {
+    TileCoord tile;
+    RuntimeObjectMarkerKind kind = RuntimeObjectMarkerKind::kUnknown;
+    std::string type;
+    std::string role;
+    int height = 1;
+    bool blocks_movement = false;
+    bool visual_only = false;
+};
+
 struct RuntimeMapInfo {
     int width = 0;
     int height = 0;
@@ -78,7 +107,9 @@ struct RuntimeMapInfo {
     bool elevation_loaded = false;
     bool collision_loaded = false;
     bool start_goal_loaded = false;
+    bool object_markers_loaded = false;
     int blocked_cells = 0;
+    int object_markers = 0;
 
     /**
      * @brief Returns true when the runtime map dimensions are usable.
@@ -101,6 +132,7 @@ struct RuntimeMap {
     RuntimeGrid<std::string> terrain;
     RuntimeGrid<std::uint8_t> collision;
     RuntimeGrid<int> height;
+    std::vector<RuntimeObjectMarker> object_markers;
     Diagnostics diagnostics;
 
     /**

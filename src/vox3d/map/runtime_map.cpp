@@ -1,6 +1,7 @@
 #include "vox3d/map/runtime_map.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -68,6 +69,43 @@ constexpr std::uintmax_t kMaxRuntimeGridReadBytes = 64U * 1024U * 1024U;
         }
     }
     return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> ExtractStringByKeys(const std::string& text, std::initializer_list<const char*> keys)
+{
+    for (const char* key : keys) {
+        const std::regex pattern("\\\"" + std::string(key) + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
+        std::smatch match;
+        if (std::regex_search(text, match, pattern) && match.size() > 1) {
+            return match[1].str();
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<bool> ExtractBoolByKeys(const std::string& text, std::initializer_list<const char*> keys)
+{
+    for (const char* key : keys) {
+        const std::regex pattern("\\\"" + std::string(key) + "\\\"\\s*:\\s*(true|false)");
+        std::smatch match;
+        if (std::regex_search(text, match, pattern) && match.size() > 1) {
+            return match[1].str() == "true";
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::string ToLowerAscii(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+[[nodiscard]] bool ContainsToken(std::string_view text, std::string_view token)
+{
+    return text.find(token) != std::string_view::npos;
 }
 
 [[nodiscard]] std::optional<std::string> ExtractBalancedAfterKey(
@@ -565,6 +603,174 @@ void ReadStartGoal(RuntimeMap& runtime, const MapPackageInfo& package)
     runtime.info.start_goal_loaded = runtime.info.start.has_value() && runtime.info.goal.has_value();
 }
 
+[[nodiscard]] RuntimeObjectMarkerKind ClassifyObjectMarker(std::string type, std::string role)
+{
+    const std::string key = ToLowerAscii(type + " " + role);
+    if (ContainsToken(key, "reed") || ContainsToken(key, "rush") || ContainsToken(key, "cane")) {
+        return RuntimeObjectMarkerKind::kReed;
+    }
+    if (ContainsToken(key, "bush") || ContainsToken(key, "shrub")) {
+        return RuntimeObjectMarkerKind::kBush;
+    }
+    if (ContainsToken(key, "tree") || ContainsToken(key, "forest")) {
+        return RuntimeObjectMarkerKind::kTree;
+    }
+    if (ContainsToken(key, "ruin") || ContainsToken(key, "wall") || ContainsToken(key, "stone")) {
+        return RuntimeObjectMarkerKind::kRuin;
+    }
+    if (ContainsToken(key, "trench")) {
+        return RuntimeObjectMarkerKind::kTrench;
+    }
+    if (ContainsToken(key, "loot") || ContainsToken(key, "cache") || ContainsToken(key, "backpack")) {
+        return RuntimeObjectMarkerKind::kLoot;
+    }
+    if (ContainsToken(key, "cover") || ContainsToken(key, "barricade")) {
+        return RuntimeObjectMarkerKind::kCover;
+    }
+    if (ContainsToken(key, "building") || ContainsToken(key, "bunker") || ContainsToken(key, "mast")
+        || ContainsToken(key, "beacon") || ContainsToken(key, "generator")) {
+        return RuntimeObjectMarkerKind::kStructure;
+    }
+    return RuntimeObjectMarkerKind::kUnknown;
+}
+
+void AddRuntimeObjectMarker(RuntimeMap& runtime, RuntimeObjectMarker marker)
+{
+    if (!runtime.info.IsValid() || !runtime.height.Contains(marker.tile)) {
+        return;
+    }
+    marker.height = std::max(0, marker.height);
+    runtime.object_markers.push_back(std::move(marker));
+}
+
+void ReadRuntimeObjectMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
+{
+    constexpr std::string_view kObjectsFile = "objects/runtime_objects.json";
+    const std::filesystem::path objects_path = package.path / kObjectsFile;
+    if (!Exists(objects_path)) {
+        return;
+    }
+
+    const std::string text = ReadTextFileLimited(objects_path, kMaxRuntimeGridReadBytes, runtime.diagnostics);
+    if (text.empty()) {
+        return;
+    }
+
+    const std::optional<std::string> items = ExtractArrayAfterKey(text, "items");
+    if (!items.has_value()) {
+        runtime.diagnostics.AddWarning("runtime object markers missing items source=" + std::string(kObjectsFile));
+        return;
+    }
+
+    int skipped = 0;
+    for (const std::string& object : ExtractTopLevelObjectsFromArray(*items)) {
+        const std::optional<int> x = ExtractIntByKeys(object, {"x"});
+        const std::optional<int> y = ExtractIntByKeys(object, {"y"});
+        if (!x.has_value() || !y.has_value()) {
+            ++skipped;
+            continue;
+        }
+
+        RuntimeObjectMarker marker;
+        marker.tile = TileCoord{*x, *y};
+        marker.type = ExtractStringByKeys(object, {"type"}).value_or("object");
+        marker.role = ExtractStringByKeys(object, {"role"}).value_or("");
+        marker.height = ExtractIntByKeys(object, {"height"}).value_or(1);
+        marker.blocks_movement = ExtractBoolByKeys(object, {"blocks_movement"}).value_or(false);
+        marker.visual_only = false;
+        marker.kind = ClassifyObjectMarker(marker.type, marker.role);
+        AddRuntimeObjectMarker(runtime, std::move(marker));
+    }
+
+    if (skipped > 0) {
+        runtime.diagnostics.AddWarning("runtime object markers skipped invalid items count=" + std::to_string(skipped));
+    }
+}
+
+void ReadVegetationVisualMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
+{
+    constexpr std::string_view kVegetationFile = "render/vegetation_visual.json";
+    const std::filesystem::path vegetation_path = package.path / kVegetationFile;
+    if (!Exists(vegetation_path)) {
+        return;
+    }
+
+    const std::string text = ReadTextFileLimited(vegetation_path, kMaxRuntimeGridReadBytes, runtime.diagnostics);
+    if (text.empty()) {
+        return;
+    }
+
+    const std::optional<std::string> rows = ExtractArrayAfterKey(text, "rows");
+    if (!rows.has_value()) {
+        runtime.diagnostics.AddWarning("runtime vegetation visual markers missing rows source=" + std::string(kVegetationFile));
+        return;
+    }
+
+    const std::vector<std::string> row_values = ExtractQuotedStrings(*rows);
+    if (static_cast<int>(row_values.size()) != runtime.info.height) {
+        runtime.diagnostics.AddWarning(
+            "runtime vegetation visual row count mismatch rows=" + std::to_string(row_values.size())
+            + " expected=" + std::to_string(runtime.info.height));
+        return;
+    }
+
+    int skipped = 0;
+    for (int y = 0; y < runtime.info.height; ++y) {
+        const std::string& row = row_values[static_cast<std::size_t>(y)];
+        if (static_cast<int>(row.size()) < runtime.info.width) {
+            ++skipped;
+            continue;
+        }
+        for (int x = 0; x < runtime.info.width; ++x) {
+            RuntimeObjectMarker marker;
+            marker.tile = TileCoord{x, y};
+            marker.visual_only = true;
+            marker.blocks_movement = false;
+            switch (row[static_cast<std::size_t>(x)]) {
+                case 'T':
+                    marker.kind = RuntimeObjectMarkerKind::kTree;
+                    marker.type = "visible_tree";
+                    marker.role = "vegetation";
+                    marker.height = 2;
+                    break;
+                case 'R':
+                    marker.kind = RuntimeObjectMarkerKind::kReed;
+                    marker.type = "shore_reed";
+                    marker.role = "vegetation";
+                    marker.height = 1;
+                    break;
+                case 'P':
+                    marker.kind = RuntimeObjectMarkerKind::kReed;
+                    marker.type = "puddle_reed";
+                    marker.role = "vegetation";
+                    marker.height = 1;
+                    break;
+                case 'B':
+                    marker.kind = RuntimeObjectMarkerKind::kBush;
+                    marker.type = "reclaimed_bush";
+                    marker.role = "vegetation";
+                    marker.height = 1;
+                    break;
+                default:
+                    continue;
+            }
+            AddRuntimeObjectMarker(runtime, std::move(marker));
+        }
+    }
+
+    if (skipped > 0) {
+        runtime.diagnostics.AddWarning("runtime vegetation visual skipped short rows count=" + std::to_string(skipped));
+    }
+}
+
+void ReadObjectMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
+{
+    ReadRuntimeObjectMarkers(runtime, package);
+    ReadVegetationVisualMarkers(runtime, package);
+    runtime.info.object_markers = static_cast<int>(runtime.object_markers.size());
+    runtime.info.object_markers_loaded = runtime.info.object_markers > 0;
+}
+
 void UpdateHeightRange(RuntimeMap& runtime)
 {
     if (!runtime.height.IsValid()) {
@@ -660,6 +866,7 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
     UpdateHeightRange(runtime);
     ReadStartGoal(runtime, package);
+    ReadObjectMarkers(runtime, package);
     ValidateRuntimeMap(runtime);
     return runtime;
 }
@@ -682,6 +889,7 @@ std::string ToLogString(const RuntimeMap& map)
     out << " height=" << (map.info.elevation_loaded ? "loaded" : "missing");
     out << " start=" << FormatPoint(map.info.start);
     out << " goal=" << FormatPoint(map.info.goal);
+    out << " object_markers=" << map.info.object_markers;
     if (!map.info.generator_version.empty()) {
         out << " generator=" << map.info.generator_version;
     }

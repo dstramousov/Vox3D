@@ -375,3 +375,9 @@
 - Renamed the 3D color mode from Material to Traversal to match its actual terrain/traversal overlay role.
 - Added terrain/traversal surface categories to terrain mesh vertices and faces so the overlay can color grass, slow terrain, blocked terrain, water/wet terrain, tree blockers, start, and goal separately.
 - Prevented terrain-surface greedy merging from combining different traversal categories, preserving meaningful overlay colors across large top faces.
+
+## v0.5.22 -> v0.5.23
+
+- Added runtime object marker extraction from `objects/runtime_objects.json` and vegetation markers from `render/vegetation_visual.json`.
+- Added a 3D `Object Markers` overlay that draws simple colored pillars for trees, reeds, bushes, ruins, cover, loot, structures, and trenches above the terrain.
+- Kept the object markers separate from the terrain mesh and limited their draw pass to visible chunks so Traversal/Geographic modes can be combined with object diagnostics.

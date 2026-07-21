@@ -63,6 +63,7 @@ struct RaylibChunkMeshDebugOverlayOptions {
     bool show_world_grid = false;
     bool show_collision = false;
     bool show_height = false;
+    bool show_object_markers = false;
 };
 
 /**

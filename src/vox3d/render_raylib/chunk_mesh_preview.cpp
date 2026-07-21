@@ -895,6 +895,147 @@ void DrawHeightOverlay(const RuntimeMap& map)
     }
 }
 
+[[nodiscard]] Color ObjectMarkerColor(RuntimeObjectMarkerKind kind)
+{
+    switch (kind) {
+        case RuntimeObjectMarkerKind::kTree:
+            return Color{24, 118, 54, 235};
+        case RuntimeObjectMarkerKind::kBush:
+            return Color{78, 168, 72, 225};
+        case RuntimeObjectMarkerKind::kReed:
+            return Color{181, 196, 72, 220};
+        case RuntimeObjectMarkerKind::kRuin:
+            return Color{155, 150, 142, 235};
+        case RuntimeObjectMarkerKind::kCover:
+            return Color{172, 128, 78, 235};
+        case RuntimeObjectMarkerKind::kLoot:
+            return Color{86, 196, 236, 240};
+        case RuntimeObjectMarkerKind::kStructure:
+            return Color{132, 132, 122, 240};
+        case RuntimeObjectMarkerKind::kTrench:
+            return Color{122, 88, 48, 230};
+        case RuntimeObjectMarkerKind::kUnknown:
+            break;
+    }
+    return Color{220, 94, 184, 220};
+}
+
+[[nodiscard]] float ObjectMarkerHeight(const RuntimeObjectMarker& marker)
+{
+    switch (marker.kind) {
+        case RuntimeObjectMarkerKind::kTree:
+            return 1.85F;
+        case RuntimeObjectMarkerKind::kBush:
+            return 0.62F;
+        case RuntimeObjectMarkerKind::kReed:
+            return 0.92F;
+        case RuntimeObjectMarkerKind::kRuin:
+            return 0.95F;
+        case RuntimeObjectMarkerKind::kCover:
+            return 0.78F;
+        case RuntimeObjectMarkerKind::kLoot:
+            return 0.46F;
+        case RuntimeObjectMarkerKind::kStructure:
+            return std::max(1.05F, static_cast<float>(marker.height) * 0.65F);
+        case RuntimeObjectMarkerKind::kTrench:
+            return 0.22F;
+        case RuntimeObjectMarkerKind::kUnknown:
+            break;
+    }
+    return std::max(0.45F, static_cast<float>(marker.height) * 0.45F);
+}
+
+[[nodiscard]] Vector3 ObjectMarkerSize(const RuntimeObjectMarker& marker)
+{
+    switch (marker.kind) {
+        case RuntimeObjectMarkerKind::kTree:
+            return Vector3{0.16F, ObjectMarkerHeight(marker), 0.16F};
+        case RuntimeObjectMarkerKind::kBush:
+            return Vector3{0.34F, ObjectMarkerHeight(marker), 0.34F};
+        case RuntimeObjectMarkerKind::kReed:
+            return Vector3{0.10F, ObjectMarkerHeight(marker), 0.10F};
+        case RuntimeObjectMarkerKind::kTrench:
+            return Vector3{0.52F, ObjectMarkerHeight(marker), 0.52F};
+        case RuntimeObjectMarkerKind::kLoot:
+            return Vector3{0.28F, ObjectMarkerHeight(marker), 0.28F};
+        default:
+            break;
+    }
+    return Vector3{0.30F, ObjectMarkerHeight(marker), 0.30F};
+}
+
+[[nodiscard]] std::vector<std::uint8_t> BuildVisibleChunkMask(
+    const ChunkMeshBuildInfo& info,
+    const ChunkVisibilityReport& report)
+{
+    const int chunks_x = std::max(1, info.chunks_x);
+    const int chunks_y = std::max(1, info.chunks_y);
+    std::vector<std::uint8_t> visible(static_cast<std::size_t>(chunks_x) * static_cast<std::size_t>(chunks_y), 0U);
+    for (const ChunkVisibilityEntry& entry : report.entries) {
+        if (entry.visibility_class == ChunkVisibilityClass::kHidden) {
+            continue;
+        }
+        if (entry.coord.x < 0 || entry.coord.y < 0 || entry.coord.x >= chunks_x || entry.coord.y >= chunks_y) {
+            continue;
+        }
+        const auto index = static_cast<std::size_t>(entry.coord.y) * static_cast<std::size_t>(chunks_x)
+            + static_cast<std::size_t>(entry.coord.x);
+        visible[index] = 1U;
+    }
+    return visible;
+}
+
+[[nodiscard]] bool IsMarkerChunkVisible(
+    const RuntimeObjectMarker& marker,
+    const ChunkMeshBuildInfo& info,
+    const std::vector<std::uint8_t>& visible_chunks)
+{
+    const int chunk_size_x = std::max(1, info.chunk_size_x);
+    const int chunk_size_y = std::max(1, info.chunk_size_y);
+    const int chunks_x = std::max(1, info.chunks_x);
+    const int chunks_y = std::max(1, info.chunks_y);
+    const int chunk_x = ClampInt(marker.tile.x / chunk_size_x, 0, chunks_x - 1);
+    const int chunk_y = ClampInt(marker.tile.y / chunk_size_y, 0, chunks_y - 1);
+    const auto index = static_cast<std::size_t>(chunk_y) * static_cast<std::size_t>(chunks_x)
+        + static_cast<std::size_t>(chunk_x);
+    return index < visible_chunks.size() && visible_chunks[index] != 0U;
+}
+
+void DrawObjectMarkersOverlay(
+    const RuntimeMap& map,
+    const ChunkMeshBuildResult& build_result,
+    const ChunkVisibilityReport& visibility_report)
+{
+    if (!map.info.object_markers_loaded || !map.height.IsValid() || !build_result.info.IsValid()) {
+        return;
+    }
+
+    const std::vector<std::uint8_t> visible_chunks = BuildVisibleChunkMask(build_result.info, visibility_report);
+    for (const RuntimeObjectMarker& marker : map.object_markers) {
+        if (!map.height.Contains(marker.tile) || !IsMarkerChunkVisible(marker, build_result.info, visible_chunks)) {
+            continue;
+        }
+
+        const Color color = ObjectMarkerColor(marker.kind);
+        const Vector3 size = ObjectMarkerSize(marker);
+        const float terrain_level = TerrainTopLevel(map, marker.tile);
+        const Vector3 base = TileCenterWorld(
+            marker.tile.x,
+            marker.tile.y,
+            terrain_level + 0.16F,
+            build_result.info.map_width,
+            build_result.info.map_height);
+        const Vector3 top{base.x, base.y + size.y, base.z};
+        if (marker.visual_only) {
+            DrawLine3D(base, top, color);
+            continue;
+        }
+
+        const Vector3 center{base.x, base.y + size.y * 0.5F, base.z};
+        DrawCubeV(center, size, color);
+    }
+}
+
 [[nodiscard]] bool IsTransitionKindEnabled(TransitionFeatureKind kind, RaylibTransitionOverlayOptions options)
 {
     switch (kind) {
@@ -1238,6 +1379,7 @@ void DrawDebugOverlays(
     const ChunkMeshBuildResult& build_result,
     const RuntimeMap* runtime_map,
     const ChunkGrid* chunk_grid,
+    const ChunkVisibilityReport& visibility_report,
     RaylibChunkMeshDebugOverlayOptions overlays)
 {
     if (overlays.show_world_grid) {
@@ -1254,6 +1396,9 @@ void DrawDebugOverlays(
     }
     if (overlays.show_height) {
         DrawHeightOverlay(*runtime_map);
+    }
+    if (overlays.show_object_markers) {
+        DrawObjectMarkersOverlay(*runtime_map, build_result, visibility_report);
     }
 }
 
@@ -1415,7 +1560,7 @@ void RaylibChunkMeshPreview::Draw(
     if (transition_features != nullptr) {
         DrawTransitionFeatureOverlay(*transition_features, build_result, transitions);
     }
-    DrawDebugOverlays(build_result, runtime_map, chunk_grid, overlays);
+    DrawDebugOverlays(build_result, runtime_map, chunk_grid, visibility_report, overlays);
     if (runtime_map != nullptr) {
         DrawSelectedTileOverlay(*runtime_map, build_result, selected_tile);
         if (movement_probe != nullptr) {

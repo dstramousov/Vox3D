@@ -137,6 +137,10 @@ void ToggleOverlayFlag(
                 : 0;
         case WorkspacePanelItem::kRenderHeight:
             return HeightMarkerCount(workspace.runtime_map);
+        case WorkspacePanelItem::kRenderObjectMarkers:
+            return workspace.runtime_map.info.object_markers_loaded
+                ? static_cast<std::uint64_t>(workspace.runtime_map.info.object_markers)
+                : 0;
         default:
             return 0;
     }
@@ -1892,6 +1896,14 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             ToggleOverlayFlag(
                 workspace_.show_3d_height_overlay,
                 "height_overlay",
+                OverlayPrimitiveCount(workspace_, item),
+                logger_,
+                layout_dirty_);
+            break;
+        case WorkspacePanelItem::kRenderObjectMarkers:
+            ToggleOverlayFlag(
+                workspace_.show_3d_object_markers,
+                "object_markers",
                 OverlayPrimitiveCount(workspace_, item),
                 logger_,
                 layout_dirty_);

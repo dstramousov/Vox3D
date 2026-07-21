@@ -616,6 +616,11 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 2,
                 workspace.runtime_map.info.elevation_loaded,
                 workspace.show_3d_height_overlay));
+            items.push_back(Checkbox(
+                Item::kRenderObjectMarkers,
+                2,
+                workspace.runtime_map.info.object_markers_loaded,
+                workspace.show_3d_object_markers));
         }
 
         if (AddGroup(Item::k3DVisibilityGroup)) {

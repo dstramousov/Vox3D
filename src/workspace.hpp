@@ -190,6 +190,7 @@ enum class WorkspacePanelItem {
     kRenderWorldGrid,
     kRenderCollision,
     kRenderHeight,
+    kRenderObjectMarkers,
     k3DMeshGroup,
     k3DChunkSizeGroup,
     k3DChunkSize16,
@@ -393,6 +394,7 @@ struct WorkspaceState {
     bool show_3d_world_grid = false;
     bool show_3d_collision_overlay = false;
     bool show_3d_height_overlay = false;
+    bool show_3d_object_markers = true;
     WorkspaceColorMode color_mode = WorkspaceColorMode::kGeographic;
     WorkspaceVisibilityMode visibility_mode = WorkspaceVisibilityMode::kFrustumCull;
     int visibility_radius_chunks = 2;

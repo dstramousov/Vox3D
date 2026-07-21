@@ -330,6 +330,7 @@ void PushMapStats(std::vector<std::string>& lines, const WorkspaceState& workspa
     lines.push_back("  Size: " + MapSizeText(workspace_state.map, labels));
     lines.push_back("  Tile: " + MapTileText(workspace_state.map, labels));
     lines.push_back("  Levels: " + MapLevelsText(workspace_state.map, labels));
+    lines.push_back("  Object markers: " + std::to_string(workspace_state.runtime_map.info.object_markers));
     lines.push_back("");
 }
 
@@ -1141,6 +1142,8 @@ struct TextPanelRow {
             return labels.workspace_subitem_collision_overlay;
         case WorkspacePanelItem::kRenderHeight:
             return labels.workspace_subitem_height;
+        case WorkspacePanelItem::kRenderObjectMarkers:
+            return "Object Markers";
         case WorkspacePanelItem::k3DMeshGroup:
             return "Mesh";
         case WorkspacePanelItem::k3DChunkSizeGroup:
@@ -2245,6 +2248,7 @@ void DrawWorkspace(
             workspace_state.show_3d_world_grid,
             workspace_state.show_3d_collision_overlay,
             workspace_state.show_3d_height_overlay,
+            workspace_state.show_3d_object_markers,
         };
         RaylibChunkVisibilityMode raylib_visibility_mode = RaylibChunkVisibilityMode::kAllChunks;
         if (workspace_state.visibility_mode == WorkspaceVisibilityMode::kRadiusFade) {
