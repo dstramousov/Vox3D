@@ -417,3 +417,9 @@
 - Runtime map log now reports runtime_binary=loaded when the binary core path is used.
 - Fixed WorkspacePanelItem switch warnings for Objects filter entries.
 - Made label JSON parser tolerate an optional UTF-8 BOM before the root object.
+
+## v0.5.29 -> v0.5.30
+
+- Fixed label JSON loading by keeping the parsed file buffer alive for the flat string JSON parser.
+- Removed the startup `labels: parse failed ... reason="expected object"` warning for valid `res/lang/en.json` files.
+- Kept label loading behavior fallback-safe: malformed language files still keep built-in defaults and report diagnostics.

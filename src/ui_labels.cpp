@@ -278,8 +278,9 @@ bool LoadUiLabelsFromFile(
     std::ostringstream buffer;
     buffer << file.rdbuf();
 
+    const std::string content = buffer.str();
     std::string parse_error;
-    FlatStringJsonParser parser(buffer.str());
+    FlatStringJsonParser parser(content);
     std::optional<std::map<std::string, std::string>> values = parser.Parse(parse_error);
     if (!values.has_value()) {
         diagnostics.push_back("labels: parse failed path=\"" + labels_path.string() + "\" reason=\"" + parse_error + "\"");
