@@ -5,6 +5,7 @@
 #include <raylib.h>
 
 #include <string>
+#include <string_view>
 
 namespace vox3d {
 
@@ -89,6 +90,27 @@ public:
      * @param viewport Screen-space viewport used to resolve aspect ratio.
      */
     void StartFlyInToMap(const ChunkMeshBuildResult& build_result, Rectangle viewport);
+
+    /**
+     * @brief Places the camera at a diagonal corner view of an already-built startup tile window.
+     *
+     * The pose is stored as the reset pose and disables any active startup fly-in.
+     * Tile coordinates use the same 0-based map-space convention as mesh builders.
+     *
+     * @param build_result Mesh build result used for map dimensions and level range.
+     * @param window_left Left tile coordinate of the startup window.
+     * @param window_top Top tile coordinate of the startup window.
+     * @param window_width Startup window width in tiles.
+     * @param window_height Startup window height in tiles.
+     * @param corner Corner name: nw, ne, sw, or se. Unknown values fall back to se.
+     */
+    void SetTileWindowCornerView(
+        const ChunkMeshBuildResult& build_result,
+        int window_left,
+        int window_top,
+        int window_width,
+        int window_height,
+        std::string_view corner);
 
     /**
      * @brief Restores the last stored reset pose and clears camera velocity.

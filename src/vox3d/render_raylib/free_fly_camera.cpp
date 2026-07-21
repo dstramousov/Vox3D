@@ -3,9 +3,12 @@
 #include <raylib.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <string_view>
 
 namespace vox3d {
 namespace {
@@ -180,6 +183,72 @@ constexpr float kMinimumFitDistance = 24.0F;
     return Subtract(target, Scale(forward, BuildFitDistance(build_result, viewport, config) * 1.10F));
 }
 
+[[nodiscard]] std::string LowercaseAscii(std::string_view value)
+{
+    std::string result(value);
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return result;
+}
+
+[[nodiscard]] Vector3 TileToWorldPoint(float tile_x, float tile_y, const ChunkMeshBuildInfo& info, float world_y)
+{
+    return Vector3{
+        tile_x - static_cast<float>(std::max(1, info.map_width)) * 0.5F,
+        world_y,
+        static_cast<float>(std::max(1, info.map_height)) * 0.5F - tile_y,
+    };
+}
+
+[[nodiscard]] Vector3 BuildTileWindowTarget(
+    const ChunkMeshBuildResult& build_result,
+    int window_left,
+    int window_top,
+    int window_width,
+    int window_height)
+{
+    const Vector3 map_center = BuildMapCenter(build_result);
+    const float center_x = static_cast<float>(window_left) + static_cast<float>(std::max(1, window_width)) * 0.5F;
+    const float center_y = static_cast<float>(window_top) + static_cast<float>(std::max(1, window_height)) * 0.5F;
+    return TileToWorldPoint(center_x, center_y, build_result.info, map_center.y);
+}
+
+[[nodiscard]] Vector3 BuildTileWindowCornerPosition(
+    const ChunkMeshBuildResult& build_result,
+    Vector3 target,
+    int window_left,
+    int window_top,
+    int window_width,
+    int window_height,
+    std::string_view corner)
+{
+    std::string normalized_corner = LowercaseAscii(corner);
+    if (normalized_corner != "nw" && normalized_corner != "ne" && normalized_corner != "sw" && normalized_corner != "se") {
+        normalized_corner = "se";
+    }
+    const int safe_width = std::max(1, window_width);
+    const int safe_height = std::max(1, window_height);
+    const bool east = normalized_corner == "ne" || normalized_corner == "se";
+    const bool south = normalized_corner == "sw" || normalized_corner == "se";
+    const float corner_tile_x = static_cast<float>(window_left + (east ? safe_width : 0));
+    const float corner_tile_y = static_cast<float>(window_top + (south ? safe_height : 0));
+    const Vector3 corner_world = TileToWorldPoint(corner_tile_x, corner_tile_y, build_result.info, target.y);
+    Vector3 outward = Normalize(Vector3{corner_world.x - target.x, 0.0F, corner_world.z - target.z});
+    if (Length(outward) <= 0.000001F) {
+        outward = Normalize(Vector3{1.0F, 0.0F, -1.0F});
+    }
+
+    const float window_extent = static_cast<float>(std::max(safe_width, safe_height));
+    const float horizontal_distance = std::max(40.0F, window_extent * 0.88F);
+    const float height = std::max(42.0F, window_extent * 0.42F);
+    return Vector3{
+        target.x + outward.x * horizontal_distance,
+        target.y + height,
+        target.z + outward.z * horizontal_distance,
+    };
+}
+
 
 [[nodiscard]] float CurrentMoveSpeed(const FreeFlyCameraConfig& config)
 {
@@ -244,6 +313,29 @@ void FreeFlyCameraController::StartFlyInToMap(const ChunkMeshBuildResult& build_
     wheel_velocity_ = 0.0F;
     StoreResetPose(fly_in_end_position_, fly_in_end_target_);
     SetPose(fly_in_start_position_, fly_in_start_target_);
+}
+
+void FreeFlyCameraController::SetTileWindowCornerView(
+    const ChunkMeshBuildResult& build_result,
+    int window_left,
+    int window_top,
+    int window_width,
+    int window_height,
+    std::string_view corner)
+{
+    if (!build_result.info.IsValid() || window_width <= 0 || window_height <= 0) {
+        FitToMap(build_result);
+        return;
+    }
+
+    const Vector3 target = BuildTileWindowTarget(build_result, window_left, window_top, window_width, window_height);
+    const Vector3 position = BuildTileWindowCornerPosition(
+        build_result, target, window_left, window_top, window_width, window_height, corner);
+    fly_in_active_ = false;
+    velocity_ = Vector3{};
+    wheel_velocity_ = 0.0F;
+    StoreResetPose(position, target);
+    SetPose(position, target);
 }
 
 void FreeFlyCameraController::ResetView()

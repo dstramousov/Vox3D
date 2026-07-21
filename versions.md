@@ -468,3 +468,11 @@
 - Skipped diagnostic reads of heavy core JSON grid files on the `.vxmap` fast path: runtime grids, terrain/tile/elevation/collision layers, and elevation model.
 - Marked terrain, elevation, collision, and runtime grids as available through the binary runtime package metadata instead of probing large JSON files.
 - Extended the map-package log with `fast_vxmap=yes` and the skipped core JSON file list for startup diagnostics.
+
+## v0.5.36 -> v0.5.37
+
+- Added a startup window-corner camera pose for large maps that use the 256x256 initial tile window.
+- The initial camera now targets the built startup window instead of framing the full large map, so the first visible view is guaranteed to contain rendered chunks.
+- Added `VOX3D_STARTUP_CORNER=nw|ne|sw|se` to choose the startup window corner; the default is `se`.
+- Added `VOX3D_STARTUP_VIEW=map` or `VOX3D_STARTUP_VIEW=flyin` to force the older full-map startup fly-in for diagnostics.
+- Added `startup_view` logging with corner, initial window, camera position, and target diagnostics.

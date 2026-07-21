@@ -136,6 +136,25 @@ void ToggleOverlayFlag(
     return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string> ReadStringEnvironment(std::string_view name)
+{
+    const std::string key{name};
+    const char* raw_value = std::getenv(key.c_str());
+    if (raw_value == nullptr || raw_value[0] == '\0') {
+        return std::nullopt;
+    }
+    return std::string(raw_value);
+}
+
+[[nodiscard]] std::string NormalizeStartupCorner(std::string_view value)
+{
+    const std::string corner = Lowercase(value);
+    if (corner == "nw" || corner == "ne" || corner == "sw" || corner == "se") {
+        return corner;
+    }
+    return "se";
+}
+
 struct InitialTileWindow {
     bool limited = false;
     int left = 0;
@@ -597,8 +616,29 @@ bool App::Initialize()
 
     const SteadyTimePoint camera_start = Now();
     if (chunk_mesh_preview_.IsUploaded()) {
-        preview_camera_.StartFlyInToMap(workspace_.chunk_meshes, layout_cache_.workspace.map_overview);
-        logger_.Info("camera3d", "startup fly-in " + ToLogString(preview_camera_.Status()));
+        const int initial_window_size = ResolveInitialTileWindowSize(workspace_.runtime_map);
+        const InitialTileWindow initial_window = ResolveInitialTileWindow(workspace_.runtime_map, initial_window_size);
+        const std::string startup_view = Lowercase(ReadStringEnvironment("VOX3D_STARTUP_VIEW").value_or("window_corner"));
+        if (initial_window.limited && startup_view != "map" && startup_view != "flyin") {
+            const std::string corner = NormalizeStartupCorner(ReadStringEnvironment("VOX3D_STARTUP_CORNER").value_or("se"));
+            preview_camera_.SetTileWindowCornerView(
+                workspace_.chunk_meshes,
+                initial_window.left,
+                initial_window.top,
+                initial_window.width,
+                initial_window.height,
+                corner);
+            std::ostringstream out;
+            out << "mode=window_corner";
+            out << " corner=" << corner;
+            out << " initial_window=" << initial_window.left << ',' << initial_window.top << ','
+                << initial_window.width << 'x' << initial_window.height;
+            out << ' ' << ToLogString(preview_camera_.Status());
+            logger_.Info("startup_view", out.str());
+        } else {
+            preview_camera_.StartFlyInToMap(workspace_.chunk_meshes, layout_cache_.workspace.map_overview);
+            logger_.Info("camera3d", "startup fly-in " + ToLogString(preview_camera_.Status()));
+        }
     }
     const SteadyTimePoint camera_finish = Now();
 
