@@ -2,6 +2,8 @@
 #include "vox3d/map/vxmap_runtime_reader.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
@@ -815,6 +817,123 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
     }));
 }
 
+struct JsonRuntimeCore {
+    RuntimeGrid<std::string> terrain;
+    RuntimeGrid<std::uint8_t> collision;
+    RuntimeGrid<int> height;
+    std::optional<TileCoord> start;
+    std::optional<TileCoord> goal;
+    bool start_goal_loaded = false;
+    Diagnostics diagnostics;
+};
+
+[[nodiscard]] bool RuntimeBinaryJsonVerificationEnabled()
+{
+    const char* value = std::getenv("VOX3D_VERIFY_BINARY_JSON");
+    if (value == nullptr) {
+        return false;
+    }
+
+    const std::string normalized = ToLowerAscii(value);
+    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
+}
+
+[[nodiscard]] int ElapsedMillis(std::chrono::steady_clock::time_point start, std::chrono::steady_clock::time_point end)
+{
+    return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+}
+
+[[nodiscard]] JsonRuntimeCore ReadJsonRuntimeCore(const MapPackageInfo& package, const RuntimeMapInfo& info)
+{
+    JsonRuntimeCore core;
+    core.terrain = ReadTerrainGrid(package, core.diagnostics);
+    core.collision = ReadCollisionGrid(package, core.diagnostics);
+    core.height = ReadHeightGrid(package, core.diagnostics);
+
+    RuntimeMap start_goal_runtime;
+    start_goal_runtime.info.width = info.width;
+    start_goal_runtime.info.height = info.height;
+    start_goal_runtime.info.tile_size_px = info.tile_size_px;
+    ReadStartGoal(start_goal_runtime, package);
+    core.start = start_goal_runtime.info.start;
+    core.goal = start_goal_runtime.info.goal;
+    core.start_goal_loaded = start_goal_runtime.info.start_goal_loaded;
+    for (const std::string& warning : start_goal_runtime.diagnostics.warnings) {
+        core.diagnostics.AddWarning(warning);
+    }
+    return core;
+}
+
+void ApplyJsonRuntimeCore(RuntimeMap& runtime, JsonRuntimeCore&& core)
+{
+    runtime.terrain = std::move(core.terrain);
+    runtime.collision = std::move(core.collision);
+    runtime.height = std::move(core.height);
+    runtime.info.start = core.start;
+    runtime.info.goal = core.goal;
+    runtime.info.start_goal_loaded = core.start_goal_loaded;
+    for (const std::string& warning : core.diagnostics.warnings) {
+        runtime.diagnostics.AddWarning(warning);
+    }
+}
+
+template <typename T>
+[[nodiscard]] std::size_t CountGridMismatches(const RuntimeGrid<T>& left, const RuntimeGrid<T>& right)
+{
+    if (left.width != right.width || left.height != right.height || left.cells.size() != right.cells.size()) {
+        return std::max(left.cells.size(), right.cells.size());
+    }
+
+    std::size_t mismatches = 0;
+    for (std::size_t index = 0; index < left.cells.size(); ++index) {
+        if (left.cells[index] != right.cells[index]) {
+            ++mismatches;
+        }
+    }
+    return mismatches;
+}
+
+[[nodiscard]] bool SamePoint(const std::optional<TileCoord>& left, const std::optional<TileCoord>& right)
+{
+    if (left.has_value() != right.has_value()) {
+        return false;
+    }
+    if (!left.has_value()) {
+        return true;
+    }
+    return left->x == right->x && left->y == right->y;
+}
+
+void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& json_core)
+{
+    RuntimeMapInfo& info = runtime.info;
+    info.runtime_binary_json_compare_checked = true;
+
+    if (!json_core.terrain.IsValid() || !json_core.collision.IsValid() || !json_core.height.IsValid()) {
+        info.runtime_binary_json_compare_ok = false;
+        info.runtime_binary_json_compare_reason = "json_core_unavailable";
+        return;
+    }
+
+    info.runtime_binary_json_terrain_mismatches = CountGridMismatches(runtime.terrain, json_core.terrain);
+    info.runtime_binary_json_collision_mismatches = CountGridMismatches(runtime.collision, json_core.collision);
+    info.runtime_binary_json_height_mismatches = CountGridMismatches(runtime.height, json_core.height);
+    info.runtime_binary_json_point_mismatches = 0;
+    if (!SamePoint(runtime.info.start, json_core.start)) {
+        ++info.runtime_binary_json_point_mismatches;
+    }
+    if (!SamePoint(runtime.info.goal, json_core.goal)) {
+        ++info.runtime_binary_json_point_mismatches;
+    }
+
+    const std::size_t total = info.runtime_binary_json_terrain_mismatches
+        + info.runtime_binary_json_collision_mismatches
+        + info.runtime_binary_json_height_mismatches
+        + info.runtime_binary_json_point_mismatches;
+    info.runtime_binary_json_compare_ok = total == 0;
+    info.runtime_binary_json_compare_reason = info.runtime_binary_json_compare_ok ? "ok" : "binary_json_mismatch";
+}
+
 
 [[nodiscard]] VxmapRuntimeManifest ToVxmapManifest(const RuntimeBinaryInfo& info)
 {
@@ -924,8 +1043,31 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
         return runtime;
     }
 
+    bool json_core_applied = false;
     const bool loaded_from_binary = TryLoadRuntimeBinaryCore(runtime, package);
-    if (!loaded_from_binary) {
+    if (loaded_from_binary && RuntimeBinaryJsonVerificationEnabled()) {
+        const auto json_load_start = std::chrono::steady_clock::now();
+        JsonRuntimeCore json_core = ReadJsonRuntimeCore(package, runtime.info);
+        const auto json_load_end = std::chrono::steady_clock::now();
+
+        const auto compare_start = std::chrono::steady_clock::now();
+        CompareRuntimeBinaryWithJson(runtime, json_core);
+        const auto compare_end = std::chrono::steady_clock::now();
+        runtime.info.runtime_binary_json_load_ms = ElapsedMillis(json_load_start, json_load_end);
+        runtime.info.runtime_binary_json_compare_ms = ElapsedMillis(compare_start, compare_end);
+
+        if (!runtime.info.runtime_binary_json_compare_ok) {
+            runtime.info.runtime_binary_valid = false;
+            runtime.info.runtime_binary_loaded = false;
+            runtime.info.runtime_binary_fallback_reason = runtime.info.runtime_binary_json_compare_reason;
+            runtime.diagnostics.AddWarning(
+                "runtime binary fast path rejected reason=" + runtime.info.runtime_binary_json_compare_reason);
+            ApplyJsonRuntimeCore(runtime, std::move(json_core));
+            json_core_applied = true;
+        }
+    }
+
+    if (!runtime.info.runtime_binary_loaded && !json_core_applied) {
         runtime.terrain = ReadTerrainGrid(package, runtime.diagnostics);
         runtime.collision = ReadCollisionGrid(package, runtime.diagnostics);
         runtime.height = ReadHeightGrid(package, runtime.diagnostics);
@@ -970,6 +1112,17 @@ std::string ToLogString(const RuntimeMap& map)
         if (!map.info.runtime_binary_valid && !map.info.runtime_binary_fallback_reason.empty()) {
             out << " reason=" << map.info.runtime_binary_fallback_reason;
         }
+    }
+    if (map.info.runtime_binary_json_compare_checked) {
+        out << " binary_vs_json=" << (map.info.runtime_binary_json_compare_ok ? "ok" : "mismatch");
+        if (!map.info.runtime_binary_json_compare_ok) {
+            out << " terrain_mismatch=" << map.info.runtime_binary_json_terrain_mismatches;
+            out << " collision_mismatch=" << map.info.runtime_binary_json_collision_mismatches;
+            out << " height_mismatch=" << map.info.runtime_binary_json_height_mismatches;
+            out << " point_mismatch=" << map.info.runtime_binary_json_point_mismatches;
+        }
+        out << " json_load_ms=" << map.info.runtime_binary_json_load_ms;
+        out << " compare_ms=" << map.info.runtime_binary_json_compare_ms;
     }
     if (!map.info.generator_version.empty()) {
         out << " generator=" << map.info.generator_version;

@@ -112,6 +112,15 @@ struct RuntimeMapInfo {
     bool runtime_binary_valid = false;
     bool runtime_binary_loaded = false;
     std::string runtime_binary_fallback_reason;
+    bool runtime_binary_json_compare_checked = false;
+    bool runtime_binary_json_compare_ok = false;
+    std::string runtime_binary_json_compare_reason;
+    std::size_t runtime_binary_json_terrain_mismatches = 0;
+    std::size_t runtime_binary_json_collision_mismatches = 0;
+    std::size_t runtime_binary_json_height_mismatches = 0;
+    std::size_t runtime_binary_json_point_mismatches = 0;
+    int runtime_binary_json_load_ms = 0;
+    int runtime_binary_json_compare_ms = 0;
     int blocked_cells = 0;
     int object_markers = 0;
 

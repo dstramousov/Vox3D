@@ -423,3 +423,10 @@
 - Fixed label JSON loading by keeping the parsed file buffer alive for the flat string JSON parser.
 - Removed the startup `labels: parse failed ... reason="expected object"` warning for valid `res/lang/en.json` files.
 - Kept label loading behavior fallback-safe: malformed language files still keep built-in defaults and report diagnostics.
+
+## v0.5.30 -> v0.5.31
+
+- Added optional binary-vs-JSON runtime core verification controlled by `VOX3D_VERIFY_BINARY_JSON=1`.
+- The verifier compares terrain, collision, elevation, start, and goal tile-by-tile after a successful `.vxmap` load.
+- Runtime map logging now reports `binary_vs_json=ok` or mismatch counters plus JSON load/compare timings when verification is enabled.
+- If verification detects a mismatch or JSON core is unavailable, the loader rejects the binary fast path and falls back to JSON safely.
