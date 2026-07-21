@@ -381,3 +381,9 @@
 - Added runtime object marker extraction from `objects/runtime_objects.json` and vegetation markers from `render/vegetation_visual.json`.
 - Added a 3D `Object Markers` overlay that draws simple colored pillars for trees, reeds, bushes, ruins, cover, loot, structures, and trenches above the terrain.
 - Kept the object markers separate from the terrain mesh and limited their draw pass to visible chunks so Traversal/Geographic modes can be combined with object diagnostics.
+
+## v0.5.23 -> v0.5.24
+
+- Replaced thin vegetation/object marker lines with uniform colored cube markers so map objects remain visible in 3D overview.
+- Kept marker size identical across trees, reeds, bushes, ruins, cover, loot, structures, and unknown objects so color remains the primary type hint.
+- Continued drawing object markers only for visible chunks and kept them separate from the terrain mesh.

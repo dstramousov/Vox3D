@@ -920,48 +920,10 @@ void DrawHeightOverlay(const RuntimeMap& map)
     return Color{220, 94, 184, 220};
 }
 
-[[nodiscard]] float ObjectMarkerHeight(const RuntimeObjectMarker& marker)
+[[nodiscard]] Vector3 ObjectMarkerSize()
 {
-    switch (marker.kind) {
-        case RuntimeObjectMarkerKind::kTree:
-            return 1.85F;
-        case RuntimeObjectMarkerKind::kBush:
-            return 0.62F;
-        case RuntimeObjectMarkerKind::kReed:
-            return 0.92F;
-        case RuntimeObjectMarkerKind::kRuin:
-            return 0.95F;
-        case RuntimeObjectMarkerKind::kCover:
-            return 0.78F;
-        case RuntimeObjectMarkerKind::kLoot:
-            return 0.46F;
-        case RuntimeObjectMarkerKind::kStructure:
-            return std::max(1.05F, static_cast<float>(marker.height) * 0.65F);
-        case RuntimeObjectMarkerKind::kTrench:
-            return 0.22F;
-        case RuntimeObjectMarkerKind::kUnknown:
-            break;
-    }
-    return std::max(0.45F, static_cast<float>(marker.height) * 0.45F);
-}
-
-[[nodiscard]] Vector3 ObjectMarkerSize(const RuntimeObjectMarker& marker)
-{
-    switch (marker.kind) {
-        case RuntimeObjectMarkerKind::kTree:
-            return Vector3{0.16F, ObjectMarkerHeight(marker), 0.16F};
-        case RuntimeObjectMarkerKind::kBush:
-            return Vector3{0.34F, ObjectMarkerHeight(marker), 0.34F};
-        case RuntimeObjectMarkerKind::kReed:
-            return Vector3{0.10F, ObjectMarkerHeight(marker), 0.10F};
-        case RuntimeObjectMarkerKind::kTrench:
-            return Vector3{0.52F, ObjectMarkerHeight(marker), 0.52F};
-        case RuntimeObjectMarkerKind::kLoot:
-            return Vector3{0.28F, ObjectMarkerHeight(marker), 0.28F};
-        default:
-            break;
-    }
-    return Vector3{0.30F, ObjectMarkerHeight(marker), 0.30F};
+    constexpr float kMarkerCubeSize = 0.34F;
+    return Vector3{kMarkerCubeSize, kMarkerCubeSize, kMarkerCubeSize};
 }
 
 [[nodiscard]] std::vector<std::uint8_t> BuildVisibleChunkMask(
@@ -1017,20 +979,14 @@ void DrawObjectMarkersOverlay(
         }
 
         const Color color = ObjectMarkerColor(marker.kind);
-        const Vector3 size = ObjectMarkerSize(marker);
+        const Vector3 size = ObjectMarkerSize();
         const float terrain_level = TerrainTopLevel(map, marker.tile);
         const Vector3 base = TileCenterWorld(
             marker.tile.x,
             marker.tile.y,
-            terrain_level + 0.16F,
+            terrain_level + 0.20F,
             build_result.info.map_width,
             build_result.info.map_height);
-        const Vector3 top{base.x, base.y + size.y, base.z};
-        if (marker.visual_only) {
-            DrawLine3D(base, top, color);
-            continue;
-        }
-
         const Vector3 center{base.x, base.y + size.y * 0.5F, base.z};
         DrawCubeV(center, size, color);
     }
