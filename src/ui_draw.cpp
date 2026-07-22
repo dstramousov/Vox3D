@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -320,9 +321,31 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "Val " + ValidationStatusLabel(workspace_state.passability_validation_status);
 }
 
-[[nodiscard]] std::string CompactStatusText(const WorkspaceState& workspace_state, const UiLabels& labels)
+[[nodiscard]] std::string CompactStatusText(
+    const WorkspaceState& workspace_state,
+    Map2DViewStatus map_2d_status,
+    const UiLabels& labels)
 {
     const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
+    if (!workspace_state.show_3d_preview) {
+        std::string status = labels.workspace_status_ready + " | 2D";
+        if (map_2d_status.loaded && map_2d_status.initialized) {
+            const float zoom_ratio = map_2d_status.fit_pixels_per_tile > 0.0001F
+                ? map_2d_status.pixels_per_tile / map_2d_status.fit_pixels_per_tile
+                : 1.0F;
+            status += " | Zoom " + CompactFloat(zoom_ratio) + "x";
+        }
+        if (map_2d_status.hover_tile_valid) {
+            status += " | Tile " + TileCoordText(map_2d_status.hover_tile);
+        } else {
+            status += " | Tile none";
+        }
+        if (workspace_state.runtime_map.IsValid()) {
+            status += " | Map " + std::to_string(workspace_state.runtime_map.info.width) + "x"
+                + std::to_string(workspace_state.runtime_map.info.height);
+        }
+        return status;
+    }
     if (!workspace_state.chunk_meshes.IsValid()) {
         return labels.workspace_status_ready + " | " + preview_mode + " | " + MapStatusLabel(workspace_state.map, labels);
     }
@@ -1392,113 +1415,6 @@ struct SelectionInfoOverlayGeometry {
     return out.str();
 }
 
-[[nodiscard]] Color CellColor(MapCellKind kind)
-{
-    switch (kind) {
-        case MapCellKind::kOpen:
-            return Color{176, 178, 158, 255};
-        case MapCellKind::kForest:
-            return Color{42, 108, 62, 255};
-        case MapCellKind::kWater:
-            return Color{42, 86, 142, 255};
-        case MapCellKind::kRoad:
-            return Color{176, 151, 92, 255};
-        case MapCellKind::kSwamp:
-            return Color{68, 98, 78, 255};
-        case MapCellKind::kRuins:
-            return Color{122, 117, 112, 255};
-        case MapCellKind::kBuilding:
-            return Color{86, 78, 76, 255};
-        case MapCellKind::kBlocked:
-            return Color{32, 35, 38, 255};
-        case MapCellKind::kStart:
-            return Color{248, 232, 88, 255};
-        case MapCellKind::kGoal:
-            return Color{226, 90, 72, 255};
-        case MapCellKind::kUnknown:
-            return Color{106, 108, 104, 255};
-    }
-    return Color{106, 108, 104, 255};
-}
-
-void DrawWorkspaceOverview(
-    const WorkspaceState& workspace_state,
-    const WorkspaceLayout& workspace,
-    const UiMetrics& metrics)
-{
-    const MapOverview& overview = workspace_state.map.overview;
-    const Rectangle area = workspace.map_overview;
-    DrawRectangleRec(area, Color{118, 120, 118, 255});
-    DrawRectangleLinesEx(area, metrics.workspace_border_width, kEditorBorder);
-
-    if (!overview.IsValid() || !workspace_state.show_terrain_layer) {
-        return;
-    }
-
-    const float padding = std::max(4.0F, metrics.workspace_border_width * 2.0F);
-    const Rectangle inner{
-        area.x + padding,
-        area.y + padding,
-        std::max(1.0F, area.width - padding * 2.0F),
-        std::max(1.0F, area.height - padding * 2.0F),
-    };
-
-    const float map_aspect = static_cast<float>(overview.width) / static_cast<float>(overview.height);
-    float draw_width = inner.width;
-    float draw_height = draw_width / map_aspect;
-    if (draw_height > inner.height) {
-        draw_height = inner.height;
-        draw_width = draw_height * map_aspect;
-    }
-
-    const Rectangle map_rect{
-        inner.x + (inner.width - draw_width) * 0.5F,
-        inner.y + (inner.height - draw_height) * 0.5F,
-        draw_width,
-        draw_height,
-    };
-
-    constexpr int kMaxDrawAxis = 320;
-    const int draw_cols = std::max(1, std::min(overview.width, kMaxDrawAxis));
-    const int draw_rows = std::max(1, std::min(overview.height, kMaxDrawAxis));
-    const float cell_width = map_rect.width / static_cast<float>(draw_cols);
-    const float cell_height = map_rect.height / static_cast<float>(draw_rows);
-
-    for (int y = 0; y < draw_rows; ++y) {
-        const int source_y = std::min(overview.height - 1, static_cast<int>((static_cast<long long>(y) * overview.height) / draw_rows));
-        for (int x = 0; x < draw_cols; ++x) {
-            const int source_x = std::min(overview.width - 1, static_cast<int>((static_cast<long long>(x) * overview.width) / draw_cols));
-            const std::size_t index = static_cast<std::size_t>(source_y) * static_cast<std::size_t>(overview.width)
-                + static_cast<std::size_t>(source_x);
-            DrawRectangleRec(
-                Rectangle{
-                    map_rect.x + static_cast<float>(x) * cell_width,
-                    map_rect.y + static_cast<float>(y) * cell_height,
-                    std::max(1.0F, cell_width + 0.6F),
-                    std::max(1.0F, cell_height + 0.6F),
-                },
-                CellColor(overview.cells[index]));
-        }
-    }
-
-    if (workspace_state.show_grid_layer) {
-        const int grid_step_x = std::max(1, draw_cols / 16);
-        const int grid_step_y = std::max(1, draw_rows / 16);
-        constexpr Color grid{20, 24, 24, 90};
-        for (int x = grid_step_x; x < draw_cols; x += grid_step_x) {
-            const float px = map_rect.x + static_cast<float>(x) * cell_width;
-            DrawLineEx(Vector2{px, map_rect.y}, Vector2{px, map_rect.y + map_rect.height}, 1.0F, grid);
-        }
-        for (int y = grid_step_y; y < draw_rows; y += grid_step_y) {
-            const float py = map_rect.y + static_cast<float>(y) * cell_height;
-            DrawLineEx(Vector2{map_rect.x, py}, Vector2{map_rect.x + map_rect.width, py}, 1.0F, grid);
-        }
-    }
-
-    DrawRectangleLinesEx(map_rect, metrics.workspace_border_width, Color{235, 235, 220, 255});
-}
-
-
 void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetrics& metrics)
 {
     const Rectangle area = workspace.viewport;
@@ -2207,6 +2123,7 @@ void DrawSelectionInfoOverlay(
 
 void DrawWorkspace(
     const WorkspaceState& workspace_state,
+    const Map2DView* map_2d_view,
     const RaylibChunkMeshPreview* mesh_preview,
     const Camera3D* preview_camera,
     FreeFlyCameraStatus camera_status,
@@ -2507,8 +2424,17 @@ void DrawWorkspace(
             });
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {
-        DrawWorkspaceOverview(workspace_state, workspace, metrics);
-        if (!workspace_state.map.overview.IsValid() || !workspace_state.show_terrain_layer) {
+        if (map_2d_view != nullptr && map_2d_view->IsLoaded()) {
+            const std::optional<TileCoord> selection = workspace_state.selected_tile.IsValid()
+                ? std::optional<TileCoord>{workspace_state.selected_tile.tile}
+                : std::nullopt;
+            map_2d_view->Draw(
+                workspace.map_overview,
+                workspace_state.show_terrain_layer,
+                workspace_state.show_grid_layer,
+                selection);
+        }
+        if (map_2d_view == nullptr || !map_2d_view->IsLoaded()) {
             DrawWorkspaceWirePlaceholder(workspace, metrics);
             DrawTextCentered(
                 fonts.text,
@@ -2521,7 +2447,10 @@ void DrawWorkspace(
         }
     }
 
-    const std::string status = CompactStatusText(workspace_state, labels);
+    const Map2DViewStatus map_2d_status = map_2d_view != nullptr
+        ? map_2d_view->Status()
+        : Map2DViewStatus{};
+    const std::string status = CompactStatusText(workspace_state, map_2d_status, labels);
     DrawTextEx(
         fonts.text,
         status.c_str(),

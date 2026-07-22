@@ -991,6 +991,18 @@ bool App::Initialize()
         logger_.Warn("runtime_map", warning);
     }
 
+    const MapOverview& map_2d_overview = workspace_.runtime_map.overview.IsValid()
+        ? workspace_.runtime_map.overview
+        : workspace_.map.overview;
+    if (map_2d_view_.Load(map_2d_overview)) {
+        logger_.Info(
+            "map2d",
+            "terrain texture loaded size=" + std::to_string(map_2d_overview.width) + "x"
+                + std::to_string(map_2d_overview.height));
+    } else {
+        logger_.Warn("map2d", "terrain texture unavailable");
+    }
+
     const SteadyTimePoint chunk_pipeline_start = Now();
     RebuildChunkPipeline(workspace_.chunk_size_tiles, "initial");
     const SteadyTimePoint chunk_pipeline_finish = Now();
@@ -1004,6 +1016,7 @@ bool App::Initialize()
 
     const SteadyTimePoint layout_start = Now();
     RebuildLayout();
+    FitMap2DView("initial");
     const SteadyTimePoint layout_finish = Now();
 
     const SteadyTimePoint camera_start = Now();
@@ -1294,6 +1307,8 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     const bool camera_mode = workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded() && preview_camera_.IsInitialized();
+    const bool map_2d_mode = !workspace_.show_3d_preview && map_2d_view_.IsLoaded();
+    map_2d_view_.Update(layout_cache_.workspace.map_overview, map_2d_mode);
     bool panel_tab_hotkey_pressed = false;
     if (!preview_camera_.IsCursorCaptured()) {
         if (IsKeyPressed(KEY_V)) {
@@ -1392,6 +1407,25 @@ void App::HandleWorkspaceInput(float dt)
             SelectTileAtMouse(pick_mouse, "mouse");
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, !path_pick_active_before_click);
+    } else if (map_2d_mode) {
+        if (IsKeyPressed(KEY_R)) {
+            ResetMap2DView("hotkey");
+        }
+        if (IsKeyPressed(KEY_F)) {
+            FitMap2DView("hotkey");
+        }
+        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) {
+            AdjustMap2DZoom(1, "hotkey");
+        }
+        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) {
+            AdjustMap2DZoom(-1, "hotkey");
+        }
+        const Vector2 pick_mouse = GetMousePosition();
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
+            && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
+            SelectTileAtMouse(pick_mouse, "mouse_2d");
+        }
+        preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
     } else {
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
     }
@@ -1803,6 +1837,7 @@ void App::Draw()
         case AppScreen::kWorkspace:
             DrawWorkspace(
                 workspace_,
+                &map_2d_view_,
                 &chunk_mesh_preview_,
                 &preview_camera_.Camera(),
                 preview_camera_.Status(),
@@ -2718,15 +2753,25 @@ void App::TogglePassabilityValidationOverlay(std::string_view reason)
 
 void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
 {
-    if (!workspace_.show_3d_preview || !chunk_mesh_preview_.IsUploaded() || !workspace_.runtime_map.IsValid()) {
+    if (!workspace_.runtime_map.IsValid()) {
         return;
     }
 
-    const auto picked_tile = chunk_mesh_preview_.PickTile(
-        mouse,
-        layout_cache_.workspace.map_overview,
-        workspace_.runtime_map,
-        preview_camera_.Camera());
+    std::optional<TileCoord> picked_tile;
+    if (workspace_.show_3d_preview) {
+        if (!chunk_mesh_preview_.IsUploaded()) {
+            return;
+        }
+        picked_tile = chunk_mesh_preview_.PickTile(
+            mouse,
+            layout_cache_.workspace.map_overview,
+            workspace_.runtime_map,
+            preview_camera_.Camera());
+    } else {
+        picked_tile = map_2d_view_.ScreenToTile(
+            mouse,
+            layout_cache_.workspace.map_overview);
+    }
     if (!picked_tile.has_value()) {
         workspace_.selected_tile = TileInspectResult{};
         workspace_.movement_probe = MovementProbeResult{};
@@ -2823,8 +2868,22 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
     }
 
     switch (item) {
+        case WorkspacePanelItem::k2DFitView:
+            FitMap2DView("panel");
+            break;
+        case WorkspacePanelItem::k2DResetView:
+            ResetMap2DView("panel");
+            break;
+        case WorkspacePanelItem::k2DZoomIn:
+            AdjustMap2DZoom(1, "panel");
+            break;
+        case WorkspacePanelItem::k2DZoomOut:
+            AdjustMap2DZoom(-1, "panel");
+            break;
         case WorkspacePanelItem::kLayerTerrain:
-            workspace_.show_terrain_layer = !workspace_.show_terrain_layer;
+            workspace_.show_terrain_layer = true;
+            workspace_.show_elevation_layer = false;
+            workspace_.show_collision_layer = false;
             break;
         case WorkspacePanelItem::kLayerElevation:
             workspace_.show_elevation_layer = !workspace_.show_elevation_layer;
@@ -2838,6 +2897,9 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
         case WorkspacePanelItem::kMode2DMap:
             workspace_.show_3d_preview = false;
             preview_camera_.ReleaseMouse();
+            if (!map_2d_view_.Status().initialized) {
+                FitMap2DView("mode_switch");
+            }
             logger_.Info("workspace", "preview mode=2d");
             break;
         case WorkspacePanelItem::kMode3DWorld:
@@ -3122,7 +3184,59 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
     logger_.Debug("workspace", "panel item activated id=" + std::string(ToString(item)));
 }
 
+void App::FitMap2DView(std::string_view reason)
+{
+    if (!map_2d_view_.IsLoaded()) {
+        logger_.Debug("map2d", "fit ignored reason=" + std::string(reason));
+        return;
+    }
+    if (layout_dirty_) {
+        RebuildLayout();
+    }
+    map_2d_view_.FitToMap(layout_cache_.workspace.map_overview);
+    const Map2DViewStatus status = map_2d_view_.Status();
+    logger_.Info(
+        "map2d",
+        "fit reason=" + std::string(reason)
+            + " zoom=" + std::to_string(status.pixels_per_tile)
+            + " center=" + std::to_string(status.center_tile.x) + ','
+            + std::to_string(status.center_tile.y));
+}
 
+void App::ResetMap2DView(std::string_view reason)
+{
+    if (!map_2d_view_.IsLoaded()) {
+        logger_.Debug("map2d", "reset ignored reason=" + std::string(reason));
+        return;
+    }
+    if (layout_dirty_) {
+        RebuildLayout();
+    }
+    map_2d_view_.ResetView(layout_cache_.workspace.map_overview);
+    const Map2DViewStatus status = map_2d_view_.Status();
+    logger_.Info(
+        "map2d",
+        "reset reason=" + std::string(reason)
+            + " zoom=" + std::to_string(status.pixels_per_tile)
+            + " center=" + std::to_string(status.center_tile.x) + ','
+            + std::to_string(status.center_tile.y));
+}
+
+void App::AdjustMap2DZoom(int steps, std::string_view reason)
+{
+    if (!map_2d_view_.IsLoaded() || steps == 0) {
+        return;
+    }
+    if (layout_dirty_) {
+        RebuildLayout();
+    }
+    map_2d_view_.AdjustZoom(steps, layout_cache_.workspace.map_overview);
+    logger_.Debug(
+        "map2d",
+        "zoom reason=" + std::string(reason)
+            + " steps=" + std::to_string(steps)
+            + " pixels_per_tile=" + std::to_string(map_2d_view_.Status().pixels_per_tile));
+}
 
 void App::FitPreviewCameraToViewport(std::string_view reason)
 {
@@ -3265,6 +3379,10 @@ void App::UnloadUiFonts()
 
 void App::UnloadPreviewResources()
 {
+    if (map_2d_view_.IsLoaded()) {
+        map_2d_view_.Unload();
+        logger_.Debug("map2d", "terrain texture unloaded");
+    }
     if (chunk_mesh_preview_.IsUploaded()) {
         chunk_mesh_preview_.Unload();
         logger_.Debug("render3d", "preview resources unloaded");

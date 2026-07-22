@@ -525,3 +525,11 @@
 
 - Removed the obsolete 3D View section and its Reset View action from the workspace side panel.
 - Removed unreachable legacy 3D panel item identifiers and handlers while preserving camera hotkeys and startup camera behavior.
+
+## v0.5.44 -> v0.5.45
+
+- Replaced the fixed 2D thumbnail renderer with an interactive Camera2D-based map view.
+- Added cursor-anchored mouse-wheel zoom, middle-button panning, fit, reset, and panel zoom actions.
+- Added a one-pixel-per-tile nearest-neighbour terrain texture instead of drawing thousands of rectangles every frame.
+- Added zoom-dependent tile/chunk grid rendering and shared 2D/3D tile selection with the existing `I` information overlay.
+- Added 2D hover tile coordinates and zoom level to the workspace status bar.

@@ -793,15 +793,17 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
     }
 
     if (AddGroup(Item::k2DNavigationGroup)) {
-        items.push_back(Action(Item::k2DResetView, 1, false));
-        items.push_back(Action(Item::k2DZoomIn, 1, false));
-        items.push_back(Action(Item::k2DZoomOut, 1, false));
+        const bool navigation_enabled = workspace.runtime_map.IsValid();
+        items.push_back(Action(Item::k2DFitView, 1, navigation_enabled));
+        items.push_back(Action(Item::k2DResetView, 1, navigation_enabled));
+        items.push_back(Action(Item::k2DZoomIn, 1, navigation_enabled));
+        items.push_back(Action(Item::k2DZoomOut, 1, navigation_enabled));
     }
 
     if (AddGroup(Item::k2DBaseLayerGroup)) {
-        items.push_back(Checkbox(Item::kLayerTerrain, 1, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer));
-        items.push_back(Checkbox(Item::kLayerElevation, 1, workspace.runtime_map.info.elevation_loaded, workspace.show_elevation_layer));
-        items.push_back(Checkbox(Item::kLayerCollision, 1, workspace.runtime_map.info.collision_loaded, workspace.show_collision_layer));
+        items.push_back(Radio(Item::kLayerTerrain, 1, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer));
+        items.push_back(Radio(Item::kLayerElevation, 1, false, workspace.show_elevation_layer));
+        items.push_back(Radio(Item::kLayerCollision, 1, false, workspace.show_collision_layer));
     }
 
     if (AddGroup(Item::k2DOverlayGroup)) {

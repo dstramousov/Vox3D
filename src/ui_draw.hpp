@@ -6,6 +6,7 @@
 #include "process_metrics.hpp"
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "vox3d/render_raylib/free_fly_camera.hpp"
+#include "vox3d/render_raylib/map_2d_view.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
 #include "ui_layout.hpp"
@@ -49,6 +50,7 @@ void DrawPlaceholderScreen(
  * @brief Draws the main workspace screen.
  *
  * @param workspace Workspace state to draw.
+ * @param map_2d_view Optional interactive 2D map renderer.
  * @param mesh_preview Optional uploaded 3D mesh preview renderer.
  * @param preview_camera Optional camera used by the 3D preview renderer.
  * @param camera_status Latest camera diagnostics shown in the workspace panel.
@@ -58,6 +60,7 @@ void DrawPlaceholderScreen(
  */
 void DrawWorkspace(
     const WorkspaceState& workspace,
+    const Map2DView* map_2d_view,
     const RaylibChunkMeshPreview* mesh_preview,
     const Camera3D* preview_camera,
     FreeFlyCameraStatus camera_status,

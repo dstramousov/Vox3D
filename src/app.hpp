@@ -7,6 +7,7 @@
 #include "process_metrics.hpp"
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "vox3d/render_raylib/free_fly_camera.hpp"
+#include "vox3d/render_raylib/map_2d_view.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
 #include "ui_layout.hpp"
@@ -117,6 +118,9 @@ private:
         bool had_before_stats);
     void SetActiveMeshCacheFromMode();
     void RunDirtyRebuildProbe(std::string_view reason);
+    void FitMap2DView(std::string_view reason);
+    void ResetMap2DView(std::string_view reason);
+    void AdjustMap2DZoom(int steps, std::string_view reason);
     void FitPreviewCameraToViewport(std::string_view reason);
     void SetCurrentScreen(AppScreen screen, std::string_view reason);
     void RequestExitConfirmation(bool from_window_close = false);
@@ -139,6 +143,7 @@ private:
     AppScreen screen_ = AppScreen::kWorkspace;
     PlaceholderAction placeholder_selected_action_ = PlaceholderAction::kMainMenu;
     WorkspaceState workspace_;
+    Map2DView map_2d_view_;
     RaylibChunkMeshPreview chunk_mesh_preview_;
     FreeFlyCameraController preview_camera_;
     std::string hovered_item_ = "none";
