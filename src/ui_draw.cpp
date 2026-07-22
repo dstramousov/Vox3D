@@ -321,6 +321,19 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "Val " + ValidationStatusLabel(workspace_state.passability_validation_status);
 }
 
+[[nodiscard]] std::string_view Map2DBaseLayerLabel(Map2DBaseLayer layer)
+{
+    switch (layer) {
+        case Map2DBaseLayer::kTerrain:
+            return "Terrain";
+        case Map2DBaseLayer::kElevation:
+            return "Elevation";
+        case Map2DBaseLayer::kCollision:
+            return "Collision";
+    }
+    return "Unknown";
+}
+
 [[nodiscard]] std::string CompactStatusText(
     const WorkspaceState& workspace_state,
     Map2DViewStatus map_2d_status,
@@ -328,7 +341,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
 {
     const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
     if (!workspace_state.show_3d_preview) {
-        std::string status = labels.workspace_status_ready + " | 2D";
+        std::string status = labels.workspace_status_ready + " | 2D | Layer "
+            + std::string(Map2DBaseLayerLabel(workspace_state.map_2d_base_layer));
         if (map_2d_status.loaded && map_2d_status.initialized) {
             const float zoom_ratio = map_2d_status.fit_pixels_per_tile > 0.0001F
                 ? map_2d_status.pixels_per_tile / map_2d_status.fit_pixels_per_tile
@@ -2430,7 +2444,7 @@ void DrawWorkspace(
                 : std::nullopt;
             map_2d_view->Draw(
                 workspace.map_overview,
-                workspace_state.show_terrain_layer,
+                workspace_state.map_2d_base_layer,
                 workspace_state.show_grid_layer,
                 selection);
         }

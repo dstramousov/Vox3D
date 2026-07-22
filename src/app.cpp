@@ -991,24 +991,42 @@ bool App::Initialize()
         logger_.Warn("runtime_map", warning);
     }
 
-    const MapOverview& map_2d_overview = workspace_.runtime_map.overview.IsValid()
-        ? workspace_.runtime_map.overview
-        : workspace_.map.overview;
-    if (!map_2d_overview.IsValid()) {
-        logger_.Warn(
-            "map2d",
-            "terrain texture unavailable reason=overview_missing runtime_terrain="
-                + std::string(workspace_.runtime_map.terrain.IsValid() ? "valid" : "invalid"));
-    } else if (map_2d_view_.Load(map_2d_overview)) {
-        logger_.Info(
-            "map2d",
-            "terrain texture loaded size=" + std::to_string(map_2d_overview.width) + "x"
-                + std::to_string(map_2d_overview.height) + " source=" + map_2d_overview.source_file);
+    if (workspace_.runtime_map.HasCoreGrids()
+        && workspace_.runtime_map.overview.IsValid()) {
+        if (map_2d_view_.Load(workspace_.runtime_map)) {
+            logger_.Info(
+                "map2d",
+                "base textures loaded size="
+                    + std::to_string(workspace_.runtime_map.info.width) + "x"
+                    + std::to_string(workspace_.runtime_map.info.height)
+                    + " layers=terrain,elevation,collision source="
+                    + workspace_.runtime_map.overview.source_file);
+        } else {
+            logger_.Warn(
+                "map2d",
+                "base textures unavailable reason="
+                    + std::string(map_2d_view_.LastLoadError()));
+        }
     } else {
-        logger_.Warn(
-            "map2d",
-            "terrain texture unavailable reason=texture_upload_failed size="
-                + std::to_string(map_2d_overview.width) + "x" + std::to_string(map_2d_overview.height));
+        const MapOverview& map_2d_overview = workspace_.runtime_map.overview.IsValid()
+            ? workspace_.runtime_map.overview
+            : workspace_.map.overview;
+        if (!map_2d_overview.IsValid()) {
+            logger_.Warn(
+                "map2d",
+                "terrain texture unavailable reason=overview_missing runtime_terrain="
+                    + std::string(workspace_.runtime_map.terrain.IsValid() ? "valid" : "invalid"));
+        } else if (map_2d_view_.Load(map_2d_overview)) {
+            logger_.Info(
+                "map2d",
+                "terrain texture loaded size=" + std::to_string(map_2d_overview.width) + "x"
+                    + std::to_string(map_2d_overview.height) + " source=" + map_2d_overview.source_file);
+        } else {
+            logger_.Warn(
+                "map2d",
+                "terrain texture unavailable reason="
+                    + std::string(map_2d_view_.LastLoadError()));
+        }
     }
 
     const SteadyTimePoint chunk_pipeline_start = Now();
@@ -2889,15 +2907,13 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             AdjustMap2DZoom(-1, "panel");
             break;
         case WorkspacePanelItem::kLayerTerrain:
-            workspace_.show_terrain_layer = true;
-            workspace_.show_elevation_layer = false;
-            workspace_.show_collision_layer = false;
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kTerrain;
             break;
         case WorkspacePanelItem::kLayerElevation:
-            workspace_.show_elevation_layer = !workspace_.show_elevation_layer;
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kElevation;
             break;
         case WorkspacePanelItem::kLayerCollision:
-            workspace_.show_collision_layer = !workspace_.show_collision_layer;
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kCollision;
             break;
         case WorkspacePanelItem::kLayerGrid:
             workspace_.show_grid_layer = !workspace_.show_grid_layer;

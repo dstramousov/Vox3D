@@ -387,9 +387,7 @@ struct WorkspaceState {
         WorkspacePanelItem::kStatsDirtyCacheGroup,
         WorkspacePanelItem::kStatsCameraGroup,
     };
-    bool show_terrain_layer = true;
-    bool show_elevation_layer = false;
-    bool show_collision_layer = false;
+    Map2DBaseLayer map_2d_base_layer = Map2DBaseLayer::kTerrain;
     bool show_grid_layer = false;
     bool show_3d_preview = true;
     bool show_3d_chunk_bounds = false;

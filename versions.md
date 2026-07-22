@@ -540,3 +540,10 @@
 - Restored 2D terrain rendering for the VXMAP fast path without re-reading skipped JSON terrain files.
 - Reused one terrain-token classifier for JSON and VXMAP terrain names, including current bush and decorative terrain tokens.
 - Added explicit 2D texture failure reasons and logged the selected overview source.
+
+## v0.5.46 -> v0.5.47
+
+- Added selectable Terrain, Elevation, and Collision base textures to the interactive 2D map view.
+- Added a semantic elevation palette for levels `-5..20` and a high-contrast passability palette for collision cells.
+- Changed 2D base-layer controls to exclusive radio selection and enabled them from loaded runtime-grid availability.
+- Added the active 2D base-layer name to the workspace status bar.

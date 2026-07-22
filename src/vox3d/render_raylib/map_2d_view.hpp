@@ -2,10 +2,13 @@
 
 #include "vox3d/core/types.hpp"
 #include "vox3d/map/map_package.hpp"
+#include "vox3d/map/runtime_map.hpp"
 
 #include <raylib.h>
 
 #include <optional>
+#include <string>
+#include <string_view>
 
 namespace vox3d {
 
@@ -26,7 +29,7 @@ struct Map2DViewStatus {
 /**
  * @brief Raylib-backed interactive top-down map view.
  *
- * The view owns a one-pixel-per-tile terrain texture and a Camera2D state.
+ * The view owns one-pixel-per-tile diagnostic textures and a Camera2D state.
  * Map coordinates use tile space where x grows right and y grows down. Mouse
  * wheel zoom is anchored at the cursor and middle-button dragging pans the map.
  */
@@ -38,35 +41,47 @@ public:
     Map2DView() = default;
 
     /**
-     * @brief Releases the owned texture if it is still loaded.
+     * @brief Releases the owned textures if they are still loaded.
      */
     ~Map2DView();
 
     /**
-     * @brief Disables copying because the view owns a raylib texture.
+     * @brief Disables copying because the view owns raylib textures.
      */
     Map2DView(const Map2DView&) = delete;
 
     /**
-     * @brief Disables copy assignment because the view owns a raylib texture.
+     * @brief Disables copy assignment because the view owns raylib textures.
      *
      * @return Reference to this view; the function is deleted and never called.
      */
     Map2DView& operator=(const Map2DView&) = delete;
 
     /**
-     * @brief Builds the diagnostic terrain texture from a map overview.
+     * @brief Builds terrain, elevation, and collision textures from a runtime map.
      *
-     * Existing texture resources are released before loading the new map.
-     * The caller must have an initialized raylib window and graphics context.
+     * Existing texture resources are released before loading the new map. All
+     * core grids must be valid and have identical dimensions. The caller must
+     * have an initialized raylib window and graphics context.
+     *
+     * @param runtime_map Runtime map containing normalized core grids.
+     * @return True when all three diagnostic textures were created successfully.
+     */
+    [[nodiscard]] bool Load(const RuntimeMap& runtime_map);
+
+    /**
+     * @brief Builds a terrain-only texture from a map overview.
+     *
+     * This fallback preserves 2D terrain inspection when full runtime grids are
+     * unavailable. Elevation and collision layers remain unavailable.
      *
      * @param overview One-cell-per-tile diagnostic map overview.
-     * @return True when the texture was created successfully.
+     * @return True when the terrain texture was created successfully.
      */
     [[nodiscard]] bool Load(const MapOverview& overview);
 
     /**
-     * @brief Releases the owned terrain texture and clears camera state.
+     * @brief Releases all owned textures and clears camera state.
      */
     void Unload();
 
@@ -117,25 +132,40 @@ public:
         Rectangle viewport) const;
 
     /**
-     * @brief Draws the terrain texture, zoom-dependent grid, and selection.
+     * @brief Draws the selected base texture, grid, and tile selection.
      *
      * @param viewport Screen-space rectangle used by the 2D map.
-     * @param show_terrain True to draw the terrain texture.
+     * @param base_layer Diagnostic base layer to display.
      * @param show_grid True to draw the zoom-dependent grid overlay.
      * @param selection Optional selected tile highlighted above the map.
      */
     void Draw(
         Rectangle viewport,
-        bool show_terrain,
+        Map2DBaseLayer base_layer,
         bool show_grid,
         std::optional<TileCoord> selection) const;
 
     /**
-     * @brief Returns true when a valid terrain texture is loaded.
+     * @brief Returns true when at least the terrain texture is loaded.
      *
      * @return True when the map can be rendered.
      */
     [[nodiscard]] bool IsLoaded() const;
+
+    /**
+     * @brief Returns whether a specific diagnostic base layer is available.
+     *
+     * @param base_layer Layer to query.
+     * @return True when the corresponding texture is loaded.
+     */
+    [[nodiscard]] bool IsLayerLoaded(Map2DBaseLayer base_layer) const;
+
+    /**
+     * @brief Returns the latest texture-loading failure reason.
+     *
+     * @return Stable diagnostic string, empty after a successful load.
+     */
+    [[nodiscard]] std::string_view LastLoadError() const;
 
     /**
      * @brief Returns the latest camera and hover diagnostics.
@@ -147,11 +177,14 @@ public:
 private:
     [[nodiscard]] Camera2D CameraFor(Rectangle viewport) const;
     [[nodiscard]] float FitZoom(Rectangle viewport) const;
+    [[nodiscard]] const Texture2D* TextureFor(Map2DBaseLayer base_layer) const;
     void EnsureViewport(Rectangle viewport);
     void ZoomAt(Vector2 screen_point, float steps, Rectangle viewport);
     void ClampTarget(Rectangle viewport);
 
     Texture2D terrain_texture_{};
+    Texture2D elevation_texture_{};
+    Texture2D collision_texture_{};
     int map_width_ = 0;
     int map_height_ = 0;
     Vector2 target_{};
@@ -163,6 +196,7 @@ private:
     bool panning_ = false;
     bool hover_tile_valid_ = false;
     TileCoord hover_tile_{};
+    std::string last_load_error_;
 };
 
 }  // namespace vox3d

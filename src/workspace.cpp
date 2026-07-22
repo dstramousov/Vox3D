@@ -801,9 +801,21 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
     }
 
     if (AddGroup(Item::k2DBaseLayerGroup)) {
-        items.push_back(Radio(Item::kLayerTerrain, 1, workspace.runtime_map.info.terrain_loaded, workspace.show_terrain_layer));
-        items.push_back(Radio(Item::kLayerElevation, 1, false, workspace.show_elevation_layer));
-        items.push_back(Radio(Item::kLayerCollision, 1, false, workspace.show_collision_layer));
+        items.push_back(Radio(
+            Item::kLayerTerrain,
+            1,
+            workspace.runtime_map.info.terrain_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kTerrain));
+        items.push_back(Radio(
+            Item::kLayerElevation,
+            1,
+            workspace.runtime_map.info.elevation_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kElevation));
+        items.push_back(Radio(
+            Item::kLayerCollision,
+            1,
+            workspace.runtime_map.info.collision_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kCollision));
     }
 
     if (AddGroup(Item::k2DOverlayGroup)) {

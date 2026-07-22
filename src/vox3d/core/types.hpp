@@ -20,4 +20,13 @@ struct LevelRange {
     int max = 0;
 };
 
+/**
+ * @brief Diagnostic base layer displayed by the interactive 2D map view.
+ */
+enum class Map2DBaseLayer {
+    kTerrain,
+    kElevation,
+    kCollision,
+};
+
 }  // namespace vox3d
