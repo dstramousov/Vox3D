@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vox3d {
@@ -24,6 +25,17 @@ enum class MapCellKind : std::uint8_t {
     kStart,
     kGoal,
 };
+
+/**
+ * @brief Classifies a terrain token into a stable 2D diagnostic category.
+ *
+ * The classifier accepts terrain names from both JSON runtime grids and the
+ * VXMAP terrain catalog. Matching is case-insensitive and ignores punctuation.
+ *
+ * @param raw_value Terrain name or symbolic token.
+ * @return Stable map cell category, or MapCellKind::kUnknown when unsupported.
+ */
+[[nodiscard]] MapCellKind ClassifyTerrainCell(std::string_view raw_value);
 
 /**
  * @brief Lightweight top-down terrain preview extracted from a map package.

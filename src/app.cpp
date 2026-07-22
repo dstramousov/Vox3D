@@ -994,13 +994,21 @@ bool App::Initialize()
     const MapOverview& map_2d_overview = workspace_.runtime_map.overview.IsValid()
         ? workspace_.runtime_map.overview
         : workspace_.map.overview;
-    if (map_2d_view_.Load(map_2d_overview)) {
+    if (!map_2d_overview.IsValid()) {
+        logger_.Warn(
+            "map2d",
+            "terrain texture unavailable reason=overview_missing runtime_terrain="
+                + std::string(workspace_.runtime_map.terrain.IsValid() ? "valid" : "invalid"));
+    } else if (map_2d_view_.Load(map_2d_overview)) {
         logger_.Info(
             "map2d",
             "terrain texture loaded size=" + std::to_string(map_2d_overview.width) + "x"
-                + std::to_string(map_2d_overview.height));
+                + std::to_string(map_2d_overview.height) + " source=" + map_2d_overview.source_file);
     } else {
-        logger_.Warn("map2d", "terrain texture unavailable");
+        logger_.Warn(
+            "map2d",
+            "terrain texture unavailable reason=texture_upload_failed size="
+                + std::to_string(map_2d_overview.width) + "x" + std::to_string(map_2d_overview.height));
     }
 
     const SteadyTimePoint chunk_pipeline_start = Now();

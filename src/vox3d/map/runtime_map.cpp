@@ -1004,6 +1004,26 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
     return true;
 }
 
+void BuildRuntimeTerrainOverview(RuntimeMap& runtime)
+{
+    if (runtime.overview.IsValid() || !runtime.terrain.IsValid()) {
+        return;
+    }
+
+    MapOverview overview;
+    overview.width = runtime.terrain.width;
+    overview.height = runtime.terrain.height;
+    overview.cells.reserve(runtime.terrain.cells.size());
+    for (const std::string& terrain : runtime.terrain.cells) {
+        overview.cells.push_back(ClassifyTerrainCell(terrain));
+    }
+    overview.source_file = runtime.info.runtime_binary_loaded
+        ? "map_runtime.vxmap:terrain"
+        : "runtime_terrain";
+    overview.terrain_loaded = true;
+    runtime.overview = std::move(overview);
+}
+
 [[nodiscard]] std::string FormatPoint(const std::optional<TileCoord>& coord)
 {
     if (!coord.has_value()) {
@@ -1080,6 +1100,7 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     runtime.info.terrain_loaded = runtime.terrain.IsValid();
     runtime.info.collision_loaded = runtime.collision.IsValid();
     runtime.info.elevation_loaded = runtime.height.IsValid();
+    BuildRuntimeTerrainOverview(runtime);
     runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
     UpdateHeightRange(runtime);
     ReadObjectMarkers(runtime, package);

@@ -533,3 +533,10 @@
 - Added a one-pixel-per-tile nearest-neighbour terrain texture instead of drawing thousands of rectangles every frame.
 - Added zoom-dependent tile/chunk grid rendering and shared 2D/3D tile selection with the existing `I` information overlay.
 - Added 2D hover tile coordinates and zoom level to the workspace status bar.
+
+## v0.5.45 -> v0.5.46
+
+- Built the 2D terrain overview from the already-loaded runtime terrain grid when the lightweight package overview is absent.
+- Restored 2D terrain rendering for the VXMAP fast path without re-reading skipped JSON terrain files.
+- Reused one terrain-token classifier for JSON and VXMAP terrain names, including current bush and decorative terrain tokens.
+- Added explicit 2D texture failure reasons and logged the selected overview source.

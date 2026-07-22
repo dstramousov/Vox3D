@@ -379,7 +379,8 @@ void TryReadMetadata(MapPackageInfo& info)
     if (value.find("swamp") != std::string::npos || value.find("marsh") != std::string::npos) {
         return MapCellKind::kSwamp;
     }
-    if (value.find("forest") != std::string::npos || value.find("tree") != std::string::npos || value.find("woods") != std::string::npos) {
+    if (value.find("forest") != std::string::npos || value.find("tree") != std::string::npos
+        || value.find("woods") != std::string::npos || value.find("bush") != std::string::npos) {
         return MapCellKind::kForest;
     }
     if (value.find("road") != std::string::npos || value.find("path") != std::string::npos) {
@@ -394,7 +395,11 @@ void TryReadMetadata(MapPackageInfo& info)
     if (value.find("block") != std::string::npos || value.find("solid") != std::string::npos || value.find("collision") != std::string::npos) {
         return MapCellKind::kBlocked;
     }
-    if (value.find("open") != std::string::npos || value.find("grass") != std::string::npos || value.find("ground") != std::string::npos || value.find("plain") != std::string::npos || value.find("floor") != std::string::npos || value.find("sand") != std::string::npos || value.find("dirt") != std::string::npos) {
+    if (value.find("open") != std::string::npos || value.find("grass") != std::string::npos
+        || value.find("ground") != std::string::npos || value.find("plain") != std::string::npos
+        || value.find("floor") != std::string::npos || value.find("sand") != std::string::npos
+        || value.find("dirt") != std::string::npos || value.find("flower") != std::string::npos
+        || value.find("mushroom") != std::string::npos || value.find("decor") != std::string::npos) {
         return MapCellKind::kOpen;
     }
     return MapCellKind::kUnknown;
@@ -807,6 +812,11 @@ void TryReadItemCounts(MapPackageInfo& info)
 }
 
 }  // namespace
+
+MapCellKind ClassifyTerrainCell(std::string_view raw_value)
+{
+    return ClassifyTerrainToken(raw_value);
+}
 
 bool MapOverview::IsValid() const
 {
