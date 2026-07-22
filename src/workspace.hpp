@@ -38,7 +38,6 @@ enum class WorkspaceTool {
 enum class WorkspacePanelTab {
     kMenu,
     kStats,
-    kInspect,
     kHelp,
 };
 
@@ -240,12 +239,6 @@ enum class WorkspacePanelItem {
     kStatsDirtyCacheGroup,
     kStatsCameraGroup,
 
-    kInfoSelectionGroup,
-    kInfoTransitionsGroup,
-    kInfoMovementGroup,
-    kInfoPathGroup,
-    kInfoValidationGroup,
-
     kSelectionTileGroup,
     kSelectionTileInfo,
     kSelectionVoxelGroup,
@@ -399,11 +392,6 @@ struct WorkspaceState {
         WorkspacePanelItem::kStatsChunkProfitGroup,
         WorkspacePanelItem::kStatsDirtyCacheGroup,
         WorkspacePanelItem::kStatsCameraGroup,
-        WorkspacePanelItem::kInfoSelectionGroup,
-        WorkspacePanelItem::kInfoTransitionsGroup,
-        WorkspacePanelItem::kInfoMovementGroup,
-        WorkspacePanelItem::kInfoPathGroup,
-        WorkspacePanelItem::kInfoValidationGroup,
     };
     bool show_terrain_layer = true;
     bool show_elevation_layer = false;

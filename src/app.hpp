@@ -77,6 +77,9 @@ private:
     void ActivateSelectedMenuItem();
     void ActivatePlaceholderAction();
     bool SetWorkspacePanelTab(WorkspacePanelTab tab, std::string_view reason);
+    void OpenSelectionInfoOverlay(std::string_view reason);
+    void CloseSelectionInfoOverlay(std::string_view reason);
+    void ScrollSelectionInfoOverlay(int delta_rows, std::string_view reason);
     void SelectPreviousWorkspaceTool();
     void SelectNextWorkspaceTool();
     void ToggleWorkspaceTool(WorkspaceTool tool);
@@ -149,6 +152,8 @@ private:
     bool exit_requested_from_window_ = false;
     bool dialog_input_blocked_until_next_frame_ = false;
     bool suppress_window_close_request_this_frame_ = false;
+    bool selection_info_overlay_open_ = false;
+    int selection_info_overlay_scroll_rows_ = 0;
     ProcessMemoryInfo process_memory_{};
     float process_memory_sample_timer_ = 0.0F;
     Font title_font_{};

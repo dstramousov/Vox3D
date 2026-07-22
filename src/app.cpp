@@ -1189,6 +1189,40 @@ void App::HandleScreenInput(float dt)
 
 void App::HandleWorkspaceInput(float dt)
 {
+    if (selection_info_overlay_open_) {
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            CloseSelectionInfoOverlay("escape");
+            suppress_window_close_request_this_frame_ = true;
+            return;
+        }
+
+        const float wheel = GetMouseWheelMove();
+        if (wheel > 0.0001F) {
+            ScrollSelectionInfoOverlay(-3, "wheel");
+        } else if (wheel < -0.0001F) {
+            ScrollSelectionInfoOverlay(3, "wheel");
+        }
+        if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressed(KEY_UP)) {
+            ScrollSelectionInfoOverlay(-6, "page_up");
+        }
+        if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressed(KEY_DOWN)) {
+            ScrollSelectionInfoOverlay(6, "page_down");
+        }
+        if (IsKeyPressed(KEY_HOME)) {
+            ScrollSelectionInfoOverlay(-1000000, "home");
+        }
+        if (IsKeyPressed(KEY_END)) {
+            ScrollSelectionInfoOverlay(1000000, "end");
+        }
+        return;
+    }
+
+    if (IsKeyPressed(KEY_I)) {
+        preview_camera_.ReleaseMouse();
+        OpenSelectionInfoOverlay("hotkey_i");
+        return;
+    }
+
     const bool release_capture_by_escape = IsKeyPressed(KEY_ESCAPE);
     const bool release_capture_by_hotkey = IsKeyPressed(KEY_F2);
     const bool release_capture_by_right_mouse = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
@@ -1244,8 +1278,7 @@ void App::HandleWorkspaceInput(float dt)
         }
     }
     if (workspace_.selected_panel_tab == WorkspacePanelTab::kMenu
-        || workspace_.selected_panel_tab == WorkspacePanelTab::kStats
-        || workspace_.selected_panel_tab == WorkspacePanelTab::kInspect) {
+        || workspace_.selected_panel_tab == WorkspacePanelTab::kStats) {
         if (IsKeyPressed(KEY_PAGE_UP)) {
             ScrollWorkspaceMenu(-6, "page_up");
         }
@@ -1268,9 +1301,6 @@ void App::HandleWorkspaceInput(float dt)
             panel_tab_hotkey_pressed = true;
         } else if (IsKeyPressed(KEY_S)) {
             SetWorkspacePanelTab(WorkspacePanelTab::kStats, "hotkey_s");
-            panel_tab_hotkey_pressed = true;
-        } else if (IsKeyPressed(KEY_I)) {
-            SetWorkspacePanelTab(WorkspacePanelTab::kInspect, "hotkey_i");
             panel_tab_hotkey_pressed = true;
         }
     }
@@ -1788,6 +1818,13 @@ void App::Draw()
     DrawFpsCounter(UiFonts(), labels_, layout_cache_, process_memory_, config_.version);
     if (config_.debug_ui) {
         DrawDebugOverlay(UiFonts(), config_, window_config_, screen_, dialog_.type, main_menu_.State(), workspace_, hovered_item_, labels_, layout_cache_);
+    }
+    if (selection_info_overlay_open_ && screen_ == AppScreen::kWorkspace) {
+        DrawSelectionInfoOverlay(
+            workspace_,
+            selection_info_overlay_scroll_rows_,
+            UiFonts(),
+            layout_cache_);
     }
     if (dialog_.type == ModalDialog::kExitConfirmation) {
         DrawExitDialog(dialog_, UiFonts(), labels_, layout_cache_);
@@ -2362,20 +2399,57 @@ bool App::SetWorkspacePanelTab(WorkspacePanelTab tab, std::string_view reason)
     return true;
 }
 
+void App::OpenSelectionInfoOverlay(std::string_view reason)
+{
+    selection_info_overlay_open_ = true;
+    selection_info_overlay_scroll_rows_ = 0;
+    logger_.Debug("inspect", "overlay=open reason=" + std::string(reason));
+}
+
+void App::CloseSelectionInfoOverlay(std::string_view reason)
+{
+    if (!selection_info_overlay_open_) {
+        return;
+    }
+
+    selection_info_overlay_open_ = false;
+    selection_info_overlay_scroll_rows_ = 0;
+    logger_.Debug("inspect", "overlay=closed reason=" + std::string(reason));
+}
+
+void App::ScrollSelectionInfoOverlay(int delta_rows, std::string_view reason)
+{
+    if (!selection_info_overlay_open_ || delta_rows == 0) {
+        return;
+    }
+
+    const int max_scroll_rows = SelectionInfoOverlayMaxScrollRows(workspace_, layout_cache_);
+    const int next_scroll = std::clamp(
+        selection_info_overlay_scroll_rows_ + delta_rows,
+        0,
+        max_scroll_rows);
+    if (next_scroll == selection_info_overlay_scroll_rows_) {
+        return;
+    }
+
+    selection_info_overlay_scroll_rows_ = next_scroll;
+    logger_.Debug(
+        "inspect",
+        "overlay_scroll=" + std::to_string(selection_info_overlay_scroll_rows_)
+            + " reason=" + std::string(reason));
+}
+
 void App::SelectPreviousWorkspaceTool()
 {
     switch (workspace_.selected_panel_tab) {
         case WorkspacePanelTab::kMenu:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
             break;
         case WorkspacePanelTab::kStats:
             workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
             break;
-        case WorkspacePanelTab::kInspect:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
-            break;
         case WorkspacePanelTab::kHelp:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
+            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
             break;
     }
     layout_dirty_ = true;
@@ -2389,9 +2463,6 @@ void App::SelectNextWorkspaceTool()
             workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
             break;
         case WorkspacePanelTab::kStats:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
-            break;
-        case WorkspacePanelTab::kInspect:
             workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
             break;
         case WorkspacePanelTab::kHelp:
@@ -2651,8 +2722,6 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
         return;
     }
 
-    const bool path_pick_active = workspace_.path_pick_mode != WorkspacePathPickMode::kSelect;
-
     const auto picked_tile = chunk_mesh_preview_.PickTile(
         mouse,
         layout_cache_.workspace.map_overview,
@@ -2661,9 +2730,6 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
     if (!picked_tile.has_value()) {
         workspace_.selected_tile = TileInspectResult{};
         workspace_.movement_probe = MovementProbeResult{};
-        if (!path_pick_active) {
-            workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
-        }
         layout_dirty_ = true;
         logger_.Debug("inspect", "tile pick missed reason=" + std::string(reason));
         return;
@@ -2678,9 +2744,6 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
         workspace_.runtime_map,
         workspace_.transition_features,
         workspace_.selected_tile.tile);
-    if (!path_pick_active) {
-        workspace_.selected_panel_tab = WorkspacePanelTab::kInspect;
-    }
     layout_dirty_ = true;
     logger_.Info("inspect", "reason=" + std::string(reason) + " " + ToLogString(workspace_.selected_tile));
     logger_.Info("movement", "reason=" + std::string(reason) + " " + ToLogString(workspace_.movement_probe));
@@ -2701,8 +2764,7 @@ void App::SelectTileAtMouse(Vector2 mouse, std::string_view reason)
 void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
 {
     const bool scrollable_panel = workspace_.selected_panel_tab == WorkspacePanelTab::kMenu
-        || workspace_.selected_panel_tab == WorkspacePanelTab::kStats
-        || workspace_.selected_panel_tab == WorkspacePanelTab::kInspect;
+        || workspace_.selected_panel_tab == WorkspacePanelTab::kStats;
     if (!scrollable_panel || delta_rows == 0) {
         return;
     }
@@ -2727,8 +2789,7 @@ void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
 
 void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
 {
-    const bool read_only_tree_panel = workspace_.selected_panel_tab == WorkspacePanelTab::kStats
-        || workspace_.selected_panel_tab == WorkspacePanelTab::kInspect;
+    const bool read_only_tree_panel = workspace_.selected_panel_tab == WorkspacePanelTab::kStats;
     if (read_only_tree_panel && IsCollapsibleWorkspacePanelGroup(item)) {
         ToggleWorkspacePanelGroup(&workspace_, item);
         layout_dirty_ = true;

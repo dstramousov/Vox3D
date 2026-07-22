@@ -66,6 +66,33 @@ void DrawWorkspace(
     const UiLayoutCache& layout);
 
 /**
+ * @brief Returns the maximum scroll offset for the selection information overlay.
+ *
+ * @param workspace Workspace state used to build the overlay content.
+ * @param layout Current UI layout and window metrics.
+ * @return Maximum first visible row index, never negative.
+ */
+[[nodiscard]] int SelectionInfoOverlayMaxScrollRows(
+    const WorkspaceState& workspace,
+    const UiLayoutCache& layout);
+
+/**
+ * @brief Draws a modal overlay with information about the selected tile.
+ *
+ * The overlay is read-only and does not modify the workspace selection.
+ *
+ * @param workspace Workspace state containing the current selection.
+ * @param first_visible_row Requested first visible content row.
+ * @param fonts Fonts used for overlay text.
+ * @param layout Current UI layout and window metrics.
+ */
+void DrawSelectionInfoOverlay(
+    const WorkspaceState& workspace,
+    int first_visible_row,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout);
+
+/**
  * @brief Draws the FPS counter.
  *
  * @param fonts Fonts used for compact UI text.

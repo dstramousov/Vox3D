@@ -645,26 +645,6 @@ struct TextPanelRow {
     return WorkspacePanelItem::kStatsMapGroup;
 }
 
-[[nodiscard]] WorkspacePanelItem InfoGroupItemForLabel(std::string_view label)
-{
-    if (label == "Selection") {
-        return WorkspacePanelItem::kInfoSelectionGroup;
-    }
-    if (label == "Transitions") {
-        return WorkspacePanelItem::kInfoTransitionsGroup;
-    }
-    if (label == "Movement") {
-        return WorkspacePanelItem::kInfoMovementGroup;
-    }
-    if (label == "Path") {
-        return WorkspacePanelItem::kInfoPathGroup;
-    }
-    if (label == "Validation") {
-        return WorkspacePanelItem::kInfoValidationGroup;
-    }
-    return WorkspacePanelItem::kInfoSelectionGroup;
-}
-
 [[nodiscard]] std::string TrimTextPanelIndent(std::string_view line)
 {
     const std::size_t first = line.find_first_not_of(' ');
@@ -890,13 +870,60 @@ struct TextPanelRow {
     return lines;
 }
 
-[[nodiscard]] std::vector<TextPanelRow> BuildInfoTextPanelRows(const WorkspaceState& workspace_state)
+struct SelectionInfoOverlayGeometry {
+    Rectangle panel;
+    Rectangle content;
+    float padding = 0.0F;
+    float title_font_size = 0.0F;
+    float body_font_size = 0.0F;
+    float footer_font_size = 0.0F;
+    float line_height = 0.0F;
+    int visible_rows = 0;
+};
+
+[[nodiscard]] SelectionInfoOverlayGeometry BuildSelectionInfoOverlayGeometry(
+    const UiLayoutCache& layout)
 {
-    return BuildTextPanelRowsFromLines(
-        BuildInspectPanelLines(workspace_state),
-        workspace_state,
-        WorkspacePanelItem::kInfoSelectionGroup,
-        InfoGroupItemForLabel);
+    const UiMetrics& metrics = layout.metrics;
+    const float scale = metrics.scale;
+    const float window_width = static_cast<float>(metrics.window_width);
+    const float window_height = static_cast<float>(metrics.window_height);
+    const float margin = std::max(14.0F, 24.0F * scale);
+    const float max_panel_width = std::max(1.0F, window_width - margin * 2.0F);
+    const float max_panel_height = std::max(1.0F, window_height - margin * 2.0F);
+
+    SelectionInfoOverlayGeometry geometry;
+    geometry.padding = std::max(12.0F, 18.0F * scale);
+    geometry.title_font_size = std::max(16.0F, metrics.workspace_tab_font_size);
+    geometry.body_font_size = std::max(12.0F, metrics.workspace_status_font_size);
+    geometry.footer_font_size = std::max(10.0F, metrics.workspace_status_font_size - 2.0F);
+    geometry.line_height = geometry.body_font_size + std::max(4.0F, 6.0F * scale);
+
+    const float desired_width = std::max(420.0F * scale, window_width * 0.48F);
+    const float desired_height = std::max(360.0F * scale, window_height * 0.70F);
+    const float panel_width = std::min(desired_width, max_panel_width);
+    const float panel_height = std::min(desired_height, max_panel_height);
+    geometry.panel = Rectangle{
+        (window_width - panel_width) * 0.5F,
+        (window_height - panel_height) * 0.5F,
+        panel_width,
+        panel_height,
+    };
+
+    const float title_height = geometry.title_font_size + std::max(10.0F, 12.0F * scale);
+    const float footer_height = geometry.footer_font_size + std::max(12.0F, 14.0F * scale);
+    geometry.content = Rectangle{
+        geometry.panel.x + geometry.padding,
+        geometry.panel.y + geometry.padding + title_height,
+        std::max(1.0F, geometry.panel.width - geometry.padding * 2.0F),
+        std::max(
+            1.0F,
+            geometry.panel.height - geometry.padding * 2.0F - title_height - footer_height),
+    };
+    geometry.visible_rows = std::max(
+        1,
+        static_cast<int>(std::floor(geometry.content.height / geometry.line_height)));
+    return geometry;
 }
 
 [[nodiscard]] std::vector<std::string> BuildHelpPanelLines()
@@ -910,6 +937,7 @@ struct TextPanelRow {
         "  F10  Dirty rebuild probe",
         "  F11  Color mode",
         "  F12  Visibility mode",
+        "  I    Selection info",
         "  T    Toggle transitions",
         "  M    Toggle movement probe",
         "  V    Toggle passability issues",
@@ -938,8 +966,6 @@ struct TextPanelRow {
             return "View";
         case WorkspacePanelTab::kStats:
             return "Stats";
-        case WorkspacePanelTab::kInspect:
-            return "Info";
         case WorkspacePanelTab::kHelp:
             return "Help";
     }
@@ -953,8 +979,6 @@ struct TextPanelRow {
             return 'V';
         case WorkspacePanelTab::kStats:
             return 'S';
-        case WorkspacePanelTab::kInspect:
-            return 'I';
         case WorkspacePanelTab::kHelp:
             return 'H';
     }
@@ -1268,16 +1292,6 @@ struct TextPanelRow {
             return "Dirty Cache";
         case WorkspacePanelItem::kStatsCameraGroup:
             return "Camera";
-        case WorkspacePanelItem::kInfoSelectionGroup:
-            return "Selection";
-        case WorkspacePanelItem::kInfoTransitionsGroup:
-            return "Transitions";
-        case WorkspacePanelItem::kInfoMovementGroup:
-            return "Movement";
-        case WorkspacePanelItem::kInfoPathGroup:
-            return "Path";
-        case WorkspacePanelItem::kInfoValidationGroup:
-            return "Validation";
         case WorkspacePanelItem::kSelectionTileGroup:
             return "Selected Tile";
         case WorkspacePanelItem::kSelectionTileInfo:
@@ -1610,7 +1624,7 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     const UiLabels& labels)
 {
     WorkspaceLayout layout;
-    layout.panel_tabs.reserve(3);
+    layout.panel_tabs.reserve(2);
 
     const float status_height = metrics.workspace_status_height;
     const float panel_width = metrics.workspace_panel_width;
@@ -1660,10 +1674,9 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         tab_height,
     };
 
-    constexpr std::array<WorkspacePanelTab, 3> tabs{
+    constexpr std::array<WorkspacePanelTab, 2> tabs{
         WorkspacePanelTab::kMenu,
         WorkspacePanelTab::kStats,
-        WorkspacePanelTab::kInspect,
     };
     const float tab_font_size = metrics.workspace_tab_font_size;
     const float tab_spacing = Measure(
@@ -1709,13 +1722,10 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     layout.tool_info = layout.tool_menu;
 
     const std::vector<WorkspacePanelItemState> selected_items = BuildWorkspacePanelItems(workspace_state);
-    const bool text_tree_panel = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
-        || workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect;
+    const bool text_tree_panel = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats;
     std::vector<TextPanelRow> text_rows;
     if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
         text_rows = BuildStatsTextPanelRows(workspace_state, camera_status, labels);
-    } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
-        text_rows = BuildInfoTextPanelRows(workspace_state);
     }
 
     layout.panel_total_rows = text_tree_panel
@@ -2070,6 +2080,141 @@ void DrawWorkspaceTooltip(
         kEditorViewportText);
 }
 
+int SelectionInfoOverlayMaxScrollRows(
+    const WorkspaceState& workspace,
+    const UiLayoutCache& layout)
+{
+    const SelectionInfoOverlayGeometry geometry = BuildSelectionInfoOverlayGeometry(layout);
+    const int total_rows = static_cast<int>(BuildInspectPanelLines(workspace).size());
+    return std::max(0, total_rows - geometry.visible_rows);
+}
+
+void DrawSelectionInfoOverlay(
+    const WorkspaceState& workspace,
+    int first_visible_row,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const SelectionInfoOverlayGeometry geometry = BuildSelectionInfoOverlayGeometry(layout);
+    const std::vector<std::string> lines = BuildInspectPanelLines(workspace);
+    const int max_scroll_rows = std::max(
+        0,
+        static_cast<int>(lines.size()) - geometry.visible_rows);
+    const int first_row = std::clamp(first_visible_row, 0, max_scroll_rows);
+
+    DrawRectangle(0, 0, metrics.window_width, metrics.window_height, kModalDim);
+    DrawRectangleRounded(geometry.panel, 0.04F, 8, kPanel);
+    DrawRectangleRoundedLinesEx(
+        geometry.panel,
+        0.04F,
+        8,
+        std::max(1.0F, metrics.modal_border_width),
+        kPanelBorder);
+
+    const std::string title = "[ Selection Info ]";
+    DrawTextEx(
+        fonts.text,
+        title.c_str(),
+        Vector2{geometry.panel.x + geometry.padding, geometry.panel.y + geometry.padding},
+        geometry.title_font_size,
+        FontSpacing(geometry.title_font_size),
+        kSelectedText);
+
+    BeginScissorMode(
+        static_cast<int>(std::floor(geometry.content.x)),
+        static_cast<int>(std::floor(geometry.content.y)),
+        static_cast<int>(std::ceil(geometry.content.width)),
+        static_cast<int>(std::ceil(geometry.content.height)));
+    float line_y = geometry.content.y;
+    const int last_row = std::min(
+        static_cast<int>(lines.size()),
+        first_row + geometry.visible_rows);
+    for (int index = first_row; index < last_row; ++index) {
+        const std::string& line = lines[static_cast<std::size_t>(index)];
+        if (!line.empty()) {
+            const bool section_header = line.rfind("  ", 0) != 0;
+            DrawTextEx(
+                fonts.text,
+                line.c_str(),
+                Vector2{geometry.content.x, line_y},
+                geometry.body_font_size,
+                FontSpacing(geometry.body_font_size),
+                section_header ? kAccent : kText);
+        }
+        line_y += geometry.line_height;
+    }
+    EndScissorMode();
+
+    const float footer_y = geometry.panel.y + geometry.panel.height
+        - geometry.padding - geometry.footer_font_size;
+    const std::string close_hint = "Esc  Close";
+    DrawTextEx(
+        fonts.text,
+        close_hint.c_str(),
+        Vector2{geometry.panel.x + geometry.padding, footer_y},
+        geometry.footer_font_size,
+        FontSpacing(geometry.footer_font_size),
+        kMutedText);
+
+    if (max_scroll_rows > 0) {
+        const std::string scroll_hint = "Wheel / PgUp / PgDn";
+        const float footer_spacing = FontSpacing(geometry.footer_font_size);
+        const Vector2 hint_size = Measure(
+            fonts.text,
+            scroll_hint,
+            geometry.footer_font_size,
+            footer_spacing);
+        DrawTextEx(
+            fonts.text,
+            scroll_hint.c_str(),
+            Vector2{
+                geometry.panel.x + geometry.panel.width - geometry.padding - hint_size.x,
+                footer_y,
+            },
+            geometry.footer_font_size,
+            footer_spacing,
+            kMutedText);
+
+        if (first_row > 0) {
+            DrawTextEx(
+                fonts.text,
+                "^ more",
+                Vector2{
+                    geometry.content.x + geometry.content.width
+                        - Measure(
+                              fonts.text,
+                              "^ more",
+                              geometry.footer_font_size,
+                              footer_spacing)
+                              .x,
+                    geometry.content.y,
+                },
+                geometry.footer_font_size,
+                footer_spacing,
+                kAccent);
+        }
+        if (first_row < max_scroll_rows) {
+            const std::string more_hint = "v more";
+            const Vector2 more_size = Measure(
+                fonts.text,
+                more_hint,
+                geometry.footer_font_size,
+                footer_spacing);
+            DrawTextEx(
+                fonts.text,
+                more_hint.c_str(),
+                Vector2{
+                    geometry.content.x + geometry.content.width - more_size.x,
+                    geometry.content.y + geometry.content.height - geometry.footer_font_size,
+                },
+                geometry.footer_font_size,
+                footer_spacing,
+                kAccent);
+        }
+    }
+}
+
 void DrawWorkspace(
     const WorkspaceState& workspace_state,
     const RaylibChunkMeshPreview* mesh_preview,
@@ -2165,11 +2310,8 @@ void DrawWorkspace(
                     kAccent);
             }
         }
-    } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
-        || workspace_state.selected_panel_tab == WorkspacePanelTab::kInspect) {
-        const std::vector<TextPanelRow> rows = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats
-            ? BuildStatsTextPanelRows(workspace_state, camera_status, labels)
-            : BuildInfoTextPanelRows(workspace_state);
+    } else if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
+        const std::vector<TextPanelRow> rows = BuildStatsTextPanelRows(workspace_state, camera_status, labels);
         const float marker_column_width = Measure(
             fonts.text,
             "[x] ",

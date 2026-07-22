@@ -513,3 +513,10 @@
 - Reworked the VXMAP fast path to read the container once and decode from the same validated memory buffer.
 - Removed the second header, section-table, required-section, and CRC validation pass during runtime core loading.
 - Added VXMAP read, validation, decode, and total load timings to runtime-map diagnostics.
+
+## v0.5.42 -> v0.5.43
+
+- Removed the permanent Info tab from the workspace side panel.
+- Tile selection no longer changes the currently active workspace panel.
+- Added a modal selection information overlay opened with `I` and closed with `Esc`.
+- Added keyboard and mouse-wheel scrolling for long selection reports while the overlay blocks map input.
