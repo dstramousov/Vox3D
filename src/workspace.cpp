@@ -212,16 +212,6 @@ std::string_view ToString(WorkspacePanelItem item)
             return "2d_elevation_features";
         case WorkspacePanelItem::k2DElevationTransitions:
             return "2d_elevation_transitions";
-        case WorkspacePanelItem::k3DCameraGroup:
-            return "3d_camera";
-        case WorkspacePanelItem::kViewFitMap:
-            return "3d_fit_map";
-        case WorkspacePanelItem::kViewResetView:
-            return "3d_reset_view";
-        case WorkspacePanelItem::k3DCaptureMouse:
-            return "3d_capture_mouse";
-        case WorkspacePanelItem::k3DReleaseMouse:
-            return "3d_release_mouse";
         case WorkspacePanelItem::k3DRenderGroup:
             return "3d_render";
         case WorkspacePanelItem::kRenderTerrainMesh:
@@ -507,7 +497,6 @@ bool IsCollapsibleWorkspacePanelGroup(WorkspacePanelItem item)
         case WorkspacePanelItem::k2DNavigationGroup:
         case WorkspacePanelItem::k2DBaseLayerGroup:
         case WorkspacePanelItem::k2DOverlayGroup:
-        case WorkspacePanelItem::k3DCameraGroup:
         case WorkspacePanelItem::k3DRenderGroup:
         case WorkspacePanelItem::k3DVisibilityGroup:
         case WorkspacePanelItem::k3DTerrainPassGroup:
@@ -580,10 +569,6 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
     }
 
     if (workspace.show_3d_preview) {
-        if (AddGroup(Item::k3DCameraGroup)) {
-            items.push_back(Action(Item::kViewResetView, 1, workspace.chunk_meshes.IsValid()));
-        }
-
         if (AddGroup(Item::k3DRenderGroup)) {
             items.push_back(Group(Item::k3DColorModeGroup, 1));
             items.push_back(Radio(

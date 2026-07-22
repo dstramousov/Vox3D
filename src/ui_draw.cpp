@@ -1076,16 +1076,6 @@ struct SelectionInfoOverlayGeometry {
             return "Elevation Features";
         case WorkspacePanelItem::k2DElevationTransitions:
             return "Elevation Transitions";
-        case WorkspacePanelItem::k3DCameraGroup:
-            return "View";
-        case WorkspacePanelItem::kViewFitMap:
-            return labels.workspace_subitem_fit_view;
-        case WorkspacePanelItem::kViewResetView:
-            return labels.workspace_subitem_reset_view;
-        case WorkspacePanelItem::k3DCaptureMouse:
-            return "Capture Mouse";
-        case WorkspacePanelItem::k3DReleaseMouse:
-            return "Release Mouse";
         case WorkspacePanelItem::k3DRenderGroup:
             return "Display";
         case WorkspacePanelItem::kRenderTerrainMesh:

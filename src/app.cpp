@@ -2848,13 +2848,6 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             }
             logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "3d_unavailable"));
             break;
-        case WorkspacePanelItem::kViewFitMap:
-            FitPreviewCameraToViewport("panel");
-            break;
-        case WorkspacePanelItem::kViewResetView:
-            preview_camera_.ResetView();
-            logger_.Info("camera3d", "reset view " + ToLogString(preview_camera_.Status()));
-            break;
         case WorkspacePanelItem::kRenderChunkBounds:
             ToggleOverlayFlag(
                 workspace_.show_3d_chunk_bounds,

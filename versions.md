@@ -520,3 +520,8 @@
 - Tile selection no longer changes the currently active workspace panel.
 - Added a modal selection information overlay opened with `I` and closed with `Esc`.
 - Added keyboard and mouse-wheel scrolling for long selection reports while the overlay blocks map input.
+
+## v0.5.43 -> v0.5.44
+
+- Removed the obsolete 3D View section and its Reset View action from the workspace side panel.
+- Removed unreachable legacy 3D panel item identifiers and handlers while preserving camera hotkeys and startup camera behavior.
