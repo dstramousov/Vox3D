@@ -1322,8 +1322,15 @@ void App::HandleWorkspaceInput(float dt)
         RebuildLayout();
     }
 
+    const bool camera_mode = workspace_.show_3d_preview
+        && chunk_mesh_preview_.IsUploaded()
+        && preview_camera_.IsInitialized();
+    const bool map_2d_mode = !workspace_.show_3d_preview && map_2d_view_.IsLoaded();
     const Vector2 panel_mouse = GetMousePosition();
-    const bool mouse_over_workspace_panel = PointInRect(panel_mouse, layout_cache_.workspace.tool_menu);
+    const bool mouse_over_workspace_panel = PointInRect(
+        panel_mouse,
+        layout_cache_.workspace.tool_menu);
+    const bool map_2d_navigation_hotkeys = map_2d_mode && !mouse_over_workspace_panel;
     if (!preview_camera_.IsCursorCaptured() && mouse_over_workspace_panel) {
         const float wheel = GetMouseWheelMove();
         if (wheel > 0.0001F) {
@@ -1340,16 +1347,14 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_PAGE_DOWN)) {
             ScrollWorkspaceMenu(6, "page_down");
         }
-        if (IsKeyPressed(KEY_HOME)) {
+        if (IsKeyPressed(KEY_HOME) && !map_2d_navigation_hotkeys) {
             ScrollWorkspaceMenu(-1000000, "home");
         }
-        if (IsKeyPressed(KEY_END)) {
+        if (IsKeyPressed(KEY_END) && !map_2d_navigation_hotkeys) {
             ScrollWorkspaceMenu(1000000, "end");
         }
     }
 
-    const bool camera_mode = workspace_.show_3d_preview && chunk_mesh_preview_.IsUploaded() && preview_camera_.IsInitialized();
-    const bool map_2d_mode = !workspace_.show_3d_preview && map_2d_view_.IsLoaded();
     map_2d_view_.Update(layout_cache_.workspace.map_overview, map_2d_mode);
     bool panel_tab_hotkey_pressed = false;
     if (!preview_camera_.IsCursorCaptured()) {
@@ -1461,6 +1466,22 @@ void App::HandleWorkspaceInput(float dt)
         }
         if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) {
             AdjustMap2DZoom(-1, "hotkey");
+        }
+        if (map_2d_navigation_hotkeys
+            && IsKeyPressed(KEY_HOME)
+            && workspace_.runtime_map.info.start.has_value()) {
+            FocusMap2DOnTile(
+                *workspace_.runtime_map.info.start,
+                "start",
+                "hotkey_home");
+        }
+        if (map_2d_navigation_hotkeys
+            && IsKeyPressed(KEY_END)
+            && workspace_.runtime_map.info.goal.has_value()) {
+            FocusMap2DOnTile(
+                *workspace_.runtime_map.info.goal,
+                "goal",
+                "hotkey_end");
         }
         const Vector2 pick_mouse = GetMousePosition();
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
@@ -2948,6 +2969,31 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::kLayerGrid:
             workspace_.show_grid_layer = !workspace_.show_grid_layer;
+            layout_dirty_ = true;
+            break;
+        case WorkspacePanelItem::k2DChunks:
+            workspace_.show_2d_chunks = !workspace_.show_2d_chunks;
+            layout_dirty_ = true;
+            logger_.Info(
+                "map2d",
+                std::string("overlay=chunks enabled=")
+                    + (workspace_.show_2d_chunks ? "yes" : "no"));
+            break;
+        case WorkspacePanelItem::k2DVxmapRegions:
+            workspace_.show_2d_vxmap_regions = !workspace_.show_2d_vxmap_regions;
+            layout_dirty_ = true;
+            logger_.Info(
+                "map2d",
+                std::string("overlay=vxmap_regions enabled=")
+                    + (workspace_.show_2d_vxmap_regions ? "yes" : "no"));
+            break;
+        case WorkspacePanelItem::k2DStartGoal:
+            workspace_.show_2d_start_goal = !workspace_.show_2d_start_goal;
+            layout_dirty_ = true;
+            logger_.Info(
+                "map2d",
+                std::string("overlay=start_goal enabled=")
+                    + (workspace_.show_2d_start_goal ? "yes" : "no"));
             break;
         case WorkspacePanelItem::kMode2DMap:
             workspace_.show_3d_preview = false;
@@ -3291,6 +3337,28 @@ void App::AdjustMap2DZoom(int steps, std::string_view reason)
         "zoom reason=" + std::string(reason)
             + " steps=" + std::to_string(steps)
             + " pixels_per_tile=" + std::to_string(map_2d_view_.Status().pixels_per_tile));
+}
+
+void App::FocusMap2DOnTile(
+    TileCoord tile,
+    std::string_view point_name,
+    std::string_view reason)
+{
+    if (!map_2d_view_.FocusTile(tile, layout_cache_.workspace.map_overview)) {
+        logger_.Debug(
+            "map2d",
+            "focus ignored point=" + std::string(point_name)
+                + " reason=" + std::string(reason));
+        return;
+    }
+
+    const Map2DViewStatus status = map_2d_view_.Status();
+    logger_.Info(
+        "map2d",
+        "focus point=" + std::string(point_name)
+            + " tile=" + std::to_string(tile.x) + "," + std::to_string(tile.y)
+            + " zoom=" + std::to_string(status.pixels_per_tile)
+            + " reason=" + std::string(reason));
 }
 
 void App::FitPreviewCameraToViewport(std::string_view reason)

@@ -121,6 +121,10 @@ private:
     void FitMap2DView(std::string_view reason);
     void ResetMap2DView(std::string_view reason);
     void AdjustMap2DZoom(int steps, std::string_view reason);
+    void FocusMap2DOnTile(
+        TileCoord tile,
+        std::string_view point_name,
+        std::string_view reason);
     void FitPreviewCameraToViewport(std::string_view reason);
     void SetCurrentScreen(AppScreen screen, std::string_view reason);
     void RequestExitConfirmation(bool from_window_close = false);

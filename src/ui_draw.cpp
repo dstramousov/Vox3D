@@ -993,9 +993,28 @@ struct TextPanelRow {
     }
     if (tile.chunk_found) {
         lines.push_back("  Chunk: " + TileCoordText(TileCoord{tile.chunk.x, tile.chunk.y}));
-        lines.push_back("  Bounds: " + ChunkBoundsText(tile.chunk_bounds));
+        lines.push_back("  Chunk bounds: " + ChunkBoundsText(tile.chunk_bounds));
     } else {
         lines.push_back("  Chunk: none");
+    }
+    const int region_size = workspace_state.map.runtime_binary.region_size_tiles;
+    if (region_size > 0) {
+        const int region_x = tile.tile.x / region_size;
+        const int region_y = tile.tile.y / region_size;
+        const int max_x = std::min(
+            workspace_state.runtime_map.info.width,
+            (region_x + 1) * region_size);
+        const int max_y = std::min(
+            workspace_state.runtime_map.info.height,
+            (region_y + 1) * region_size);
+        lines.push_back("  VXMAP region: " + TileCoordText(TileCoord{region_x, region_y}));
+        lines.push_back("  Region bounds: "
+            + std::to_string(region_x * region_size) + ","
+            + std::to_string(region_y * region_size) + "-"
+            + std::to_string(max_x - 1) + ","
+            + std::to_string(max_y - 1));
+    } else {
+        lines.push_back("  VXMAP region: unavailable");
     }
     lines.push_back("");
     lines.push_back("Transitions");
@@ -1132,6 +1151,8 @@ struct SelectionInfoOverlayGeometry {
         "  RMB  Cancel path pick / release mouse",
         "  Menu Validation -> Run Validation",
         "  LMB  Pick tile in Select mode",
+        "  2D wheel zoom, MMB drag pan",
+        "  Home / End  Focus Start / Goal",
         "  F    Fit view",
         "  R    Reset camera",
         "  Esc  Release mouse first, then exit",
@@ -1252,7 +1273,21 @@ struct SelectionInfoOverlayGeometry {
         case WorkspacePanelItem::kLayerGrid:
             return labels.workspace_subitem_grid;
         case WorkspacePanelItem::k2DChunks:
+            if (workspace_state.chunk_grid.info.chunk_size_x > 0
+                && workspace_state.chunk_grid.info.chunk_size_y > 0) {
+                return "Chunks "
+                    + std::to_string(workspace_state.chunk_grid.info.chunk_size_x)
+                    + "x"
+                    + std::to_string(workspace_state.chunk_grid.info.chunk_size_y);
+            }
             return "Chunks";
+        case WorkspacePanelItem::k2DVxmapRegions:
+            if (workspace_state.map.runtime_binary.region_size_tiles > 0) {
+                const int region_size = workspace_state.map.runtime_binary.region_size_tiles;
+                return "VXMAP Regions " + std::to_string(region_size)
+                    + "x" + std::to_string(region_size);
+            }
+            return "VXMAP Regions";
         case WorkspacePanelItem::k2DStartGoal:
             return "Start / Goal";
         case WorkspacePanelItem::k2DObjects:
@@ -2597,14 +2632,24 @@ void DrawWorkspace(
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {
         if (map_2d_view != nullptr && map_2d_view->IsLoaded()) {
-            const std::optional<TileCoord> selection = workspace_state.selected_tile.IsValid()
+            Map2DOverlayOptions overlays;
+            overlays.show_grid = workspace_state.show_grid_layer;
+            overlays.show_chunks = workspace_state.show_2d_chunks;
+            overlays.chunk_size_x = workspace_state.chunk_grid.info.chunk_size_x;
+            overlays.chunk_size_y = workspace_state.chunk_grid.info.chunk_size_y;
+            overlays.show_vxmap_regions = workspace_state.show_2d_vxmap_regions;
+            overlays.vxmap_region_size_tiles =
+                workspace_state.map.runtime_binary.region_size_tiles;
+            overlays.show_start_goal = workspace_state.show_2d_start_goal;
+            overlays.start = workspace_state.runtime_map.info.start;
+            overlays.goal = workspace_state.runtime_map.info.goal;
+            overlays.selection = workspace_state.selected_tile.IsValid()
                 ? std::optional<TileCoord>{workspace_state.selected_tile.tile}
                 : std::nullopt;
             map_2d_view->Draw(
                 workspace.map_overview,
                 workspace_state.map_2d_base_layer,
-                workspace_state.show_grid_layer,
-                selection);
+                overlays);
             DrawMap2DLegend(
                 fonts.text,
                 workspace.map_overview,

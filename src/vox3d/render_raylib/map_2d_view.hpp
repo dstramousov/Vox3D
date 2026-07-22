@@ -36,6 +36,26 @@ struct Map2DLegendEntry {
 };
 
 /**
+ * @brief Optional vector overlays drawn above a 2D diagnostic base layer.
+ *
+ * Partition sizes are expressed in map tiles. Invalid or zero partition sizes
+ * disable the corresponding overlay. Start, goal, and selection coordinates
+ * are ignored when they fall outside the loaded map.
+ */
+struct Map2DOverlayOptions {
+    bool show_grid = false;
+    bool show_chunks = false;
+    int chunk_size_x = 0;
+    int chunk_size_y = 0;
+    bool show_vxmap_regions = false;
+    int vxmap_region_size_tiles = 0;
+    bool show_start_goal = false;
+    std::optional<TileCoord> start;
+    std::optional<TileCoord> goal;
+    std::optional<TileCoord> selection;
+};
+
+/**
  * @brief Returns the stable legend entries for a 2D diagnostic base layer.
  *
  * @param base_layer Layer whose color meaning should be described.
@@ -139,6 +159,19 @@ public:
     void AdjustZoom(int steps, Rectangle viewport);
 
     /**
+     * @brief Centers the view on one tile and ensures an inspection-scale zoom.
+     *
+     * Existing zoom is preserved when it is already closer than the minimum
+     * inspection scale. The target is clamped so the map remains inside the
+     * viewport as far as its dimensions allow.
+     *
+     * @param tile Tile coordinate to center.
+     * @param viewport Screen-space rectangle used by the 2D map.
+     * @return True when the tile is inside the loaded map and focus changed.
+     */
+    [[nodiscard]] bool FocusTile(TileCoord tile, Rectangle viewport);
+
+    /**
      * @brief Converts a screen point to a map tile coordinate.
      *
      * @param screen_point Global screen-space point.
@@ -150,18 +183,16 @@ public:
         Rectangle viewport) const;
 
     /**
-     * @brief Draws the selected base texture, grid, and tile selection.
+     * @brief Draws the selected base texture and enabled vector overlays.
      *
      * @param viewport Screen-space rectangle used by the 2D map.
      * @param base_layer Diagnostic base layer to display.
-     * @param show_grid True to draw the zoom-dependent grid overlay.
-     * @param selection Optional selected tile highlighted above the map.
+     * @param overlays Grid, partition, endpoint, and selection overlay options.
      */
     void Draw(
         Rectangle viewport,
         Map2DBaseLayer base_layer,
-        bool show_grid,
-        std::optional<TileCoord> selection) const;
+        const Map2DOverlayOptions& overlays) const;
 
     /**
      * @brief Returns true when at least the terrain texture is loaded.

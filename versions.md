@@ -555,3 +555,10 @@
 - Added selectable 2D diagnostic maps for all five runtime grids without additional JSON reads on the VXMAP fast path.
 - Added per-layer color legends and hovered-tile values to the 2D workspace.
 - Extended the `I` selection overlay and inspection logs with movement, blocking, cover, and concealment values.
+
+## v0.5.48 -> v0.5.49
+
+- Added independent 2D overlays for render chunks, VXMAP regions, and runtime Start/Goal points.
+- Added zoom-dependent chunk and region labels while keeping the tile grid separate from partition overlays.
+- Added `Home` and `End` navigation to center the 2D map on Start and Goal at inspection scale.
+- Extended the `I` selection overlay with VXMAP region coordinates and clipped region bounds.

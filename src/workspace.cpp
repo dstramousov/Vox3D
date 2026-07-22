@@ -204,6 +204,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "layer_grid";
         case WorkspacePanelItem::k2DChunks:
             return "2d_chunks";
+        case WorkspacePanelItem::k2DVxmapRegions:
+            return "2d_vxmap_regions";
         case WorkspacePanelItem::k2DStartGoal:
             return "2d_start_goal";
         case WorkspacePanelItem::k2DObjects:
@@ -855,8 +857,21 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
 
     if (AddGroup(Item::k2DOverlayGroup)) {
         items.push_back(Checkbox(Item::kLayerGrid, 1, true, workspace.show_grid_layer));
-        items.push_back(Checkbox(Item::k2DChunks, 1, false, false));
-        items.push_back(Checkbox(Item::k2DStartGoal, 1, false, false));
+        items.push_back(Checkbox(
+            Item::k2DChunks,
+            1,
+            workspace.chunk_grid.IsValid(),
+            workspace.show_2d_chunks));
+        items.push_back(Checkbox(
+            Item::k2DVxmapRegions,
+            1,
+            workspace.map.runtime_binary.region_size_tiles > 0,
+            workspace.show_2d_vxmap_regions));
+        items.push_back(Checkbox(
+            Item::k2DStartGoal,
+            1,
+            workspace.runtime_map.info.start_goal_loaded,
+            workspace.show_2d_start_goal));
         items.push_back(Checkbox(Item::k2DObjects, 1, false, false));
         items.push_back(Checkbox(Item::k2DPlaces, 1, false, false));
         items.push_back(Checkbox(Item::k2DMarkers, 1, false, false));

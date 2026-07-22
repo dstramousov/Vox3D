@@ -18,8 +18,11 @@ constexpr float kResetFitMultiplier = 2.0F;
 constexpr float kMaximumPixelsPerTile = 64.0F;
 constexpr float kViewportChangeEpsilon = 0.5F;
 constexpr float kTileGridThreshold = 6.0F;
-constexpr float kMajorGridThreshold = 1.5F;
-constexpr int kMajorGridStep = 16;
+constexpr float kFocusPixelsPerTile = 12.0F;
+constexpr float kPartitionLabelFontPixels = 11.0F;
+constexpr float kPartitionLabelSpacingPixels = 1.0F;
+constexpr float kChunkLabelMinimumWidthPixels = 52.0F;
+constexpr float kRegionLabelMinimumWidthPixels = 80.0F;
 
 struct ElevationColorStop {
     int level = 0;
@@ -262,6 +265,137 @@ void UnloadTextureIfLoaded(Texture2D* texture)
     return point.x >= rectangle.x && point.y >= rectangle.y
         && point.x < rectangle.x + rectangle.width
         && point.y < rectangle.y + rectangle.height;
+}
+
+[[nodiscard]] bool TileInsideMap(TileCoord tile, int map_width, int map_height)
+{
+    return tile.x >= 0 && tile.y >= 0
+        && tile.x < map_width && tile.y < map_height;
+}
+
+void DrawPartitionOverlay(
+    int map_width,
+    int map_height,
+    int step_x,
+    int step_y,
+    Rectangle visible_world,
+    float zoom,
+    Color line_color,
+    float line_width_pixels,
+    std::string_view label_prefix,
+    float label_minimum_width_pixels)
+{
+    if (step_x <= 0 || step_y <= 0 || map_width <= 0 || map_height <= 0) {
+        return;
+    }
+
+    const int first_line_x = std::max(
+        step_x,
+        static_cast<int>(std::floor(visible_world.x / step_x)) * step_x);
+    const int last_line_x = std::min(
+        map_width - 1,
+        static_cast<int>(std::ceil(
+            (visible_world.x + visible_world.width) / step_x)) * step_x);
+    const int first_line_y = std::max(
+        step_y,
+        static_cast<int>(std::floor(visible_world.y / step_y)) * step_y);
+    const int last_line_y = std::min(
+        map_height - 1,
+        static_cast<int>(std::ceil(
+            (visible_world.y + visible_world.height) / step_y)) * step_y);
+    const float line_width = std::max(line_width_pixels / zoom, 0.015625F);
+    for (int x = first_line_x; x <= last_line_x; x += step_x) {
+        DrawLineEx(
+            Vector2{static_cast<float>(x), 0.0F},
+            Vector2{static_cast<float>(x), static_cast<float>(map_height)},
+            line_width,
+            line_color);
+    }
+    for (int y = first_line_y; y <= last_line_y; y += step_y) {
+        DrawLineEx(
+            Vector2{0.0F, static_cast<float>(y)},
+            Vector2{static_cast<float>(map_width), static_cast<float>(y)},
+            line_width,
+            line_color);
+    }
+
+    const float cell_pixels = static_cast<float>(std::min(step_x, step_y)) * zoom;
+    if (cell_pixels < label_minimum_width_pixels) {
+        return;
+    }
+
+    const int cells_x = (map_width + step_x - 1) / step_x;
+    const int cells_y = (map_height + step_y - 1) / step_y;
+    const int first_cell_x = std::clamp(
+        static_cast<int>(std::floor(visible_world.x / step_x)),
+        0,
+        cells_x - 1);
+    const int last_cell_x = std::clamp(
+        static_cast<int>(std::floor(
+            (visible_world.x + visible_world.width) / step_x)),
+        0,
+        cells_x - 1);
+    const int first_cell_y = std::clamp(
+        static_cast<int>(std::floor(visible_world.y / step_y)),
+        0,
+        cells_y - 1);
+    const int last_cell_y = std::clamp(
+        static_cast<int>(std::floor(
+            (visible_world.y + visible_world.height) / step_y)),
+        0,
+        cells_y - 1);
+    const float font_size = kPartitionLabelFontPixels / zoom;
+    const float spacing = kPartitionLabelSpacingPixels / zoom;
+    const Vector2 label_padding{3.0F / zoom, 2.0F / zoom};
+    const Color label_color{line_color.r, line_color.g, line_color.b, 230};
+    for (int cell_y = first_cell_y; cell_y <= last_cell_y; ++cell_y) {
+        for (int cell_x = first_cell_x; cell_x <= last_cell_x; ++cell_x) {
+            const std::string label = std::string(label_prefix)
+                + std::to_string(cell_x) + "," + std::to_string(cell_y);
+            DrawTextEx(
+                GetFontDefault(),
+                label.c_str(),
+                Vector2{
+                    static_cast<float>(cell_x * step_x) + label_padding.x,
+                    static_cast<float>(cell_y * step_y) + label_padding.y,
+                },
+                font_size,
+                spacing,
+                label_color);
+        }
+    }
+}
+
+void DrawEndpointMarker(
+    TileCoord tile,
+    std::string_view label,
+    Color fill,
+    float zoom)
+{
+    const Vector2 center{
+        static_cast<float>(tile.x) + 0.5F,
+        static_cast<float>(tile.y) + 0.5F,
+    };
+    const float radius = std::clamp(7.0F / zoom, 0.18F, 1.25F);
+    const float outline_radius = radius + std::max(1.5F / zoom, 0.03F);
+    DrawCircleV(center, outline_radius, Color{18, 22, 24, 240});
+    DrawCircleV(center, radius, fill);
+
+    const std::string label_text(label);
+    const float font_size = 10.0F / zoom;
+    const float spacing = 1.0F / zoom;
+    const Vector2 text_size = MeasureTextEx(
+        GetFontDefault(),
+        label_text.c_str(),
+        font_size,
+        spacing);
+    DrawTextEx(
+        GetFontDefault(),
+        label_text.c_str(),
+        Vector2{center.x - text_size.x * 0.5F, center.y - text_size.y * 0.5F},
+        font_size,
+        spacing,
+        Color{20, 24, 24, 255});
 }
 
 }  // namespace
@@ -528,6 +662,25 @@ void Map2DView::AdjustZoom(int steps, Rectangle viewport)
     ZoomAt(center, static_cast<float>(steps), viewport);
 }
 
+bool Map2DView::FocusTile(TileCoord tile, Rectangle viewport)
+{
+    if (!loaded_ || !TileInsideMap(tile, map_width_, map_height_)) {
+        return false;
+    }
+
+    EnsureViewport(viewport);
+    zoom_ = std::clamp(
+        std::max(zoom_, kFocusPixelsPerTile),
+        fit_zoom_,
+        kMaximumPixelsPerTile);
+    target_ = Vector2{
+        static_cast<float>(tile.x) + 0.5F,
+        static_cast<float>(tile.y) + 0.5F,
+    };
+    ClampTarget(viewport);
+    return true;
+}
+
 std::optional<TileCoord> Map2DView::ScreenToTile(
     Vector2 screen_point,
     Rectangle viewport) const
@@ -548,8 +701,7 @@ std::optional<TileCoord> Map2DView::ScreenToTile(
 void Map2DView::Draw(
     Rectangle viewport,
     Map2DBaseLayer base_layer,
-    bool show_grid,
-    std::optional<TileCoord> selection) const
+    const Map2DOverlayOptions& overlays) const
 {
     DrawRectangleRec(viewport, Color{18, 22, 24, 255});
     if (!loaded_ || !initialized_) {
@@ -588,32 +740,36 @@ void Map2DView::Draw(
         DrawRectangleRec(map_bounds, Color{64, 66, 64, 255});
     }
 
-    if (show_grid && zoom_ >= kMajorGridThreshold) {
-        const int grid_step = zoom_ >= kTileGridThreshold ? 1 : kMajorGridStep;
+    const Camera2D camera = CameraFor(viewport);
+    const Vector2 visible_min = GetScreenToWorld2D(
+        Vector2{viewport.x, viewport.y},
+        camera);
+    const Vector2 visible_max = GetScreenToWorld2D(
+        Vector2{viewport.x + viewport.width, viewport.y + viewport.height},
+        camera);
+    const Rectangle visible_world{
+        visible_min.x,
+        visible_min.y,
+        visible_max.x - visible_min.x,
+        visible_max.y - visible_min.y,
+    };
+
+    if (overlays.show_grid && zoom_ >= kTileGridThreshold) {
         const float line_width = std::max(0.5F / zoom_, 0.015625F);
-        const Color grid_color = grid_step == 1
-            ? Color{20, 24, 24, 75}
-            : Color{20, 24, 24, 150};
-        const Camera2D camera = CameraFor(viewport);
-        const Vector2 visible_min = GetScreenToWorld2D(
-            Vector2{viewport.x, viewport.y},
-            camera);
-        const Vector2 visible_max = GetScreenToWorld2D(
-            Vector2{viewport.x + viewport.width, viewport.y + viewport.height},
-            camera);
+        const Color grid_color{20, 24, 24, 75};
         const int first_x = std::max(
-            grid_step,
-            static_cast<int>(std::floor(visible_min.x / static_cast<float>(grid_step))) * grid_step);
+            1,
+            static_cast<int>(std::floor(visible_min.x)));
         const int last_x = std::min(
             map_width_ - 1,
-            static_cast<int>(std::ceil(visible_max.x / static_cast<float>(grid_step))) * grid_step);
+            static_cast<int>(std::ceil(visible_max.x)));
         const int first_y = std::max(
-            grid_step,
-            static_cast<int>(std::floor(visible_min.y / static_cast<float>(grid_step))) * grid_step);
+            1,
+            static_cast<int>(std::floor(visible_min.y)));
         const int last_y = std::min(
             map_height_ - 1,
-            static_cast<int>(std::ceil(visible_max.y / static_cast<float>(grid_step))) * grid_step);
-        for (int x = first_x; x <= last_x; x += grid_step) {
+            static_cast<int>(std::ceil(visible_max.y)));
+        for (int x = first_x; x <= last_x; ++x) {
             const float world_x = static_cast<float>(x);
             DrawLineEx(
                 Vector2{world_x, 0.0F},
@@ -621,7 +777,7 @@ void Map2DView::Draw(
                 line_width,
                 grid_color);
         }
-        for (int y = first_y; y <= last_y; y += grid_step) {
+        for (int y = first_y; y <= last_y; ++y) {
             const float world_y = static_cast<float>(y);
             DrawLineEx(
                 Vector2{0.0F, world_y},
@@ -631,14 +787,59 @@ void Map2DView::Draw(
         }
     }
 
-    if (selection.has_value()
-        && selection->x >= 0 && selection->y >= 0
-        && selection->x < map_width_ && selection->y < map_height_) {
+    if (overlays.show_vxmap_regions && overlays.vxmap_region_size_tiles > 0) {
+        DrawPartitionOverlay(
+            map_width_,
+            map_height_,
+            overlays.vxmap_region_size_tiles,
+            overlays.vxmap_region_size_tiles,
+            visible_world,
+            zoom_,
+            Color{64, 215, 225, 230},
+            2.5F,
+            "R ",
+            kRegionLabelMinimumWidthPixels);
+    }
+    if (overlays.show_chunks && overlays.chunk_size_x > 0 && overlays.chunk_size_y > 0) {
+        DrawPartitionOverlay(
+            map_width_,
+            map_height_,
+            overlays.chunk_size_x,
+            overlays.chunk_size_y,
+            visible_world,
+            zoom_,
+            Color{242, 174, 70, 215},
+            1.5F,
+            "C ",
+            kChunkLabelMinimumWidthPixels);
+    }
+
+    if (overlays.show_start_goal) {
+        if (overlays.start.has_value()
+            && TileInsideMap(*overlays.start, map_width_, map_height_)) {
+            DrawEndpointMarker(
+                *overlays.start,
+                "S",
+                Color{96, 225, 118, 255},
+                zoom_);
+        }
+        if (overlays.goal.has_value()
+            && TileInsideMap(*overlays.goal, map_width_, map_height_)) {
+            DrawEndpointMarker(
+                *overlays.goal,
+                "G",
+                Color{238, 91, 78, 255},
+                zoom_);
+        }
+    }
+
+    if (overlays.selection.has_value()
+        && TileInsideMap(*overlays.selection, map_width_, map_height_)) {
         const float selection_line_width = std::max(2.0F / zoom_, 0.03125F);
         DrawRectangleLinesEx(
             Rectangle{
-                static_cast<float>(selection->x),
-                static_cast<float>(selection->y),
+                static_cast<float>(overlays.selection->x),
+                static_cast<float>(overlays.selection->y),
                 1.0F,
                 1.0F,
             },

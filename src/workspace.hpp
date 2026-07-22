@@ -124,6 +124,7 @@ enum class WorkspacePanelItem {
     k2DOverlayGroup,
     kLayerGrid,
     k2DChunks,
+    k2DVxmapRegions,
     k2DStartGoal,
     k2DObjects,
     k2DPlaces,
@@ -394,6 +395,9 @@ struct WorkspaceState {
     };
     Map2DBaseLayer map_2d_base_layer = Map2DBaseLayer::kTerrain;
     bool show_grid_layer = false;
+    bool show_2d_chunks = false;
+    bool show_2d_vxmap_regions = false;
+    bool show_2d_start_goal = false;
     bool show_3d_preview = true;
     bool show_3d_chunk_bounds = false;
     bool show_3d_world_grid = false;
