@@ -40,6 +40,16 @@ struct TileInspectResult {
     std::string terrain;
     int elevation = 0;
     bool blocked = false;
+    bool movement_cost_available = false;
+    int movement_cost = -1;
+    bool projectile_block_available = false;
+    bool projectile_blocked = false;
+    bool vision_block_available = false;
+    bool vision_blocked = false;
+    bool cover_available = false;
+    std::uint8_t cover = 0;
+    bool concealment_available = false;
+    std::uint8_t concealment = 0;
     bool chunk_found = false;
     ChunkCoord chunk;
     TileBounds chunk_bounds;

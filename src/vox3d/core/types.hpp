@@ -27,6 +27,11 @@ enum class Map2DBaseLayer {
     kTerrain,
     kElevation,
     kCollision,
+    kMovementCost,
+    kProjectileBlock,
+    kVisionBlock,
+    kCover,
+    kConcealment,
 };
 
 }  // namespace vox3d

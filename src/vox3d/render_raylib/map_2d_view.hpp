@@ -7,6 +7,7 @@
 #include <raylib.h>
 
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -25,6 +26,23 @@ struct Map2DViewStatus {
     float pixels_per_tile = 0.0F;
     float fit_pixels_per_tile = 0.0F;
 };
+
+/**
+ * @brief One color key displayed in the 2D diagnostic layer legend.
+ */
+struct Map2DLegendEntry {
+    Color color{};
+    std::string_view label;
+};
+
+/**
+ * @brief Returns the stable legend entries for a 2D diagnostic base layer.
+ *
+ * @param base_layer Layer whose color meaning should be described.
+ * @return Non-owning view of static legend entries.
+ */
+[[nodiscard]] std::span<const Map2DLegendEntry> Map2DLegendFor(
+    Map2DBaseLayer base_layer);
 
 /**
  * @brief Raylib-backed interactive top-down map view.
@@ -58,7 +76,7 @@ public:
     Map2DView& operator=(const Map2DView&) = delete;
 
     /**
-     * @brief Builds terrain, elevation, and collision textures from a runtime map.
+     * @brief Builds all available dense diagnostic textures from a runtime map.
      *
      * Existing texture resources are released before loading the new map. All
      * core grids must be valid and have identical dimensions. The caller must
@@ -185,6 +203,11 @@ private:
     Texture2D terrain_texture_{};
     Texture2D elevation_texture_{};
     Texture2D collision_texture_{};
+    Texture2D movement_cost_texture_{};
+    Texture2D projectile_block_texture_{};
+    Texture2D vision_block_texture_{};
+    Texture2D cover_texture_{};
+    Texture2D concealment_texture_{};
     int map_width_ = 0;
     int map_height_ = 0;
     Vector2 target_{};

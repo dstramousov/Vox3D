@@ -330,8 +330,136 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "Elevation";
         case Map2DBaseLayer::kCollision:
             return "Collision";
+        case Map2DBaseLayer::kMovementCost:
+            return "Movement";
+        case Map2DBaseLayer::kProjectileBlock:
+            return "Projectile";
+        case Map2DBaseLayer::kVisionBlock:
+            return "Vision";
+        case Map2DBaseLayer::kCover:
+            return "Cover";
+        case Map2DBaseLayer::kConcealment:
+            return "Concealment";
     }
     return "Unknown";
+}
+
+[[nodiscard]] int PercentFromByte(std::uint8_t value)
+{
+    return (static_cast<int>(value) * 100 + 127) / 255;
+}
+
+[[nodiscard]] std::string Map2DCellValueText(
+    const RuntimeMap& map,
+    Map2DBaseLayer layer,
+    TileCoord tile)
+{
+    if (!map.IsValid() || tile.x < 0 || tile.y < 0
+        || tile.x >= map.info.width || tile.y >= map.info.height) {
+        return "unavailable";
+    }
+    const std::size_t index = static_cast<std::size_t>(tile.y)
+        * static_cast<std::size_t>(map.info.width)
+        + static_cast<std::size_t>(tile.x);
+
+    switch (layer) {
+        case Map2DBaseLayer::kTerrain:
+            return map.terrain.IsValid() ? map.terrain.cells[index] : "unavailable";
+        case Map2DBaseLayer::kElevation:
+            return map.height.IsValid() ? std::to_string(map.height.cells[index]) : "unavailable";
+        case Map2DBaseLayer::kCollision:
+            return map.collision.IsValid()
+                ? (map.collision.cells[index] == 0U ? "passable" : "blocked")
+                : "unavailable";
+        case Map2DBaseLayer::kMovementCost:
+            if (!map.movement_cost.IsValid()) {
+                return "unavailable";
+            }
+            return map.movement_cost.cells[index] < 0
+                ? "blocked"
+                : "cost " + std::to_string(map.movement_cost.cells[index]);
+        case Map2DBaseLayer::kProjectileBlock:
+            return map.projectile_block.IsValid()
+                ? (map.projectile_block.cells[index] == 0U ? "clear" : "blocked")
+                : "unavailable";
+        case Map2DBaseLayer::kVisionBlock:
+            return map.vision_block.IsValid()
+                ? (map.vision_block.cells[index] == 0U ? "clear" : "blocked")
+                : "unavailable";
+        case Map2DBaseLayer::kCover:
+            return map.cover.IsValid()
+                ? std::to_string(PercentFromByte(map.cover.cells[index])) + "%"
+                : "unavailable";
+        case Map2DBaseLayer::kConcealment:
+            return map.concealment.IsValid()
+                ? std::to_string(PercentFromByte(map.concealment.cells[index])) + "%"
+                : "unavailable";
+    }
+    return "unavailable";
+}
+
+void DrawMap2DLegend(
+    Font font,
+    Rectangle viewport,
+    Map2DBaseLayer layer,
+    float font_size)
+{
+    const std::span<const Map2DLegendEntry> entries = Map2DLegendFor(layer);
+    if (entries.empty() || viewport.width < 180.0F || viewport.height < 140.0F) {
+        return;
+    }
+
+    const float spacing = FontSpacing(font_size);
+    const float padding = std::max(7.0F, font_size * 0.45F);
+    const float swatch = std::max(10.0F, font_size * 0.72F);
+    const float row_height = std::max(swatch, font_size) + 4.0F;
+    const std::string title(Map2DBaseLayerLabel(layer));
+
+    float text_width = Measure(font, title, font_size, spacing).x;
+    for (const Map2DLegendEntry& entry : entries) {
+        text_width = std::max(
+            text_width,
+            Measure(font, std::string(entry.label), font_size, spacing).x);
+    }
+
+    const float width = padding * 3.0F + swatch + text_width;
+    const float height = padding * 2.0F + row_height * static_cast<float>(entries.size() + 1U);
+    const Rectangle panel{
+        viewport.x + 12.0F,
+        viewport.y + 12.0F,
+        width,
+        height,
+    };
+    DrawRectangleRec(panel, Color{10, 18, 24, 220});
+    DrawRectangleLinesEx(panel, 1.0F, Color{225, 232, 238, 230});
+
+    float y = panel.y + padding;
+    DrawTextEx(
+        font,
+        title.c_str(),
+        Vector2{panel.x + padding, y},
+        font_size,
+        spacing,
+        kSelectedText);
+    y += row_height;
+    for (const Map2DLegendEntry& entry : entries) {
+        const Rectangle swatch_bounds{
+            panel.x + padding,
+            y + (row_height - swatch) * 0.5F,
+            swatch,
+            swatch,
+        };
+        DrawRectangleRec(swatch_bounds, entry.color);
+        DrawRectangleLinesEx(swatch_bounds, 1.0F, Color{230, 230, 225, 210});
+        DrawTextEx(
+            font,
+            std::string(entry.label).c_str(),
+            Vector2{panel.x + padding * 2.0F + swatch, y + 1.0F},
+            font_size,
+            spacing,
+            kText);
+        y += row_height;
+    }
 }
 
 [[nodiscard]] std::string CompactStatusText(
@@ -351,6 +479,10 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
         }
         if (map_2d_status.hover_tile_valid) {
             status += " | Tile " + TileCoordText(map_2d_status.hover_tile);
+            status += " | Value " + Map2DCellValueText(
+                workspace_state.runtime_map,
+                workspace_state.map_2d_base_layer,
+                map_2d_status.hover_tile);
         } else {
             status += " | Tile none";
         }
@@ -833,7 +965,7 @@ struct TextPanelRow {
         lines.push_back("  Chunk: none");
         lines.push_back("  Transitions: none");
         lines.push_back("");
-        lines.push_back("  Click terrain in 3D preview");
+        lines.push_back("  Click the 2D map or 3D terrain");
         lines.push_back("  to inspect a tile.");
         return lines;
     }
@@ -843,6 +975,22 @@ struct TextPanelRow {
     lines.push_back("  Terrain: " + tile.terrain);
     lines.push_back("  Elevation: " + std::to_string(tile.elevation));
     lines.push_back("  Collision: " + std::string(tile.blocked ? "blocked" : "free"));
+    if (tile.movement_cost_available) {
+        lines.push_back("  Movement cost: "
+            + (tile.movement_cost < 0 ? std::string("blocked") : std::to_string(tile.movement_cost)));
+    }
+    if (tile.projectile_block_available) {
+        lines.push_back("  Projectile: " + std::string(tile.projectile_blocked ? "blocked" : "clear"));
+    }
+    if (tile.vision_block_available) {
+        lines.push_back("  Vision: " + std::string(tile.vision_blocked ? "blocked" : "clear"));
+    }
+    if (tile.cover_available) {
+        lines.push_back("  Cover: " + std::to_string(PercentFromByte(tile.cover)) + "%");
+    }
+    if (tile.concealment_available) {
+        lines.push_back("  Concealment: " + std::to_string(PercentFromByte(tile.concealment)) + "%");
+    }
     if (tile.chunk_found) {
         lines.push_back("  Chunk: " + TileCoordText(TileCoord{tile.chunk.x, tile.chunk.y}));
         lines.push_back("  Bounds: " + ChunkBoundsText(tile.chunk_bounds));
@@ -1089,6 +1237,16 @@ struct SelectionInfoOverlayGeometry {
             return labels.workspace_elevation_label;
         case WorkspacePanelItem::kLayerCollision:
             return labels.workspace_collision_label;
+        case WorkspacePanelItem::kLayerMovementCost:
+            return "Movement Cost";
+        case WorkspacePanelItem::kLayerProjectileBlock:
+            return "Projectile Block";
+        case WorkspacePanelItem::kLayerVisionBlock:
+            return "Vision Block";
+        case WorkspacePanelItem::kLayerCover:
+            return "Cover";
+        case WorkspacePanelItem::kLayerConcealment:
+            return "Concealment";
         case WorkspacePanelItem::k2DOverlayGroup:
             return "Overlays";
         case WorkspacePanelItem::kLayerGrid:
@@ -2447,6 +2605,11 @@ void DrawWorkspace(
                 workspace_state.map_2d_base_layer,
                 workspace_state.show_grid_layer,
                 selection);
+            DrawMap2DLegend(
+                fonts.text,
+                workspace.map_overview,
+                workspace_state.map_2d_base_layer,
+                std::max(12.0F, metrics.workspace_status_font_size * 0.80F));
         }
         if (map_2d_view == nullptr || !map_2d_view->IsLoaded()) {
             DrawWorkspaceWirePlaceholder(workspace, metrics);

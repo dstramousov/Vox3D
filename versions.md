@@ -547,3 +547,11 @@
 - Added a semantic elevation palette for levels `-5..20` and a high-contrast passability palette for collision cells.
 - Changed 2D base-layer controls to exclusive radio selection and enabled them from loaded runtime-grid availability.
 - Added the active 2D base-layer name to the workspace status bar.
+
+
+## v0.5.47 -> v0.5.48
+
+- Decoded movement cost, projectile blocking, vision blocking, cover, and concealment grids from the existing validated VXMAP memory buffer.
+- Added selectable 2D diagnostic maps for all five runtime grids without additional JSON reads on the VXMAP fast path.
+- Added per-layer color legends and hovered-tile values to the 2D workspace.
+- Extended the `I` selection overlay and inspection logs with movement, blocking, cover, and concealment values.

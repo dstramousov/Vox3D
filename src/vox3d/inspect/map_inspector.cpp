@@ -99,6 +99,26 @@ TileInspectResult InspectTile(
     result.terrain = map.terrain.cells[index];
     result.elevation = map.height.cells[index];
     result.blocked = map.collision.cells[index] != 0U;
+    if (map.movement_cost.Contains(tile)) {
+        result.movement_cost_available = true;
+        result.movement_cost = map.movement_cost.cells[index];
+    }
+    if (map.projectile_block.Contains(tile)) {
+        result.projectile_block_available = true;
+        result.projectile_blocked = map.projectile_block.cells[index] != 0U;
+    }
+    if (map.vision_block.Contains(tile)) {
+        result.vision_block_available = true;
+        result.vision_blocked = map.vision_block.cells[index] != 0U;
+    }
+    if (map.cover.Contains(tile)) {
+        result.cover_available = true;
+        result.cover = map.cover.cells[index];
+    }
+    if (map.concealment.Contains(tile)) {
+        result.concealment_available = true;
+        result.concealment = map.concealment.cells[index];
+    }
 
     if (const ChunkInfo* chunk = FindChunkForTile(chunks, tile); chunk != nullptr) {
         result.chunk_found = true;
@@ -135,6 +155,21 @@ std::string ToLogString(const TileInspectResult& result)
     out << " terrain=" << result.terrain;
     out << " elevation=" << result.elevation;
     out << " blocked=" << (result.blocked ? "yes" : "no");
+    if (result.movement_cost_available) {
+        out << " movement_cost=" << result.movement_cost;
+    }
+    if (result.projectile_block_available) {
+        out << " projectile_blocked=" << (result.projectile_blocked ? "yes" : "no");
+    }
+    if (result.vision_block_available) {
+        out << " vision_blocked=" << (result.vision_blocked ? "yes" : "no");
+    }
+    if (result.cover_available) {
+        out << " cover=" << static_cast<int>(result.cover);
+    }
+    if (result.concealment_available) {
+        out << " concealment=" << static_cast<int>(result.concealment);
+    }
     if (result.chunk_found) {
         out << " chunk=" << result.chunk.x << ',' << result.chunk.y;
     } else {

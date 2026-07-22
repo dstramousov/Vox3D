@@ -859,23 +859,47 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     core.terrain.assign(tile_count, std::string{});
     core.elevation.assign(tile_count, 0);
     core.collision.assign(tile_count, 0);
+    core.movement_cost.assign(tile_count, 0);
+    core.projectile_block.assign(tile_count, 0);
+    core.vision_block.assign(tile_count, 0);
+    core.cover.assign(tile_count, 0);
+    core.concealment.assign(tile_count, 0);
 
     for (const RegionRecord& region : regions) {
         const SectionEntry* terrain_grid = FindRegionalSection(entries, region, kTypeTerrainGrid);
         const SectionEntry* elevation_grid = FindRegionalSection(entries, region, kTypeElevationGrid);
+        const SectionEntry* movement_grid = FindRegionalSection(entries, region, kTypeMovementGrid);
         const SectionEntry* collision_bits = FindRegionalSection(entries, region, kTypeCollisionBits);
-        if (terrain_grid == nullptr || elevation_grid == nullptr || collision_bits == nullptr) {
+        const SectionEntry* projectile_block_bits = FindRegionalSection(entries, region, kTypeProjectileBlockBits);
+        const SectionEntry* vision_block_bits = FindRegionalSection(entries, region, kTypeVisionBlockBits);
+        const SectionEntry* cover_grid = FindRegionalSection(entries, region, kTypeCoverGrid);
+        const SectionEntry* concealment_grid = FindRegionalSection(entries, region, kTypeConcealmentGrid);
+        if (terrain_grid == nullptr || elevation_grid == nullptr || movement_grid == nullptr
+            || collision_bits == nullptr || projectile_block_bits == nullptr || vision_block_bits == nullptr
+            || cover_grid == nullptr || concealment_grid == nullptr) {
             core.fallback_reason = "missing_regional_grid";
             return false;
         }
-        if (terrain_grid->element_stride != 2U || elevation_grid->element_stride != 2U || terrain_grid->element_count != region.tile_count
-            || elevation_grid->element_count != region.tile_count || collision_bits->element_count != region.tile_count) {
+        if (terrain_grid->element_stride != 2U || elevation_grid->element_stride != 2U
+            || movement_grid->element_stride != 2U || cover_grid->element_stride != 1U
+            || concealment_grid->element_stride != 1U || terrain_grid->element_count != region.tile_count
+            || elevation_grid->element_count != region.tile_count || movement_grid->element_count != region.tile_count
+            || collision_bits->element_count != region.tile_count
+            || projectile_block_bits->element_count != region.tile_count
+            || vision_block_bits->element_count != region.tile_count
+            || cover_grid->element_count != region.tile_count
+            || concealment_grid->element_count != region.tile_count) {
             core.fallback_reason = "bad_regional_grid";
             return false;
         }
         const std::uint64_t expected_bitset_size = (static_cast<std::uint64_t>(region.tile_count) + 7U) / 8U;
-        if (collision_bits->stored_size != expected_bitset_size) {
-            core.fallback_reason = "bad_bitset_size";
+        const std::uint64_t expected_i16_size = static_cast<std::uint64_t>(region.tile_count) * 2U;
+        if (terrain_grid->stored_size != expected_i16_size || elevation_grid->stored_size != expected_i16_size
+            || movement_grid->stored_size != expected_i16_size || collision_bits->stored_size != expected_bitset_size
+            || projectile_block_bits->stored_size != expected_bitset_size
+            || vision_block_bits->stored_size != expected_bitset_size
+            || cover_grid->stored_size != region.tile_count || concealment_grid->stored_size != region.tile_count) {
+            core.fallback_reason = "bad_regional_grid_size";
             return false;
         }
 
@@ -887,15 +911,22 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
                 const std::size_t global_index = static_cast<std::size_t>(global_y) * header.width_tiles + global_x;
                 std::uint16_t terrain_id = 0;
                 std::int16_t elevation = 0;
+                std::int16_t movement_cost = 0;
                 if (!ReadU16Le(data, terrain_grid->offset + static_cast<std::uint64_t>(local_index) * 2U, terrain_id)
                     || terrain_id >= terrain_names.size()
-                    || !ReadI16Le(data, elevation_grid->offset + static_cast<std::uint64_t>(local_index) * 2U, elevation)) {
+                    || !ReadI16Le(data, elevation_grid->offset + static_cast<std::uint64_t>(local_index) * 2U, elevation)
+                    || !ReadI16Le(data, movement_grid->offset + static_cast<std::uint64_t>(local_index) * 2U, movement_cost)) {
                     core.fallback_reason = "bad_regional_grid";
                     return false;
                 }
                 core.terrain[global_index] = terrain_names[terrain_id];
                 core.elevation[global_index] = elevation;
+                core.movement_cost[global_index] = movement_cost;
                 core.collision[global_index] = BitsetValue(data, *collision_bits, local_index) ? 1U : 0U;
+                core.projectile_block[global_index] = BitsetValue(data, *projectile_block_bits, local_index) ? 1U : 0U;
+                core.vision_block[global_index] = BitsetValue(data, *vision_block_bits, local_index) ? 1U : 0U;
+                core.cover[global_index] = data[static_cast<std::size_t>(cover_grid->offset + local_index)];
+                core.concealment[global_index] = data[static_cast<std::size_t>(concealment_grid->offset + local_index)];
             }
         }
     }

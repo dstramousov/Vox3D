@@ -188,6 +188,16 @@ std::string_view ToString(WorkspacePanelItem item)
             return "layer_elevation";
         case WorkspacePanelItem::kLayerCollision:
             return "layer_collision";
+        case WorkspacePanelItem::kLayerMovementCost:
+            return "layer_movement_cost";
+        case WorkspacePanelItem::kLayerProjectileBlock:
+            return "layer_projectile_block";
+        case WorkspacePanelItem::kLayerVisionBlock:
+            return "layer_vision_block";
+        case WorkspacePanelItem::kLayerCover:
+            return "layer_cover";
+        case WorkspacePanelItem::kLayerConcealment:
+            return "layer_concealment";
         case WorkspacePanelItem::k2DOverlayGroup:
             return "2d_overlays";
         case WorkspacePanelItem::kLayerGrid:
@@ -816,6 +826,31 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             1,
             workspace.runtime_map.info.collision_loaded,
             workspace.map_2d_base_layer == Map2DBaseLayer::kCollision));
+        items.push_back(Radio(
+            Item::kLayerMovementCost,
+            1,
+            workspace.runtime_map.info.movement_cost_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kMovementCost));
+        items.push_back(Radio(
+            Item::kLayerProjectileBlock,
+            1,
+            workspace.runtime_map.info.projectile_block_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kProjectileBlock));
+        items.push_back(Radio(
+            Item::kLayerVisionBlock,
+            1,
+            workspace.runtime_map.info.vision_block_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kVisionBlock));
+        items.push_back(Radio(
+            Item::kLayerCover,
+            1,
+            workspace.runtime_map.info.cover_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kCover));
+        items.push_back(Radio(
+            Item::kLayerConcealment,
+            1,
+            workspace.runtime_map.info.concealment_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kConcealment));
     }
 
     if (AddGroup(Item::k2DOverlayGroup)) {

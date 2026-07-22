@@ -106,6 +106,11 @@ struct RuntimeMapInfo {
     bool terrain_loaded = false;
     bool elevation_loaded = false;
     bool collision_loaded = false;
+    bool movement_cost_loaded = false;
+    bool projectile_block_loaded = false;
+    bool vision_block_loaded = false;
+    bool cover_loaded = false;
+    bool concealment_loaded = false;
     bool start_goal_loaded = false;
     bool object_markers_loaded = false;
     bool runtime_binary_checked = false;
@@ -140,8 +145,8 @@ struct RuntimeMapInfo {
  * @brief Runtime map data produced from a loaded map package.
  *
  * This object is the editor-independent data layer used by upcoming voxel,
- * chunk, and mesh builders. It owns dense terrain, collision, and height grids
- * parsed from the package files.
+ * chunk, and mesh builders. It owns dense terrain, movement, blocking,
+ * tactical-value, collision, and height grids parsed from the package files.
  */
 struct RuntimeMap {
     RuntimeMapInfo info;
@@ -149,6 +154,11 @@ struct RuntimeMap {
     RuntimeGrid<std::string> terrain;
     RuntimeGrid<std::uint8_t> collision;
     RuntimeGrid<int> height;
+    RuntimeGrid<int> movement_cost;
+    RuntimeGrid<std::uint8_t> projectile_block;
+    RuntimeGrid<std::uint8_t> vision_block;
+    RuntimeGrid<std::uint8_t> cover;
+    RuntimeGrid<std::uint8_t> concealment;
     std::vector<RuntimeObjectMarker> object_markers;
     Diagnostics diagnostics;
 

@@ -869,6 +869,11 @@ void ApplyJsonRuntimeCore(RuntimeMap& runtime, JsonRuntimeCore&& core)
     runtime.terrain = std::move(core.terrain);
     runtime.collision = std::move(core.collision);
     runtime.height = std::move(core.height);
+    runtime.movement_cost = RuntimeGrid<int>{};
+    runtime.projectile_block = RuntimeGrid<std::uint8_t>{};
+    runtime.vision_block = RuntimeGrid<std::uint8_t>{};
+    runtime.cover = RuntimeGrid<std::uint8_t>{};
+    runtime.concealment = RuntimeGrid<std::uint8_t>{};
     runtime.info.start = core.start;
     runtime.info.goal = core.goal;
     runtime.info.start_goal_loaded = core.start_goal_loaded;
@@ -960,7 +965,7 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
         return false;
     }
 
-    const VxmapRuntimeCore core = LoadVxmapRuntimeCore(package.path, ToVxmapManifest(package.runtime_binary));
+    VxmapRuntimeCore core = LoadVxmapRuntimeCore(package.path, ToVxmapManifest(package.runtime_binary));
     runtime.info.runtime_binary_checked = true;
     runtime.info.runtime_binary_valid = core.validation.valid;
     runtime.info.runtime_binary_fallback_reason = core.fallback_reason;
@@ -986,15 +991,35 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
 
     runtime.terrain.width = runtime.info.width;
     runtime.terrain.height = runtime.info.height;
-    runtime.terrain.cells = core.terrain;
+    runtime.terrain.cells = std::move(core.terrain);
 
     runtime.collision.width = runtime.info.width;
     runtime.collision.height = runtime.info.height;
-    runtime.collision.cells = core.collision;
+    runtime.collision.cells = std::move(core.collision);
 
     runtime.height.width = runtime.info.width;
     runtime.height.height = runtime.info.height;
     runtime.height.cells.assign(core.elevation.begin(), core.elevation.end());
+
+    runtime.movement_cost.width = runtime.info.width;
+    runtime.movement_cost.height = runtime.info.height;
+    runtime.movement_cost.cells.assign(core.movement_cost.begin(), core.movement_cost.end());
+
+    runtime.projectile_block.width = runtime.info.width;
+    runtime.projectile_block.height = runtime.info.height;
+    runtime.projectile_block.cells = std::move(core.projectile_block);
+
+    runtime.vision_block.width = runtime.info.width;
+    runtime.vision_block.height = runtime.info.height;
+    runtime.vision_block.cells = std::move(core.vision_block);
+
+    runtime.cover.width = runtime.info.width;
+    runtime.cover.height = runtime.info.height;
+    runtime.cover.cells = std::move(core.cover);
+
+    runtime.concealment.width = runtime.info.width;
+    runtime.concealment.height = runtime.info.height;
+    runtime.concealment.cells = std::move(core.concealment);
 
     runtime.info.start = core.start;
     runtime.info.goal = core.goal;
@@ -1100,6 +1125,11 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     runtime.info.terrain_loaded = runtime.terrain.IsValid();
     runtime.info.collision_loaded = runtime.collision.IsValid();
     runtime.info.elevation_loaded = runtime.height.IsValid();
+    runtime.info.movement_cost_loaded = runtime.movement_cost.IsValid();
+    runtime.info.projectile_block_loaded = runtime.projectile_block.IsValid();
+    runtime.info.vision_block_loaded = runtime.vision_block.IsValid();
+    runtime.info.cover_loaded = runtime.cover.IsValid();
+    runtime.info.concealment_loaded = runtime.concealment.IsValid();
     BuildRuntimeTerrainOverview(runtime);
     runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
     UpdateHeightRange(runtime);
@@ -1124,6 +1154,11 @@ std::string ToLogString(const RuntimeMap& map)
         out << " blocked=" << map.info.blocked_cells;
     }
     out << " height=" << (map.info.elevation_loaded ? "loaded" : "missing");
+    out << " movement=" << (map.info.movement_cost_loaded ? "loaded" : "missing");
+    out << " projectile_block=" << (map.info.projectile_block_loaded ? "loaded" : "missing");
+    out << " vision_block=" << (map.info.vision_block_loaded ? "loaded" : "missing");
+    out << " cover=" << (map.info.cover_loaded ? "loaded" : "missing");
+    out << " concealment=" << (map.info.concealment_loaded ? "loaded" : "missing");
     out << " start=" << FormatPoint(map.info.start);
     out << " goal=" << FormatPoint(map.info.goal);
     out << " object_markers=" << map.info.object_markers;

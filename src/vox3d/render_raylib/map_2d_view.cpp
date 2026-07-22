@@ -37,6 +37,78 @@ constexpr std::array<ElevationColorStop, 8> kElevationPalette{{
     ElevationColorStop{20, Color{221, 216, 203, 255}},
 }};
 
+constexpr Color kCollisionFree{62, 145, 86, 255};
+constexpr Color kCollisionBlocked{178, 58, 52, 255};
+constexpr Color kMovementBlocked{38, 40, 44, 255};
+constexpr Color kMovementCost1{62, 145, 86, 255};
+constexpr Color kMovementCost2{218, 186, 72, 255};
+constexpr Color kMovementCost3{222, 116, 58, 255};
+constexpr Color kMovementCostHigh{180, 55, 70, 255};
+constexpr Color kProjectileClear{66, 139, 181, 255};
+constexpr Color kProjectileBlocked{193, 69, 97, 255};
+constexpr Color kVisionClear{207, 188, 88, 255};
+constexpr Color kVisionBlocked{73, 55, 104, 255};
+constexpr Color kCoverLow{31, 38, 48, 255};
+constexpr Color kCoverHigh{67, 196, 213, 255};
+constexpr Color kConcealmentLow{30, 42, 34, 255};
+constexpr Color kConcealmentHigh{91, 201, 104, 255};
+
+constexpr std::array<Map2DLegendEntry, 7> kTerrainLegend{{
+    Map2DLegendEntry{Color{92, 150, 82, 255}, "Open"},
+    Map2DLegendEntry{Color{42, 108, 62, 255}, "Forest"},
+    Map2DLegendEntry{Color{42, 86, 142, 255}, "Water"},
+    Map2DLegendEntry{Color{176, 151, 92, 255}, "Road"},
+    Map2DLegendEntry{Color{68, 98, 78, 255}, "Swamp"},
+    Map2DLegendEntry{Color{122, 117, 112, 255}, "Ruins"},
+    Map2DLegendEntry{Color{32, 35, 38, 255}, "Blocked"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 8> kElevationLegend{{
+    Map2DLegendEntry{kElevationPalette[0].color, "-5 deep"},
+    Map2DLegendEntry{kElevationPalette[1].color, "-2 water"},
+    Map2DLegendEntry{kElevationPalette[2].color, "-1 lowland"},
+    Map2DLegendEntry{kElevationPalette[3].color, "0 ground"},
+    Map2DLegendEntry{kElevationPalette[4].color, "4 low"},
+    Map2DLegendEntry{kElevationPalette[5].color, "10 high"},
+    Map2DLegendEntry{kElevationPalette[6].color, "16 mountain"},
+    Map2DLegendEntry{kElevationPalette[7].color, "20 peak"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 2> kCollisionLegend{{
+    Map2DLegendEntry{kCollisionFree, "Passable"},
+    Map2DLegendEntry{kCollisionBlocked, "Blocked"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 5> kMovementLegend{{
+    Map2DLegendEntry{kMovementBlocked, "Blocked"},
+    Map2DLegendEntry{kMovementCost1, "Cost 1"},
+    Map2DLegendEntry{kMovementCost2, "Cost 2"},
+    Map2DLegendEntry{kMovementCost3, "Cost 3"},
+    Map2DLegendEntry{kMovementCostHigh, "Cost 4+"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 2> kProjectileLegend{{
+    Map2DLegendEntry{kProjectileClear, "Projectile clear"},
+    Map2DLegendEntry{kProjectileBlocked, "Projectile blocked"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 2> kVisionLegend{{
+    Map2DLegendEntry{kVisionClear, "Vision clear"},
+    Map2DLegendEntry{kVisionBlocked, "Vision blocked"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 3> kCoverLegend{{
+    Map2DLegendEntry{kCoverLow, "0% cover"},
+    Map2DLegendEntry{Color{49, 117, 131, 255}, "50% cover"},
+    Map2DLegendEntry{kCoverHigh, "100% cover"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 3> kConcealmentLegend{{
+    Map2DLegendEntry{kConcealmentLow, "0% concealment"},
+    Map2DLegendEntry{Color{61, 122, 69, 255}, "50% concealment"},
+    Map2DLegendEntry{kConcealmentHigh, "100% concealment"},
+}};
+
 [[nodiscard]] Color CellColor(MapCellKind cell)
 {
     switch (cell) {
@@ -111,9 +183,43 @@ constexpr std::array<ElevationColorStop, 8> kElevationPalette{{
 
 [[nodiscard]] Color CollisionColor(std::uint8_t collision)
 {
-    return collision == 0
-        ? Color{62, 145, 86, 255}
-        : Color{178, 58, 52, 255};
+    return collision == 0 ? kCollisionFree : kCollisionBlocked;
+}
+
+[[nodiscard]] Color MovementCostColor(int movement_cost)
+{
+    if (movement_cost < 0) {
+        return kMovementBlocked;
+    }
+    switch (movement_cost) {
+        case 0:
+        case 1:
+            return kMovementCost1;
+        case 2:
+            return kMovementCost2;
+        case 3:
+            return kMovementCost3;
+        default:
+            return kMovementCostHigh;
+    }
+}
+
+[[nodiscard]] Color ProjectileBlockColor(std::uint8_t blocked)
+{
+    return blocked == 0 ? kProjectileClear : kProjectileBlocked;
+}
+
+[[nodiscard]] Color VisionBlockColor(std::uint8_t blocked)
+{
+    return blocked == 0 ? kVisionClear : kVisionBlocked;
+}
+
+[[nodiscard]] Color ScalarGridColor(
+    std::uint8_t value,
+    Color low,
+    Color high)
+{
+    return InterpolateColor(low, high, static_cast<float>(value) / 255.0F);
 }
 
 [[nodiscard]] Texture2D UploadDiagnosticTexture(
@@ -160,6 +266,30 @@ void UnloadTextureIfLoaded(Texture2D* texture)
 
 }  // namespace
 
+std::span<const Map2DLegendEntry> Map2DLegendFor(
+    Map2DBaseLayer base_layer)
+{
+    switch (base_layer) {
+        case Map2DBaseLayer::kTerrain:
+            return kTerrainLegend;
+        case Map2DBaseLayer::kElevation:
+            return kElevationLegend;
+        case Map2DBaseLayer::kCollision:
+            return kCollisionLegend;
+        case Map2DBaseLayer::kMovementCost:
+            return kMovementLegend;
+        case Map2DBaseLayer::kProjectileBlock:
+            return kProjectileLegend;
+        case Map2DBaseLayer::kVisionBlock:
+            return kVisionLegend;
+        case Map2DBaseLayer::kCover:
+            return kCoverLegend;
+        case Map2DBaseLayer::kConcealment:
+            return kConcealmentLegend;
+    }
+    return {};
+}
+
 Map2DView::~Map2DView()
 {
     Unload();
@@ -183,54 +313,73 @@ bool Map2DView::Load(const RuntimeMap& runtime_map)
 
     const int width = runtime_map.overview.width;
     const int height = runtime_map.overview.height;
-    if (runtime_map.height.width != width
-        || runtime_map.height.height != height
-        || runtime_map.collision.width != width
-        || runtime_map.collision.height != height) {
+    const auto dimensions_match = [width, height](const auto& grid) {
+        return !grid.IsValid() || (grid.width == width && grid.height == height);
+    };
+    if (!dimensions_match(runtime_map.height)
+        || !dimensions_match(runtime_map.collision)
+        || !dimensions_match(runtime_map.movement_cost)
+        || !dimensions_match(runtime_map.projectile_block)
+        || !dimensions_match(runtime_map.vision_block)
+        || !dimensions_match(runtime_map.cover)
+        || !dimensions_match(runtime_map.concealment)) {
         last_load_error_ = "layer_dimensions_mismatch";
         return false;
     }
 
-    std::vector<Color> terrain_pixels;
-    terrain_pixels.reserve(runtime_map.overview.cells.size());
-    for (const MapCellKind cell : runtime_map.overview.cells) {
-        terrain_pixels.push_back(CellColor(cell));
-    }
+    const auto upload_colors = [width, height](const auto& cells, auto color_for) {
+        std::vector<Color> pixels;
+        pixels.reserve(cells.size());
+        for (const auto& value : cells) {
+            pixels.push_back(color_for(value));
+        }
+        return UploadDiagnosticTexture(pixels, width, height);
+    };
 
-    std::vector<Color> elevation_pixels;
-    elevation_pixels.reserve(runtime_map.height.cells.size());
-    for (const int level : runtime_map.height.cells) {
-        elevation_pixels.push_back(ElevationColor(level));
-    }
-
-    std::vector<Color> collision_pixels;
-    collision_pixels.reserve(runtime_map.collision.cells.size());
-    for (const std::uint8_t collision : runtime_map.collision.cells) {
-        collision_pixels.push_back(CollisionColor(collision));
-    }
-
-    Texture2D terrain = UploadDiagnosticTexture(terrain_pixels, width, height);
-    if (terrain.id == 0) {
+    terrain_texture_ = upload_colors(runtime_map.overview.cells, CellColor);
+    if (terrain_texture_.id == 0) {
         last_load_error_ = "terrain_texture_upload_failed";
         return false;
     }
-    Texture2D elevation = UploadDiagnosticTexture(elevation_pixels, width, height);
-    if (elevation.id == 0) {
-        UnloadTextureIfLoaded(&terrain);
+    elevation_texture_ = upload_colors(runtime_map.height.cells, ElevationColor);
+    if (elevation_texture_.id == 0) {
+        Unload();
         last_load_error_ = "elevation_texture_upload_failed";
         return false;
     }
-    Texture2D collision = UploadDiagnosticTexture(collision_pixels, width, height);
-    if (collision.id == 0) {
-        UnloadTextureIfLoaded(&terrain);
-        UnloadTextureIfLoaded(&elevation);
+    collision_texture_ = upload_colors(runtime_map.collision.cells, CollisionColor);
+    if (collision_texture_.id == 0) {
+        Unload();
         last_load_error_ = "collision_texture_upload_failed";
         return false;
     }
 
-    terrain_texture_ = terrain;
-    elevation_texture_ = elevation;
-    collision_texture_ = collision;
+    if (runtime_map.movement_cost.IsValid()) {
+        movement_cost_texture_ = upload_colors(
+            runtime_map.movement_cost.cells,
+            MovementCostColor);
+    }
+    if (runtime_map.projectile_block.IsValid()) {
+        projectile_block_texture_ = upload_colors(
+            runtime_map.projectile_block.cells,
+            ProjectileBlockColor);
+    }
+    if (runtime_map.vision_block.IsValid()) {
+        vision_block_texture_ = upload_colors(
+            runtime_map.vision_block.cells,
+            VisionBlockColor);
+    }
+    if (runtime_map.cover.IsValid()) {
+        cover_texture_ = upload_colors(runtime_map.cover.cells, [](std::uint8_t value) {
+            return ScalarGridColor(value, kCoverLow, kCoverHigh);
+        });
+    }
+    if (runtime_map.concealment.IsValid()) {
+        concealment_texture_ = upload_colors(runtime_map.concealment.cells, [](std::uint8_t value) {
+            return ScalarGridColor(value, kConcealmentLow, kConcealmentHigh);
+        });
+    }
+
     map_width_ = width;
     map_height_ = height;
     loaded_ = true;
@@ -276,6 +425,11 @@ void Map2DView::Unload()
     UnloadTextureIfLoaded(&terrain_texture_);
     UnloadTextureIfLoaded(&elevation_texture_);
     UnloadTextureIfLoaded(&collision_texture_);
+    UnloadTextureIfLoaded(&movement_cost_texture_);
+    UnloadTextureIfLoaded(&projectile_block_texture_);
+    UnloadTextureIfLoaded(&vision_block_texture_);
+    UnloadTextureIfLoaded(&cover_texture_);
+    UnloadTextureIfLoaded(&concealment_texture_);
     map_width_ = 0;
     map_height_ = 0;
     target_ = Vector2{};
@@ -568,6 +722,16 @@ const Texture2D* Map2DView::TextureFor(Map2DBaseLayer base_layer) const
             return &elevation_texture_;
         case Map2DBaseLayer::kCollision:
             return &collision_texture_;
+        case Map2DBaseLayer::kMovementCost:
+            return &movement_cost_texture_;
+        case Map2DBaseLayer::kProjectileBlock:
+            return &projectile_block_texture_;
+        case Map2DBaseLayer::kVisionBlock:
+            return &vision_block_texture_;
+        case Map2DBaseLayer::kCover:
+            return &cover_texture_;
+        case Map2DBaseLayer::kConcealment:
+            return &concealment_texture_;
     }
     return nullptr;
 }

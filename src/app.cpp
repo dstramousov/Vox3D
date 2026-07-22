@@ -994,12 +994,28 @@ bool App::Initialize()
     if (workspace_.runtime_map.HasCoreGrids()
         && workspace_.runtime_map.overview.IsValid()) {
         if (map_2d_view_.Load(workspace_.runtime_map)) {
+            std::string loaded_layers = "terrain,elevation,collision";
+            if (map_2d_view_.IsLayerLoaded(Map2DBaseLayer::kMovementCost)) {
+                loaded_layers += ",movement";
+            }
+            if (map_2d_view_.IsLayerLoaded(Map2DBaseLayer::kProjectileBlock)) {
+                loaded_layers += ",projectile";
+            }
+            if (map_2d_view_.IsLayerLoaded(Map2DBaseLayer::kVisionBlock)) {
+                loaded_layers += ",vision";
+            }
+            if (map_2d_view_.IsLayerLoaded(Map2DBaseLayer::kCover)) {
+                loaded_layers += ",cover";
+            }
+            if (map_2d_view_.IsLayerLoaded(Map2DBaseLayer::kConcealment)) {
+                loaded_layers += ",concealment";
+            }
             logger_.Info(
                 "map2d",
                 "base textures loaded size="
                     + std::to_string(workspace_.runtime_map.info.width) + "x"
                     + std::to_string(workspace_.runtime_map.info.height)
-                    + " layers=terrain,elevation,collision source="
+                    + " layers=" + loaded_layers + " source="
                     + workspace_.runtime_map.overview.source_file);
         } else {
             logger_.Warn(
@@ -2914,6 +2930,21 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::kLayerCollision:
             workspace_.map_2d_base_layer = Map2DBaseLayer::kCollision;
+            break;
+        case WorkspacePanelItem::kLayerMovementCost:
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kMovementCost;
+            break;
+        case WorkspacePanelItem::kLayerProjectileBlock:
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kProjectileBlock;
+            break;
+        case WorkspacePanelItem::kLayerVisionBlock:
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kVisionBlock;
+            break;
+        case WorkspacePanelItem::kLayerCover:
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kCover;
+            break;
+        case WorkspacePanelItem::kLayerConcealment:
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kConcealment;
             break;
         case WorkspacePanelItem::kLayerGrid:
             workspace_.show_grid_layer = !workspace_.show_grid_layer;
