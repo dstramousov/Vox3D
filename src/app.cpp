@@ -3351,6 +3351,14 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
                 std::string("overlay=objects enabled=")
                     + (workspace_.show_2d_objects ? "yes" : "no"));
             break;
+        case WorkspacePanelItem::k2DVegetation:
+            workspace_.show_2d_vegetation = !workspace_.show_2d_vegetation;
+            layout_dirty_ = true;
+            logger_.Info(
+                "map2d",
+                std::string("overlay=vegetation enabled=")
+                    + (workspace_.show_2d_vegetation ? "yes" : "no"));
+            break;
         case WorkspacePanelItem::k2DPlaces:
             workspace_.show_2d_places = !workspace_.show_2d_places;
             layout_dirty_ = true;

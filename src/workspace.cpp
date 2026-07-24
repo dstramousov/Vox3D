@@ -205,6 +205,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "2d_start_goal";
         case WorkspacePanelItem::k2DObjects:
             return "2d_objects";
+        case WorkspacePanelItem::k2DVegetation:
+            return "2d_vegetation";
         case WorkspacePanelItem::k2DPlaces:
             return "2d_places";
         case WorkspacePanelItem::k2DMarkers:
@@ -857,6 +859,11 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             1,
             workspace.runtime_map.info.runtime_objects_loaded,
             workspace.show_2d_objects));
+        items.push_back(Checkbox(
+            Item::k2DVegetation,
+            1,
+            workspace.runtime_map.info.vegetation_markers_loaded,
+            workspace.show_2d_vegetation));
         items.push_back(Checkbox(
             Item::k2DPlaces,
             1,

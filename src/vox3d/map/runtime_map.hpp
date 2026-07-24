@@ -192,6 +192,7 @@ struct RuntimeMapInfo {
     bool start_goal_loaded = false;
     bool object_markers_loaded = false;
     bool runtime_objects_loaded = false;
+    bool vegetation_markers_loaded = false;
     bool places_loaded = false;
     bool markers_loaded = false;
     bool runtime_binary_checked = false;
@@ -214,6 +215,7 @@ struct RuntimeMapInfo {
     int blocked_cells = 0;
     int object_markers = 0;
     int runtime_objects = 0;
+    int vegetation_markers = 0;
     int places = 0;
     int markers = 0;
 

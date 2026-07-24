@@ -1068,6 +1068,24 @@ struct TextPanelRow {
         lines.push_back("  Objects: +" + std::to_string(object_count - 6) + " more");
     }
 
+    int vegetation_count = 0;
+    for (const RuntimeObjectMarker& marker : workspace_state.runtime_map.object_markers) {
+        if (!marker.visual_only || marker.role != "vegetation"
+            || !SameTile(marker.tile, tile.tile)) {
+            continue;
+        }
+        ++vegetation_count;
+        if (vegetation_count <= 6) {
+            lines.push_back("  Vegetation: " + marker.type);
+        }
+    }
+    if (vegetation_count == 0) {
+        lines.push_back("  Vegetation: none");
+    } else if (vegetation_count > 6) {
+        lines.push_back(
+            "  Vegetation: +" + std::to_string(vegetation_count - 6) + " more");
+    }
+
     int place_count = 0;
     for (const RuntimePlace& place : workspace_state.runtime_map.places) {
         const bool inside = SameTile(place.center, tile.tile)
@@ -1401,6 +1419,9 @@ struct HelpControlLine
         case WorkspacePanelItem::k2DObjects:
             return labels.workspace_tool_objects + " ("
                 + std::to_string(workspace_state.runtime_map.info.runtime_objects) + ")";
+        case WorkspacePanelItem::k2DVegetation:
+            return "Vegetation ("
+                + std::to_string(workspace_state.runtime_map.info.vegetation_markers) + ")";
         case WorkspacePanelItem::k2DPlaces:
             return "Places (" + std::to_string(workspace_state.runtime_map.info.places) + ")";
         case WorkspacePanelItem::k2DMarkers:
@@ -2440,6 +2461,7 @@ struct StatsOverlaySection {
         {"Walkable", std::to_string(workspace.runtime_map.info.width * workspace.runtime_map.info.height - workspace.runtime_map.info.blocked_cells)},
         {"Blocked", std::to_string(workspace.runtime_map.info.blocked_cells)},
         {"Objects", std::to_string(workspace.runtime_map.runtime_objects.size())},
+        {"Vegetation", std::to_string(workspace.runtime_map.info.vegetation_markers)},
         {"Places", std::to_string(workspace.runtime_map.places.size())},
         {"Markers", std::to_string(workspace.runtime_map.markers.size())},
     });
@@ -2462,6 +2484,7 @@ struct StatsOverlaySection {
             {"VXMAP regions", workspace.show_2d_vxmap_regions ? "on" : "off"},
             {"Start / Goal", workspace.show_2d_start_goal ? "on" : "off"},
             {"Objects", workspace.show_2d_objects ? "on" : "off"},
+            {"Vegetation", workspace.show_2d_vegetation ? "on" : "off"},
             {"Places", workspace.show_2d_places ? "on" : "off"},
             {"Markers", workspace.show_2d_markers ? "on" : "off"},
         });
@@ -3420,6 +3443,8 @@ void DrawWorkspace(
             overlays.goal = workspace_state.runtime_map.info.goal;
             overlays.show_objects = workspace_state.show_2d_objects;
             overlays.objects = workspace_state.runtime_map.runtime_objects;
+            overlays.show_vegetation = workspace_state.show_2d_vegetation;
+            overlays.vegetation_markers = workspace_state.runtime_map.object_markers;
             overlays.show_places = workspace_state.show_2d_places;
             overlays.places = workspace_state.runtime_map.places;
             overlays.show_markers = workspace_state.show_2d_markers;

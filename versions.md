@@ -628,3 +628,10 @@
 - Added a contextual 2D-to-3D camera transfer that targets the selected tile and derives camera distance from the current 2D viewport scale.
 - Kept the normal global `3D View` switch behavior unchanged while preserving the current tile selection across the contextual transition.
 - Updated Help so the 2D right mouse action documents both tile selection and context-menu opening.
+
+## v0.5.59 -> v0.5.60
+
+- Added a separate `Vegetation` overlay to the 2D map instead of mixing render-only vegetation markers with runtime objects.
+- Displayed the exact vegetation-marker count in the 2D side menu and Stats overlay.
+- Added vegetation entries to Selection Info for the selected tile while preserving runtime objects as a separate data source.
+- Rendered vegetation markers by type above the current 2D base layer, with labels available at close zoom levels.

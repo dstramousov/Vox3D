@@ -1023,6 +1023,13 @@ void ReadWorldOverlayData(RuntimeMap& runtime, const MapPackageInfo& package)
     ReadVegetationVisualMarkers(runtime, package);
     runtime.info.object_markers = static_cast<int>(runtime.object_markers.size());
     runtime.info.object_markers_loaded = runtime.info.object_markers > 0;
+    runtime.info.vegetation_markers = static_cast<int>(std::count_if(
+        runtime.object_markers.begin(),
+        runtime.object_markers.end(),
+        [](const RuntimeObjectMarker& marker) {
+            return marker.visual_only && marker.role == "vegetation";
+        }));
+    runtime.info.vegetation_markers_loaded = runtime.info.vegetation_markers > 0;
 }
 
 void UpdateHeightRange(RuntimeMap& runtime)
@@ -1425,6 +1432,7 @@ std::string ToLogString(const RuntimeMap& map)
     out << " goal=" << FormatPoint(map.info.goal);
     out << " object_markers=" << map.info.object_markers;
     out << " runtime_objects=" << map.info.runtime_objects;
+    out << " vegetation_markers=" << map.info.vegetation_markers;
     out << " places=" << map.info.places;
     out << " markers=" << map.info.markers;
     if (map.info.runtime_binary_checked) {

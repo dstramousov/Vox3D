@@ -29,6 +29,7 @@ constexpr float kObjectFootprintThreshold = 7.0F;
 constexpr float kObjectCollisionThreshold = 11.0F;
 constexpr float kObjectOrientationThreshold = 13.0F;
 constexpr float kObjectLabelThreshold = 22.0F;
+constexpr float kVegetationLabelThreshold = 22.0F;
 constexpr float kPlaceDetailThreshold = 5.0F;
 constexpr float kPlaceLabelThreshold = 8.0F;
 constexpr float kMarkerLabelThreshold = 10.0F;
@@ -626,6 +627,49 @@ void DrawRuntimeObjectsOverlay(
     }
 }
 
+void DrawVegetationOverlay(
+    std::span<const RuntimeObjectMarker> markers,
+    Rectangle visible_world,
+    float zoom)
+{
+    const float marker_size = std::clamp(3.0F / zoom, 0.20F, 0.70F);
+    for (const RuntimeObjectMarker& marker : markers) {
+        if (!marker.visual_only || marker.role != "vegetation"
+            || !TileNearVisibleWorld(marker.tile, visible_world, 0.0F)) {
+            continue;
+        }
+
+        const Vector2 center{
+            static_cast<float>(marker.tile.x) + 0.5F,
+            static_cast<float>(marker.tile.y) + 0.5F,
+        };
+        const Color color = ObjectColor(marker.kind);
+        DrawRectangleRec(
+            Rectangle{
+                center.x - marker_size * 0.5F,
+                center.y - marker_size * 0.5F,
+                marker_size,
+                marker_size,
+            },
+            Color{color.r, color.g, color.b, 230});
+
+        if (zoom >= kVegetationLabelThreshold) {
+            const float font_size = 9.0F / zoom;
+            const float spacing = 0.5F / zoom;
+            DrawTextEx(
+                GetFontDefault(),
+                marker.type.c_str(),
+                Vector2{
+                    center.x + marker_size * 0.5F + 2.0F / zoom,
+                    center.y - font_size * 0.5F,
+                },
+                font_size,
+                spacing,
+                Color{224, 242, 220, 245});
+        }
+    }
+}
+
 void DrawPlacesOverlay(
     std::span<const RuntimePlace> places,
     Rectangle visible_world,
@@ -1175,6 +1219,12 @@ void Map2DView::Draw(
 
     if (overlays.show_places) {
         DrawPlacesOverlay(overlays.places, visible_world, zoom_);
+    }
+    if (overlays.show_vegetation) {
+        DrawVegetationOverlay(
+            overlays.vegetation_markers,
+            visible_world,
+            zoom_);
     }
     if (overlays.show_objects) {
         DrawRuntimeObjectsOverlay(overlays.objects, visible_world, zoom_);

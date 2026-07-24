@@ -126,6 +126,7 @@ enum class WorkspacePanelItem {
     k2DVxmapRegions,
     k2DStartGoal,
     k2DObjects,
+    k2DVegetation,
     k2DPlaces,
     k2DMarkers,
     k2DRoutes,
@@ -396,6 +397,7 @@ struct WorkspaceState {
     bool show_2d_vxmap_regions = false;
     bool show_2d_start_goal = false;
     bool show_2d_objects = false;
+    bool show_2d_vegetation = false;
     bool show_2d_places = false;
     bool show_2d_markers = false;
     bool show_3d_preview = true;
