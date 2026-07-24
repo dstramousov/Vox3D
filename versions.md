@@ -577,3 +577,21 @@
 - Changed 2D tile selection to right-click so selection no longer conflicts with map dragging.
 - Added middle-click tile inspection that selects the clicked tile and opens the existing `I` information overlay immediately.
 - Updated workspace help text for the new 2D mouse controls.
+
+## v0.5.51 -> v0.5.52
+
+- Removed the persistent Stats tab from the workspace side panel.
+- Added a live mode-specific statistics overlay opened with `S` and closed with `Esc` or `S`.
+- Reorganized 2D and 3D diagnostics into compact two-column table cards with scrolling.
+
+## v0.5.52 -> v0.5.53
+
+- Fixed Stats overlay compilation against the actual `LevelRange` and `ChunkGridInfo` field names.
+- Removed unused workspace-layout parameter warnings after the persistent Stats tab was deleted.
+- Preserved the dynamic 2D/3D Stats overlay behavior introduced in v0.5.52.
+
+## v0.5.53 -> v0.5.54
+
+- Restored the `camera_status` and `labels` parameter names in the legacy Stats panel builder so its remaining call sites compile.
+- Marked the now-unused workspace-layout camera and label parameters unnamed after the persistent Stats tab removal.
+- Fixed the full application build regression introduced by the previous warning cleanup.

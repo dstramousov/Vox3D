@@ -163,6 +163,8 @@ private:
     bool suppress_window_close_request_this_frame_ = false;
     bool selection_info_overlay_open_ = false;
     int selection_info_overlay_scroll_rows_ = 0;
+    bool stats_overlay_open_ = false;
+    int stats_overlay_scroll_rows_ = 0;
     ProcessMemoryInfo process_memory_{};
     float process_memory_sample_timer_ = 0.0F;
     Font title_font_{};

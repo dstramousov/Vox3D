@@ -1244,6 +1244,35 @@ void App::HandleScreenInput(float dt)
 
 void App::HandleWorkspaceInput(float dt)
 {
+    if (stats_overlay_open_) {
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_S)) {
+            stats_overlay_open_ = false;
+            stats_overlay_scroll_rows_ = 0;
+            suppress_window_close_request_this_frame_ = true;
+            logger_.Debug("stats", "overlay=closed");
+            return;
+        }
+        const float wheel = GetMouseWheelMove();
+        int delta = 0;
+        if (wheel > 0.0001F || IsKeyPressed(KEY_PAGE_UP) || IsKeyPressed(KEY_UP)) {
+            delta = -6;
+        } else if (wheel < -0.0001F || IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressed(KEY_DOWN)) {
+            delta = 6;
+        }
+        if (IsKeyPressed(KEY_HOME)) {
+            delta = -1000000;
+        } else if (IsKeyPressed(KEY_END)) {
+            delta = 1000000;
+        }
+        if (delta != 0) {
+            const int max_scroll = StatsOverlayMaxScrollRows(
+                workspace_, &map_2d_view_, preview_camera_.Status(), layout_cache_);
+            stats_overlay_scroll_rows_ = std::clamp(
+                stats_overlay_scroll_rows_ + delta, 0, max_scroll);
+        }
+        return;
+    }
+
     if (selection_info_overlay_open_) {
         if (IsKeyPressed(KEY_ESCAPE)) {
             CloseSelectionInfoOverlay("escape");
@@ -1362,8 +1391,14 @@ void App::HandleWorkspaceInput(float dt)
             SetWorkspacePanelTab(WorkspacePanelTab::kMenu, "hotkey_v");
             panel_tab_hotkey_pressed = true;
         } else if (IsKeyPressed(KEY_S)) {
-            SetWorkspacePanelTab(WorkspacePanelTab::kStats, "hotkey_s");
+            selection_info_overlay_open_ = false;
+            selection_info_overlay_scroll_rows_ = 0;
+            stats_overlay_open_ = true;
+            stats_overlay_scroll_rows_ = 0;
+            preview_camera_.ReleaseMouse();
             panel_tab_hotkey_pressed = true;
+            logger_.Debug("stats", "overlay=opened mode="
+                + std::string(workspace_.show_3d_preview ? "3d" : "2d"));
         }
     }
 
@@ -1928,6 +1963,15 @@ void App::Draw()
     DrawFpsCounter(UiFonts(), labels_, layout_cache_, process_memory_, config_.version);
     if (config_.debug_ui) {
         DrawDebugOverlay(UiFonts(), config_, window_config_, screen_, dialog_.type, main_menu_.State(), workspace_, hovered_item_, labels_, layout_cache_);
+    }
+    if (stats_overlay_open_ && screen_ == AppScreen::kWorkspace) {
+        DrawStatsOverlay(
+            workspace_,
+            &map_2d_view_,
+            preview_camera_.Status(),
+            stats_overlay_scroll_rows_,
+            UiFonts(),
+            layout_cache_);
     }
     if (selection_info_overlay_open_ && screen_ == AppScreen::kWorkspace) {
         DrawSelectionInfoOverlay(
@@ -2511,6 +2555,8 @@ bool App::SetWorkspacePanelTab(WorkspacePanelTab tab, std::string_view reason)
 
 void App::OpenSelectionInfoOverlay(std::string_view reason)
 {
+    stats_overlay_open_ = false;
+    stats_overlay_scroll_rows_ = 0;
     selection_info_overlay_open_ = true;
     selection_info_overlay_scroll_rows_ = 0;
     logger_.Debug("inspect", "overlay=open reason=" + std::string(reason));
@@ -2551,36 +2597,12 @@ void App::ScrollSelectionInfoOverlay(int delta_rows, std::string_view reason)
 
 void App::SelectPreviousWorkspaceTool()
 {
-    switch (workspace_.selected_panel_tab) {
-        case WorkspacePanelTab::kMenu:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
-            break;
-        case WorkspacePanelTab::kStats:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
-            break;
-        case WorkspacePanelTab::kHelp:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
-            break;
-    }
-    layout_dirty_ = true;
-    logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
+    workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
 }
 
 void App::SelectNextWorkspaceTool()
 {
-    switch (workspace_.selected_panel_tab) {
-        case WorkspacePanelTab::kMenu:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kStats;
-            break;
-        case WorkspacePanelTab::kStats:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
-            break;
-        case WorkspacePanelTab::kHelp:
-            workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
-            break;
-    }
-    layout_dirty_ = true;
-    logger_.Debug("workspace", "panel tab=" + std::string(ToString(workspace_.selected_panel_tab)));
+    workspace_.selected_panel_tab = WorkspacePanelTab::kMenu;
 }
 
 void App::ToggleWorkspaceTool(WorkspaceTool tool)

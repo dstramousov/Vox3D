@@ -96,6 +96,39 @@ void DrawSelectionInfoOverlay(
     const UiLayoutCache& layout);
 
 /**
+ * @brief Returns the maximum scroll offset for the mode-specific statistics overlay.
+ *
+ * @param workspace Workspace state used to build statistics.
+ * @param map_2d_view Optional interactive 2D view.
+ * @param camera_status Latest 3D camera diagnostics.
+ * @param layout Current UI layout and window metrics.
+ * @return Maximum scroll offset in logical rows, never negative.
+ */
+[[nodiscard]] int StatsOverlayMaxScrollRows(
+    const WorkspaceState& workspace,
+    const Map2DView* map_2d_view,
+    FreeFlyCameraStatus camera_status,
+    const UiLayoutCache& layout);
+
+/**
+ * @brief Draws a live table-style statistics overlay for the active 2D or 3D mode.
+ *
+ * @param workspace Workspace state containing map and renderer diagnostics.
+ * @param map_2d_view Optional interactive 2D view.
+ * @param camera_status Latest 3D camera diagnostics.
+ * @param first_visible_row Requested logical scroll row.
+ * @param fonts Fonts used for overlay text.
+ * @param layout Current UI layout and window metrics.
+ */
+void DrawStatsOverlay(
+    const WorkspaceState& workspace,
+    const Map2DView* map_2d_view,
+    FreeFlyCameraStatus camera_status,
+    int first_visible_row,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout);
+
+/**
  * @brief Draws the FPS counter.
  *
  * @param fonts Fonts used for compact UI text.

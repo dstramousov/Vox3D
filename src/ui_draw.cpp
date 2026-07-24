@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <iomanip>
+#include <initializer_list>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -1822,11 +1823,11 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     const UiFontSet& fonts,
     const UiMetrics& metrics,
     const WorkspaceState& workspace_state,
-    FreeFlyCameraStatus camera_status,
-    const UiLabels& labels)
+    FreeFlyCameraStatus /*camera_status*/,
+    const UiLabels& /*labels*/)
 {
     WorkspaceLayout layout;
-    layout.panel_tabs.reserve(2);
+    layout.panel_tabs.reserve(1);
 
     const float status_height = metrics.workspace_status_height;
     const float panel_width = metrics.workspace_panel_width;
@@ -1876,9 +1877,8 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         tab_height,
     };
 
-    constexpr std::array<WorkspacePanelTab, 2> tabs{
+    constexpr std::array<WorkspacePanelTab, 1> tabs{
         WorkspacePanelTab::kMenu,
-        WorkspacePanelTab::kStats,
     };
     const float tab_font_size = metrics.workspace_tab_font_size;
     const float tab_spacing = Measure(
@@ -1924,15 +1924,10 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     layout.tool_info = layout.tool_menu;
 
     const std::vector<WorkspacePanelItemState> selected_items = BuildWorkspacePanelItems(workspace_state);
-    const bool text_tree_panel = workspace_state.selected_panel_tab == WorkspacePanelTab::kStats;
-    std::vector<TextPanelRow> text_rows;
-    if (workspace_state.selected_panel_tab == WorkspacePanelTab::kStats) {
-        text_rows = BuildStatsTextPanelRows(workspace_state, camera_status, labels);
-    }
+    const bool text_tree_panel = false;
+    const std::vector<TextPanelRow> text_rows;
 
-    layout.panel_total_rows = text_tree_panel
-        ? static_cast<int>(text_rows.size())
-        : static_cast<int>(selected_items.size());
+    layout.panel_total_rows = static_cast<int>(selected_items.size());
     layout.panel_visible_rows = static_cast<int>(std::max(0.0F, std::floor((row_bottom - content_y) / item_height)));
     const int max_scroll_rows = std::max(0, layout.panel_total_rows - layout.panel_visible_rows);
     layout.panel_first_visible_row = std::clamp(workspace_state.menu_scroll_rows, 0, max_scroll_rows);
@@ -2280,6 +2275,273 @@ void DrawWorkspaceTooltip(
         font_size,
         spacing,
         kEditorViewportText);
+}
+
+
+struct StatsOverlaySection {
+    std::string title;
+    std::vector<std::pair<std::string, std::string>> rows;
+};
+
+[[nodiscard]] std::pair<std::string, std::string> SplitStatsValue(std::string_view line)
+{
+    const std::size_t colon = line.find(':');
+    if (colon == std::string_view::npos) {
+        return {std::string(line), {}};
+    }
+    std::string key(line.substr(0, colon));
+    std::string value(line.substr(colon + 1));
+    const std::size_t first = value.find_first_not_of(' ');
+    if (first != std::string::npos) {
+        value.erase(0, first);
+    }
+    return {std::move(key), std::move(value)};
+}
+
+[[nodiscard]] std::vector<StatsOverlaySection> BuildStatsOverlaySections(
+    const WorkspaceState& workspace,
+    const Map2DView* map_2d_view,
+    FreeFlyCameraStatus camera_status)
+{
+    std::vector<StatsOverlaySection> sections;
+    auto add = [&sections](std::string title,
+                   std::initializer_list<std::pair<std::string, std::string>> rows) {
+        StatsOverlaySection section;
+        section.title = std::move(title);
+        section.rows.assign(rows.begin(), rows.end());
+        sections.push_back(std::move(section));
+    };
+
+    add("Map", {
+        {"Size", std::to_string(workspace.runtime_map.info.width) + " x " + std::to_string(workspace.runtime_map.info.height)},
+        {"Tiles", std::to_string(workspace.runtime_map.info.width * workspace.runtime_map.info.height)},
+        {"Elevation", std::to_string(workspace.runtime_map.info.levels.has_value() ? workspace.runtime_map.info.levels->min : 0) + " .. " + std::to_string(workspace.runtime_map.info.levels.has_value() ? workspace.runtime_map.info.levels->max : 0)},
+        {"Walkable", std::to_string(workspace.runtime_map.info.width * workspace.runtime_map.info.height - workspace.runtime_map.info.blocked_cells)},
+        {"Blocked", std::to_string(workspace.runtime_map.info.blocked_cells)},
+        {"Objects", std::to_string(workspace.runtime_map.runtime_objects.size())},
+        {"Places", std::to_string(workspace.runtime_map.places.size())},
+        {"Markers", std::to_string(workspace.runtime_map.markers.size())},
+    });
+
+    if (!workspace.show_3d_preview) {
+        const Map2DViewStatus status = map_2d_view != nullptr ? map_2d_view->Status() : Map2DViewStatus{};
+        add("2D View", {
+            {"Layer", std::string(Map2DBaseLayerLabel(workspace.map_2d_base_layer))},
+            {"Zoom", CompactFloat(status.pixels_per_tile) + " px/tile"},
+            {"Fit zoom", CompactFloat(status.fit_pixels_per_tile) + " px/tile"},
+            {"Center", CompactFloat(status.center_tile.x) + ", " + CompactFloat(status.center_tile.y)},
+            {"Hover", status.hover_tile_valid ? TileCoordText(status.hover_tile) : "none"},
+            {"Selected", workspace.selected_tile.IsValid() ? TileCoordText(workspace.selected_tile.tile) : "none"},
+            {"Panning", status.panning ? "yes" : "no"},
+            {"FPS", std::to_string(GetFPS())},
+        });
+        add("2D Overlays", {
+            {"Grid", workspace.show_grid_layer ? "on" : "off"},
+            {"Chunks", workspace.show_2d_chunks ? "on" : "off"},
+            {"VXMAP regions", workspace.show_2d_vxmap_regions ? "on" : "off"},
+            {"Start / Goal", workspace.show_2d_start_goal ? "on" : "off"},
+            {"Objects", workspace.show_2d_objects ? "on" : "off"},
+            {"Places", workspace.show_2d_places ? "on" : "off"},
+            {"Markers", workspace.show_2d_markers ? "on" : "off"},
+        });
+        add("Runtime", {
+            {"Source", workspace.runtime_map.info.runtime_binary_loaded ? "VXMAP" : "JSON"},
+            {"Texture", std::to_string(workspace.runtime_map.info.width) + " x " + std::to_string(workspace.runtime_map.info.height)},
+            {"Chunk size", std::to_string(workspace.chunk_grid.info.chunk_size_x) + " x " + std::to_string(workspace.chunk_grid.info.chunk_size_y)},
+            {"Chunks", std::to_string(workspace.chunk_grid.info.chunks_x) + " x " + std::to_string(workspace.chunk_grid.info.chunks_y)},
+            {"Transitions", std::to_string(workspace.transition_features.stats.total)},
+        });
+        return sections;
+    }
+
+    add("Camera", {
+        {"State", camera_status.cursor_captured ? "captured" : "free"},
+        {"Yaw / Pitch", CompactFloat(camera_status.yaw_degrees) + " / " + CompactFloat(camera_status.pitch_degrees)},
+        {"Position", CompactVector(camera_status.position)},
+        {"Speed", CompactFloat(camera_status.speed)},
+    });
+    add("Visibility", {
+        {"Mode", VisibilityModeLabel(workspace.visibility_mode)},
+        {"Resident", std::to_string(workspace.visibility_stats.resident_chunks)},
+        {"Visible / Fade", std::to_string(workspace.visibility_stats.visible_chunks) + " / " + std::to_string(workspace.visibility_stats.fade_chunks)},
+        {"Hidden", std::to_string(workspace.visibility_stats.hidden_chunks)},
+        {"Models", std::to_string(workspace.visibility_stats.drawn_models) + " / " + std::to_string(workspace.visibility_stats.resident_models)},
+        {"Faces", std::to_string(workspace.visibility_stats.drawn_faces) + " / " + std::to_string(workspace.visibility_stats.total_faces)},
+        {"Radius / Fade", std::to_string(workspace.visibility_radius_chunks) + " / " + std::to_string(workspace.visibility_fade_ring_chunks)},
+    });
+    add("Mesh", {
+        {"Mode", std::string(ToString(workspace.mesh_mode))},
+        {"Chunk", std::to_string(workspace.chunk_grid.info.chunk_size_x)},
+        {"Chunks", std::to_string(workspace.chunk_grid.info.chunks_x) + " x " + std::to_string(workspace.chunk_grid.info.chunks_y)},
+        {"Faces", std::to_string(workspace.mesh_stats.active_faces)},
+        {"Vertices", std::to_string(workspace.mesh_stats.active_vertices)},
+        {"Indices", std::to_string(workspace.mesh_stats.active_indices)},
+        {"Models", std::to_string(workspace.mesh_stats.draw_models)},
+        {"Saved", CompactPercent(workspace.mesh_stats.ActiveReductionRatio())},
+    });
+    add("Mesh Comparison", {
+        {"Simple", std::to_string(workspace.mesh_stats.simple_faces)},
+        {"Greedy", std::to_string(workspace.mesh_stats.greedy_faces)},
+        {"Terrain raw", std::to_string(workspace.mesh_stats.terrain_raw_top_faces + workspace.mesh_stats.terrain_raw_wall_faces)},
+        {"Terrain merged", std::to_string(workspace.mesh_stats.terrain_faces)},
+        {"Raw top / wall", std::to_string(workspace.mesh_stats.terrain_raw_top_faces) + " / " + std::to_string(workspace.mesh_stats.terrain_raw_wall_faces)},
+        {"Top / wall / cliff", std::to_string(workspace.mesh_stats.terrain_top_faces) + " / " + std::to_string(workspace.mesh_stats.terrain_wall_faces) + " / " + std::to_string(workspace.mesh_stats.terrain_cliff_faces)},
+    });
+    add("Transitions", {
+        {"Total", std::to_string(workspace.transition_features.stats.total)},
+        {"Ramp / Stair", std::to_string(workspace.transition_features.stats.ramps) + " / " + std::to_string(workspace.transition_features.stats.stairs)},
+        {"Bridge / Drop", std::to_string(workspace.transition_features.stats.bridges) + " / " + std::to_string(workspace.transition_features.stats.drops)},
+        {"Passable", std::to_string(workspace.transition_features.stats.passable)},
+        {"Blocked", std::to_string(workspace.transition_features.stats.blocked)},
+    });
+    add("Path Probe", {
+        {"Status", workspace.path_probe.IsValid() ? "ready" : "not run"},
+        {"Visited", std::to_string(workspace.path_probe.stats.visited_nodes)},
+        {"Expanded", std::to_string(workspace.path_probe.stats.expanded_nodes)},
+        {"Blocked edges", std::to_string(workspace.path_probe.stats.blocked_edges)},
+    });
+    add("Validation", {
+        {"Mode", ValidationModeLabel(workspace.validation_mode)},
+        {"Status", ValidationStatusLabel(workspace.passability_validation_status)},
+        {"Edges", std::to_string(workspace.passability_validation.stats.checked_edges)},
+        {"Invalid", std::to_string(workspace.passability_validation.stats.invalid_transitions)},
+        {"Drops", std::to_string(workspace.passability_validation.stats.suspicious_drops)},
+        {"Isolated", std::to_string(workspace.passability_validation.stats.isolated_tiles)},
+    });
+    add("Streaming", {
+        {"Built", std::to_string(workspace.progressive_chunks_built) + " / " + std::to_string(workspace.progressive_chunks_total)},
+        {"Pending", std::to_string(workspace.progressive_chunks_total - workspace.progressive_chunks_built)},
+        {"FPS", std::to_string(GetFPS())},
+    });
+    return sections;
+}
+
+struct StatsOverlayGeometry {
+    Rectangle panel;
+    Rectangle content;
+    float padding = 0.0F;
+    float title_font_size = 0.0F;
+    float body_font_size = 0.0F;
+    float line_height = 0.0F;
+    float column_gap = 0.0F;
+};
+
+[[nodiscard]] StatsOverlayGeometry BuildStatsOverlayGeometry(const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const float margin = std::max(12.0F, 20.0F * metrics.scale);
+    StatsOverlayGeometry geometry;
+    geometry.padding = std::max(10.0F, 16.0F * metrics.scale);
+    geometry.title_font_size = std::max(16.0F, metrics.workspace_tab_font_size);
+    geometry.body_font_size = std::max(11.0F, metrics.workspace_status_font_size - 1.0F);
+    geometry.line_height = geometry.body_font_size + std::max(4.0F, 5.0F * metrics.scale);
+    geometry.column_gap = std::max(10.0F, 14.0F * metrics.scale);
+    geometry.panel = Rectangle{
+        margin,
+        margin,
+        static_cast<float>(metrics.window_width) - margin * 2.0F,
+        static_cast<float>(metrics.window_height) - margin * 2.0F,
+    };
+    const float header = geometry.title_font_size + geometry.padding * 1.6F;
+    const float footer = geometry.body_font_size + geometry.padding * 1.4F;
+    geometry.content = Rectangle{
+        geometry.panel.x + geometry.padding,
+        geometry.panel.y + header,
+        geometry.panel.width - geometry.padding * 2.0F,
+        geometry.panel.height - header - footer,
+    };
+    return geometry;
+}
+
+[[nodiscard]] float StatsOverlayContentHeight(
+    const std::vector<StatsOverlaySection>& sections,
+    const StatsOverlayGeometry& geometry)
+{
+    float height = 0.0F;
+    for (std::size_t index = 0; index < sections.size(); index += 2U) {
+        const std::size_t left_rows = sections[index].rows.size();
+        const std::size_t right_rows = index + 1U < sections.size() ? sections[index + 1U].rows.size() : 0U;
+        const float card_rows = static_cast<float>(std::max(left_rows, right_rows) + 1U);
+        height += geometry.padding + card_rows * geometry.line_height + geometry.padding * 0.7F;
+    }
+    return height;
+}
+
+int StatsOverlayMaxScrollRows(
+    const WorkspaceState& workspace,
+    const Map2DView* map_2d_view,
+    FreeFlyCameraStatus camera_status,
+    const UiLayoutCache& layout)
+{
+    const StatsOverlayGeometry geometry = BuildStatsOverlayGeometry(layout);
+    const auto sections = BuildStatsOverlaySections(workspace, map_2d_view, camera_status);
+    const float overflow = std::max(0.0F, StatsOverlayContentHeight(sections, geometry) - geometry.content.height);
+    return static_cast<int>(std::ceil(overflow / geometry.line_height));
+}
+
+void DrawStatsOverlay(
+    const WorkspaceState& workspace,
+    const Map2DView* map_2d_view,
+    FreeFlyCameraStatus camera_status,
+    int first_visible_row,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const StatsOverlayGeometry geometry = BuildStatsOverlayGeometry(layout);
+    const auto sections = BuildStatsOverlaySections(workspace, map_2d_view, camera_status);
+    const int max_scroll = StatsOverlayMaxScrollRows(workspace, map_2d_view, camera_status, layout);
+    const float scroll_y = static_cast<float>(std::clamp(first_visible_row, 0, max_scroll)) * geometry.line_height;
+
+    DrawRectangle(0, 0, metrics.window_width, metrics.window_height, kModalDim);
+    DrawRectangleRounded(geometry.panel, 0.025F, 8, kPanel);
+    DrawRectangleRoundedLinesEx(geometry.panel, 0.025F, 8, std::max(1.0F, metrics.modal_border_width), kPanelBorder);
+    const std::string title = workspace.show_3d_preview ? "[ Stats - 3D ]" : "[ Stats - 2D ]";
+    DrawTextEx(fonts.text, title.c_str(),
+        Vector2{geometry.panel.x + geometry.padding, geometry.panel.y + geometry.padding},
+        geometry.title_font_size, FontSpacing(geometry.title_font_size), kSelectedText);
+
+    BeginScissorMode(static_cast<int>(geometry.content.x), static_cast<int>(geometry.content.y),
+        static_cast<int>(geometry.content.width), static_cast<int>(geometry.content.height));
+    const float column_width = (geometry.content.width - geometry.column_gap) * 0.5F;
+    float y = geometry.content.y - scroll_y;
+    for (std::size_t index = 0; index < sections.size(); index += 2U) {
+        const std::size_t left_rows = sections[index].rows.size();
+        const std::size_t right_rows = index + 1U < sections.size() ? sections[index + 1U].rows.size() : 0U;
+        const float card_height = geometry.padding + static_cast<float>(std::max(left_rows, right_rows) + 1U) * geometry.line_height;
+        for (int column = 0; column < 2; ++column) {
+            const std::size_t section_index = index + static_cast<std::size_t>(column);
+            if (section_index >= sections.size()) {
+                continue;
+            }
+            const float x = geometry.content.x + static_cast<float>(column) * (column_width + geometry.column_gap);
+            const Rectangle card{x, y, column_width, card_height};
+            DrawRectangleRounded(card, 0.035F, 6, kEditorViewport);
+            DrawRectangleRoundedLinesEx(card, 0.035F, 6, 1.0F, kEditorBorder);
+            const StatsOverlaySection& section = sections[section_index];
+            float row_y = y + geometry.padding * 0.55F;
+            DrawTextEx(fonts.text, section.title.c_str(), Vector2{x + geometry.padding, row_y},
+                geometry.body_font_size, FontSpacing(geometry.body_font_size), kAccent);
+            row_y += geometry.line_height;
+            const float value_x = x + column_width * 0.53F;
+            for (const auto& [key, value] : section.rows) {
+                DrawTextEx(fonts.text, key.c_str(), Vector2{x + geometry.padding, row_y},
+                    geometry.body_font_size, FontSpacing(geometry.body_font_size), kMutedText);
+                DrawTextEx(fonts.text, value.c_str(), Vector2{value_x, row_y},
+                    geometry.body_font_size, FontSpacing(geometry.body_font_size), kText);
+                row_y += geometry.line_height;
+            }
+        }
+        y += card_height + geometry.padding * 0.7F;
+    }
+    EndScissorMode();
+
+    const std::string footer = max_scroll > 0
+        ? "Esc / S  Close     Wheel / PgUp / PgDn  Scroll"
+        : "Esc / S  Close";
+    DrawTextEx(fonts.text, footer.c_str(),
+        Vector2{geometry.panel.x + geometry.padding, geometry.panel.y + geometry.panel.height - geometry.padding - geometry.body_font_size},
+        geometry.body_font_size, FontSpacing(geometry.body_font_size), kMutedText);
 }
 
 int SelectionInfoOverlayMaxScrollRows(
