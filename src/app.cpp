@@ -486,6 +486,8 @@ void RecalculateMeshBuildInfoLocal(ChunkMeshBuildResult& result)
     result.info.terrain_top_faces = 0;
     result.info.terrain_wall_faces = 0;
     result.info.terrain_cliff_faces = 0;
+    result.info.structure_top_faces = 0;
+    result.info.structure_wall_faces = 0;
     result.info.vertices = 0;
     result.info.indices = 0;
     result.info.non_empty_chunks = 0;
@@ -497,6 +499,14 @@ void RecalculateMeshBuildInfoLocal(ChunkMeshBuildResult& result)
         result.info.vertices += static_cast<std::uint64_t>(mesh.vertices.size());
         result.info.indices += static_cast<std::uint64_t>(mesh.indices.size());
         for (const MeshFace& face : mesh.faces) {
+            if (face.block_type == BlockTypeId::kRuinStructure) {
+                if (face.direction == FaceDirection::kUp) {
+                    ++result.info.structure_top_faces;
+                } else {
+                    ++result.info.structure_wall_faces;
+                }
+                continue;
+            }
             switch (face.terrain_pass) {
                 case TerrainRenderPass::kTops:
                     ++result.info.terrain_raw_top_faces;
@@ -2089,6 +2099,8 @@ void App::RefreshMeshOptimizationStats()
         workspace_.mesh_stats.terrain_top_faces = workspace_.terrain_chunk_meshes.info.terrain_top_faces;
         workspace_.mesh_stats.terrain_wall_faces = workspace_.terrain_chunk_meshes.info.terrain_wall_faces;
         workspace_.mesh_stats.terrain_cliff_faces = workspace_.terrain_chunk_meshes.info.terrain_cliff_faces;
+        workspace_.mesh_stats.structure_top_faces = workspace_.terrain_chunk_meshes.info.structure_top_faces;
+        workspace_.mesh_stats.structure_wall_faces = workspace_.terrain_chunk_meshes.info.structure_wall_faces;
     }
     if (workspace_.chunk_meshes.IsValid()) {
         workspace_.mesh_stats.active_faces = workspace_.chunk_meshes.info.visible_faces;
@@ -2874,7 +2886,9 @@ void App::GoToSelectedTileIn3D(std::string_view reason)
     preview_camera_.FocusTileArea(
         workspace_.chunk_meshes,
         selected.tile,
-        selected.elevation,
+        selected.elevation + (selected.structure_height_available
+            ? static_cast<int>(selected.structure_height)
+            : 0),
         visible_width_tiles,
         visible_height_tiles,
         viewport);

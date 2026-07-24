@@ -68,6 +68,8 @@ struct RgbaColor {
             return RgbaColor{86, 146, 82, 255};
         case BlockTypeId::kBlockedSurface:
             return RgbaColor{92, 88, 78, 255};
+        case BlockTypeId::kRuinStructure:
+            return RgbaColor{126, 106, 82, 255};
     }
     return RgbaColor{160, 160, 150, 255};
 }
@@ -185,6 +187,12 @@ struct RgbaColor {
     ChunkCoord chunk_coord,
     RaylibChunkMeshColorMode color_mode)
 {
+    if (vertex.block_type == BlockTypeId::kRuinStructure
+        && (color_mode == RaylibChunkMeshColorMode::kTraversal
+            || color_mode == RaylibChunkMeshColorMode::kGeographic)) {
+        return BaseColor(BlockTypeId::kRuinStructure);
+    }
+
     switch (color_mode) {
         case RaylibChunkMeshColorMode::kTraversal:
             return TraversalBaseColor(vertex.surface_kind, vertex.block_type);
@@ -446,7 +454,10 @@ struct Ray3f {
     }
     const auto index = static_cast<std::size_t>(tile.y) * static_cast<std::size_t>(map.info.width)
         + static_cast<std::size_t>(tile.x);
-    return static_cast<float>(map.height.cells[index] + 1);
+    const int structure_height = map.structure_height.IsValid()
+        ? static_cast<int>(map.structure_height.cells[index])
+        : 0;
+    return static_cast<float>(map.height.cells[index] + 1 + structure_height);
 }
 
 [[nodiscard]] float PickMaxDistance(const RuntimeMap& map, const Camera3D& camera)
@@ -858,7 +869,7 @@ void DrawCollisionOverlay(const RuntimeMap& map)
             if (map.collision.cells[index] == 0U) {
                 continue;
             }
-            const float level = static_cast<float>(map.height.cells[index] + 1) + 0.08F;
+            const float level = TerrainTopLevel(map, TileCoord{x, y}) + 0.08F;
             DrawCubeV(TileCenterWorld(x, y, level, map.info.width, map.info.height), kSize, kCollisionColor);
         }
     }

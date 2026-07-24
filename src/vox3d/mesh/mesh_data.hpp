@@ -143,6 +143,8 @@ struct ChunkMeshBuildInfo {
     std::uint64_t terrain_top_faces = 0;
     std::uint64_t terrain_wall_faces = 0;
     std::uint64_t terrain_cliff_faces = 0;
+    std::uint64_t structure_top_faces = 0;
+    std::uint64_t structure_wall_faces = 0;
     std::uint64_t vertices = 0;
     std::uint64_t indices = 0;
     std::uint64_t non_empty_chunks = 0;
@@ -186,6 +188,8 @@ struct MeshOptimizationStats {
     std::uint64_t terrain_top_faces = 0;
     std::uint64_t terrain_wall_faces = 0;
     std::uint64_t terrain_cliff_faces = 0;
+    std::uint64_t structure_top_faces = 0;
+    std::uint64_t structure_wall_faces = 0;
     std::uint64_t terrain_faces = 0;
     std::uint64_t active_faces = 0;
     std::uint64_t active_vertices = 0;

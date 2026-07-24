@@ -25,6 +25,7 @@ enum class BlockTypeId : std::uint8_t {
     kSubsurface,
     kTerrainSurface,
     kBlockedSurface,
+    kRuinStructure,
 };
 
 /**

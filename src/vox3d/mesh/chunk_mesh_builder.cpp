@@ -561,7 +561,9 @@ std::uint64_t ChunkMeshData::FaceCount() const
 bool ChunkMeshBuildInfo::IsValid() const
 {
     const bool terrain_counts_valid = mode != ChunkMeshBuildMode::kTerrainSurface
-        || (terrain_top_faces + terrain_wall_faces + terrain_cliff_faces == visible_faces
+        || (terrain_top_faces + terrain_wall_faces + terrain_cliff_faces
+                + structure_top_faces + structure_wall_faces
+                == visible_faces
             && terrain_raw_top_faces >= terrain_top_faces
             && terrain_raw_wall_faces >= terrain_wall_faces + terrain_cliff_faces);
     return map_width > 0 && map_height > 0 && chunks_x > 0 && chunks_y > 0
@@ -598,7 +600,9 @@ double MeshOptimizationStats::TerrainVsGreedyDeltaRatio() const
 
 double MeshOptimizationStats::TerrainMergeReductionRatio() const
 {
-    return ReductionRatio(terrain_raw_top_faces + terrain_raw_wall_faces, terrain_faces);
+    return ReductionRatio(
+        terrain_raw_top_faces + terrain_raw_wall_faces + structure_top_faces + structure_wall_faces,
+        terrain_faces);
 }
 
 double MeshOptimizationStats::TerrainTopMergeReductionRatio() const
@@ -698,6 +702,8 @@ std::string ToLogString(const ChunkMeshBuildResult& result)
         out << " top=" << result.info.terrain_top_faces;
         out << " walls=" << result.info.terrain_wall_faces;
         out << " cliffs=" << result.info.terrain_cliff_faces;
+        out << " structure_top=" << result.info.structure_top_faces;
+        out << " structure_walls=" << result.info.structure_wall_faces;
     }
     out << " vertices=" << result.info.vertices;
     out << " indices=" << result.info.indices;
@@ -723,6 +729,8 @@ std::string ToLogString(const MeshOptimizationStats& stats)
     out << " terrain_top=" << stats.terrain_top_faces;
     out << " terrain_walls=" << stats.terrain_wall_faces;
     out << " terrain_cliffs=" << stats.terrain_cliff_faces;
+    out << " structure_top=" << stats.structure_top_faces;
+    out << " structure_walls=" << stats.structure_wall_faces;
     out << " active_faces=" << stats.active_faces;
     out << " vertices=" << stats.active_vertices;
     out << " indices=" << stats.active_indices;

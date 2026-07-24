@@ -162,6 +162,19 @@ constexpr std::array<TerrainEdge, 4> kTerrainEdges{{
     return map.height.cells[GridIndex(tile.x, tile.y, map.info.width)];
 }
 
+[[nodiscard]] int StructureHeight(const RuntimeMap& map, TileCoord tile)
+{
+    if (!map.structure_height.IsValid() || !map.structure_height.Contains(tile)) {
+        return 0;
+    }
+    return static_cast<int>(map.structure_height.cells[GridIndex(tile.x, tile.y, map.info.width)]);
+}
+
+[[nodiscard]] int TileSolidTopLevel(const RuntimeMap& map, TileCoord tile)
+{
+    return TileHeight(map, tile) + StructureHeight(map, tile);
+}
+
 [[nodiscard]] bool SameTopMaskType(const TopMaskCell& a, const TopMaskCell& b)
 {
     return a.visible && b.visible && a.height == b.height && a.block_type == b.block_type
@@ -300,10 +313,121 @@ void ReserveTerrainChunkBuffers(const ChunkInfo& chunk, ChunkMeshData& mesh)
         return;
     }
 
-    const std::size_t expected_faces = chunk.TileCount();
+    constexpr std::size_t kEstimatedFacesPerTile = 3;
+    const std::size_t expected_faces = chunk.TileCount() * kEstimatedFacesPerTile;
     mesh.faces.reserve(expected_faces);
     mesh.vertices.reserve(expected_faces * 4ULL);
     mesh.indices.reserve(expected_faces * 6ULL);
+}
+
+void EmitStructureTop(
+    ChunkMeshData& mesh,
+    TileCoord tile,
+    int top_level,
+    ChunkMeshBuildInfo& info,
+    Diagnostics& diagnostics)
+{
+    if (!CanAppendQuad(mesh)) {
+        diagnostics.AddWarning("terrain mesh skipped ruin structure tops because uint32 index space is exhausted");
+        return;
+    }
+
+    const TopSpan span{
+        tile,
+        1,
+        1,
+        top_level,
+        BlockTypeId::kRuinStructure,
+        TerrainSurfaceKind::kUnknown,
+    };
+    EmitQuad(
+        mesh,
+        BlockCoord{tile.x, tile.y, top_level},
+        BlockTypeId::kRuinStructure,
+        FaceDirection::kUp,
+        TerrainRenderPass::kTops,
+        TerrainSurfaceKind::kUnknown,
+        TopSpanCorners(span));
+    ++info.structure_top_faces;
+}
+
+void EmitStructureWall(
+    ChunkMeshData& mesh,
+    TileCoord tile,
+    FaceDirection direction,
+    int bottom_level,
+    int top_level,
+    ChunkMeshBuildInfo& info,
+    Diagnostics& diagnostics)
+{
+    if (bottom_level >= top_level) {
+        return;
+    }
+    if (!CanAppendQuad(mesh)) {
+        diagnostics.AddWarning("terrain mesh skipped ruin structure walls because uint32 index space is exhausted");
+        return;
+    }
+
+    const WallSpan span{
+        tile,
+        1,
+        bottom_level,
+        top_level,
+        direction,
+        BlockTypeId::kRuinStructure,
+        TerrainSurfaceKind::kUnknown,
+    };
+    EmitQuad(
+        mesh,
+        BlockCoord{tile.x, tile.y, bottom_level},
+        BlockTypeId::kRuinStructure,
+        direction,
+        TerrainRenderPass::kWalls,
+        TerrainSurfaceKind::kUnknown,
+        WallSpanCorners(span));
+    ++info.structure_wall_faces;
+}
+
+void BuildStructureChunkMesh(
+    const RuntimeMap& map,
+    const ChunkInfo& chunk,
+    ChunkMeshData& mesh,
+    ChunkMeshBuildInfo& info,
+    Diagnostics& diagnostics)
+{
+    if (!map.structure_height.IsValid()) {
+        return;
+    }
+
+    for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
+        for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
+            const TileCoord tile{x, y};
+            const int structure_height = StructureHeight(map, tile);
+            if (structure_height <= 0) {
+                continue;
+            }
+
+            const int ground_level = TileHeight(map, tile);
+            const int top_level = ground_level + structure_height;
+            EmitStructureTop(mesh, tile, top_level, info, diagnostics);
+
+            for (const TerrainEdge& edge : kTerrainEdges) {
+                const TileCoord neighbor{tile.x + edge.dx, tile.y + edge.dy};
+                const int neighbor_top_level = ContainsTile(map, neighbor)
+                    ? TileSolidTopLevel(map, neighbor)
+                    : ground_level;
+                const int visible_bottom_level = std::max(ground_level, neighbor_top_level);
+                EmitStructureWall(
+                    mesh,
+                    tile,
+                    edge.direction,
+                    visible_bottom_level,
+                    top_level,
+                    info,
+                    diagnostics);
+            }
+        }
+    }
 }
 
 void BuildTopMask(const RuntimeMap& map, const ChunkInfo& chunk, std::vector<TopMaskCell>& mask, ChunkMeshBuildInfo& info)
@@ -513,6 +637,8 @@ void BuildTerrainChunkMesh(
                 break;
         }
     }
+
+    BuildStructureChunkMesh(map, chunk, mesh, info, diagnostics);
 }
 
 void CopyMapShape(const RuntimeMap& map, const ChunkGrid& chunks, ChunkMeshBuildInfo& info)
@@ -526,7 +652,21 @@ void CopyMapShape(const RuntimeMap& map, const ChunkGrid& chunks, ChunkMeshBuild
     info.chunks_y = chunks.info.chunks_y;
     info.total_chunks = chunks.info.total_chunks;
     info.levels = map.info.levels;
+    if (info.levels.has_value() && map.structure_height.IsValid()) {
+        for (int y = 0; y < map.info.height; ++y) {
+            for (int x = 0; x < map.info.width; ++x) {
+                info.levels->max = std::max(
+                    info.levels->max,
+                    TileSolidTopLevel(map, TileCoord{x, y}));
+            }
+        }
+    }
     info.solid_blocks = static_cast<std::uint64_t>(map.info.width) * static_cast<std::uint64_t>(map.info.height);
+    if (map.structure_height.IsValid()) {
+        for (const std::uint8_t height : map.structure_height.cells) {
+            info.solid_blocks += height;
+        }
+    }
 }
 
 void AccumulateChunkStats(const ChunkMeshData& mesh, ChunkMeshBuildInfo& info)

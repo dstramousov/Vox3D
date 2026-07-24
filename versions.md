@@ -643,3 +643,11 @@
 - Added binary-versus-JSON parity checks and runtime statistics for ruin heights 1, 2, and 3.
 - Added a 2D `Ruin Height` base layer and exposed ground top, structure height, and structure top in Selection Info.
 - Kept 3D terrain geometry unchanged so the new format can be verified independently before ruin mesh generation.
+
+## v0.5.61 -> v0.5.62
+
+- Built `structure_height` tiles as real ruin geometry in simple, greedy, and terrain-surface mesh modes.
+- Extended voxel-world vertical bounds and block classification so ruin levels participate in face culling, chunk meshing, streaming, and visibility statistics.
+- Added exposed ruin tops and side walls with cross-chunk neighbor checks and a dedicated brown-gray ruin color in traversal and geographic modes.
+- Moved 3D picking, selection markers, collision markers, object markers, and contextual 2D-to-3D camera focus to the visible top of structure tiles.
+- Added ruin top/wall mesh counters to logs and the Stats overlay while preserving zero-height behavior for legacy maps.

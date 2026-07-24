@@ -704,6 +704,8 @@ void PushMeshStats(std::vector<std::string>& lines, const WorkspaceState& worksp
     lines.push_back("  Merged T/W/C: " + std::to_string(workspace_state.mesh_stats.terrain_top_faces) + "/"
         + std::to_string(workspace_state.mesh_stats.terrain_wall_faces) + "/"
         + std::to_string(workspace_state.mesh_stats.terrain_cliff_faces));
+    lines.push_back("  Ruin T/W: " + std::to_string(workspace_state.mesh_stats.structure_top_faces) + "/"
+        + std::to_string(workspace_state.mesh_stats.structure_wall_faces));
     lines.push_back("  Passes: "
         + std::string(workspace_state.show_terrain_tops ? "T" : "-")
         + std::string(workspace_state.show_terrain_walls ? "W" : "-")
@@ -2556,6 +2558,7 @@ struct StatsOverlaySection {
         {"Terrain merged", std::to_string(workspace.mesh_stats.terrain_faces)},
         {"Raw top / wall", std::to_string(workspace.mesh_stats.terrain_raw_top_faces) + " / " + std::to_string(workspace.mesh_stats.terrain_raw_wall_faces)},
         {"Top / wall / cliff", std::to_string(workspace.mesh_stats.terrain_top_faces) + " / " + std::to_string(workspace.mesh_stats.terrain_wall_faces) + " / " + std::to_string(workspace.mesh_stats.terrain_cliff_faces)},
+        {"Ruin top / wall", std::to_string(workspace.mesh_stats.structure_top_faces) + " / " + std::to_string(workspace.mesh_stats.structure_wall_faces)},
     });
     add("Transitions", {
         {"Total", std::to_string(workspace.transition_features.stats.total)},

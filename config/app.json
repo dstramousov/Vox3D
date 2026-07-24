@@ -7,7 +7,7 @@
     "directory": "res/lang"
   },
   "map": {
-    "path": "../TopDownMapGen/output/map_package"
+    "path": "../output/map_package"
   },
   "window": {
     "base_width": 1280,

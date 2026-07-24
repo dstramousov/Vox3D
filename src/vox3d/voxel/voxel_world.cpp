@@ -32,19 +32,29 @@ namespace {
 
 [[nodiscard]] LevelRange ResolveLevels(const RuntimeMap& map)
 {
+    LevelRange levels;
     if (map.info.levels.has_value()) {
-        return *map.info.levels;
+        levels = *map.info.levels;
+    } else {
+        if (!map.height.IsValid()) {
+            return LevelRange{};
+        }
+
+        const auto [min_it, max_it] = std::minmax_element(map.height.cells.begin(), map.height.cells.end());
+        if (min_it == map.height.cells.end() || max_it == map.height.cells.end()) {
+            return LevelRange{};
+        }
+        levels = LevelRange{*min_it, *max_it};
     }
 
-    if (!map.height.IsValid()) {
-        return LevelRange{};
+    if (map.structure_height.IsValid() && map.structure_height.cells.size() == map.height.cells.size()) {
+        for (std::size_t index = 0; index < map.height.cells.size(); ++index) {
+            levels.max = std::max(
+                levels.max,
+                map.height.cells[index] + static_cast<int>(map.structure_height.cells[index]));
+        }
     }
-
-    const auto [min_it, max_it] = std::minmax_element(map.height.cells.begin(), map.height.cells.end());
-    if (min_it == map.height.cells.end() || max_it == map.height.cells.end()) {
-        return LevelRange{};
-    }
-    return LevelRange{*min_it, *max_it};
+    return levels;
 }
 
 [[nodiscard]] bool HasValidLevels(LevelRange levels)
@@ -80,6 +90,8 @@ std::string_view ToString(BlockTypeId type)
             return "terrain_surface";
         case BlockTypeId::kBlockedSurface:
             return "blocked_surface";
+        case BlockTypeId::kRuinStructure:
+            return "ruin_structure";
     }
     return "unknown";
 }
@@ -142,7 +154,13 @@ VoxelBlock VoxelWorld::GetBlock(BlockCoord coord) const
     block.solid = true;
     block.blocked = column->blocked;
     block.destructible = true;
-    block.type = coord.z == column->surface_level ? column->surface_block_type : BlockTypeId::kSubsurface;
+    if (column->structure_height > 0U && coord.z > column->ground_surface_level) {
+        block.type = BlockTypeId::kRuinStructure;
+    } else if (coord.z == column->ground_surface_level) {
+        block.type = column->surface_block_type;
+    } else {
+        block.type = BlockTypeId::kSubsurface;
+    }
     return block;
 }
 
@@ -190,24 +208,36 @@ VoxelWorld BuildVoxelWorld(const RuntimeMap& map, const ChunkGrid& chunks)
         for (int x = 0; x < map.info.width; ++x) {
             const std::size_t index = GridIndex(x, y, map.info.width);
             const bool blocked = map.collision.cells[index] != 0;
-            const int raw_surface_level = map.height.cells[index];
+            const int raw_ground_surface_level = map.height.cells[index];
+            const std::uint8_t structure_height = map.structure_height.IsValid()
+                ? map.structure_height.cells[index]
+                : 0U;
+            const int raw_surface_level = raw_ground_surface_level + static_cast<int>(structure_height);
+            const int ground_surface_level = ClampLevel(raw_ground_surface_level, levels);
             const int surface_level = ClampLevel(raw_surface_level, levels);
-            if (surface_level != raw_surface_level) {
+            if (ground_surface_level != raw_ground_surface_level || surface_level != raw_surface_level) {
                 ++clamped_surface_levels;
             }
 
             VoxelColumn column;
             column.tile = TileCoord{x, y};
             column.base_level = levels.min;
+            column.ground_surface_level = ground_surface_level;
             column.surface_level = surface_level;
+            column.structure_height = static_cast<std::uint8_t>(
+                std::max(0, surface_level - ground_surface_level));
             column.terrain = map.terrain.cells[index];
             column.blocked = blocked;
             column.surface_block_type = SurfaceBlockType(blocked);
 
             world.info.solid_blocks += column.SolidBlockCount();
             world.info.empty_blocks += vertical_levels - column.SolidBlockCount();
+            world.info.structure_blocks += column.structure_height;
             if (blocked) {
                 ++world.info.blocked_columns;
+            }
+            if (column.structure_height > 0U) {
+                ++world.info.structure_columns;
             }
             world.columns.push_back(std::move(column));
         }
@@ -237,6 +267,8 @@ std::string ToLogString(const VoxelWorld& world)
     out << " solid=" << world.info.solid_blocks;
     out << " empty=" << world.info.empty_blocks;
     out << " blocked_columns=" << world.info.blocked_columns;
+    out << " structure_columns=" << world.info.structure_columns;
+    out << " structure_blocks=" << world.info.structure_blocks;
     if (world.info.chunks_x > 0 && world.info.chunks_y > 0) {
         out << " chunks=" << world.info.chunks_x << 'x' << world.info.chunks_y << " total=" << world.info.total_chunks;
     }

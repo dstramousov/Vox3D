@@ -23,7 +23,9 @@ namespace vox3d {
 struct VoxelColumn {
     TileCoord tile;
     int base_level = 0;
+    int ground_surface_level = 0;
     int surface_level = 0;
+    std::uint8_t structure_height = 0;
     std::string terrain;
     bool blocked = false;
     BlockTypeId surface_block_type = BlockTypeId::kTerrainSurface;
@@ -59,7 +61,9 @@ struct VoxelWorldInfo {
     std::uint64_t total_columns = 0;
     std::uint64_t solid_blocks = 0;
     std::uint64_t empty_blocks = 0;
+    std::uint64_t structure_blocks = 0;
     int blocked_columns = 0;
+    int structure_columns = 0;
 
     /**
      * @brief Returns true when the voxel-world dimensions and counts are usable.
