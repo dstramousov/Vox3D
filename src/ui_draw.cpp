@@ -2477,6 +2477,7 @@ struct StatsOverlaySection {
 [[nodiscard]] std::vector<StatsOverlaySection> BuildStatsOverlaySections(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
+    const RaylibVegetationMeshStats& vegetation_stats,
     FreeFlyCameraStatus camera_status)
 {
     std::vector<StatsOverlaySection> sections;
@@ -2579,6 +2580,19 @@ struct StatsOverlaySection {
         {"Models", std::to_string(workspace.mesh_stats.draw_models)},
         {"Saved", CompactPercent(workspace.mesh_stats.ActiveReductionRatio())},
     });
+    add("Vegetation Render", {
+        {"Meshes", std::to_string(vegetation_stats.models)},
+        {"Tree / Bush", std::to_string(vegetation_stats.tree_models)
+            + " / " + std::to_string(vegetation_stats.bush_models)},
+        {"Reed meshes", std::to_string(vegetation_stats.reed_models)},
+        {"Pillars", std::to_string(vegetation_stats.pillars)},
+        {"Tree / Bush pillars", std::to_string(vegetation_stats.tree_pillars)
+            + " / " + std::to_string(vegetation_stats.bush_pillars)},
+        {"Reed pillars", std::to_string(vegetation_stats.reed_pillars)},
+        {"Visible chunks", std::to_string(vegetation_stats.last_visible_chunks)},
+        {"Draw calls", std::to_string(vegetation_stats.last_draw_calls)},
+        {"Drawn pillars", std::to_string(vegetation_stats.last_drawn_pillars)},
+    });
     add("Mesh Comparison", {
         {"Simple", std::to_string(workspace.mesh_stats.simple_faces)},
         {"Greedy", std::to_string(workspace.mesh_stats.greedy_faces)},
@@ -2668,6 +2682,7 @@ struct StatsOverlayGeometry {
 int StatsOverlayMaxScrollRows(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
+    const RaylibVegetationMeshStats& vegetation_stats,
     FreeFlyCameraStatus camera_status,
     const UiLayoutCache& layout)
 {
@@ -2675,6 +2690,7 @@ int StatsOverlayMaxScrollRows(
     const auto sections = BuildStatsOverlaySections(
         workspace,
         map_2d_view,
+        vegetation_stats,
         camera_status);
     const float overflow = std::max(
         0.0F,
@@ -2685,6 +2701,7 @@ int StatsOverlayMaxScrollRows(
 void DrawStatsOverlay(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
+    const RaylibVegetationMeshStats& vegetation_stats,
     FreeFlyCameraStatus camera_status,
     int first_visible_row,
     const UiFontSet& fonts,
@@ -2695,10 +2712,12 @@ void DrawStatsOverlay(
     const auto sections = BuildStatsOverlaySections(
         workspace,
         map_2d_view,
+        vegetation_stats,
         camera_status);
     const int max_scroll = StatsOverlayMaxScrollRows(
         workspace,
         map_2d_view,
+        vegetation_stats,
         camera_status,
         layout);
     const int scroll_row = std::clamp(first_visible_row, 0, max_scroll);

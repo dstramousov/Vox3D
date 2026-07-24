@@ -756,14 +756,16 @@ struct VegetationMeshBuffers {
         && map.vegetation_height.IsValid();
 }
 
-[[nodiscard]] RuntimeVegetationType VegetationTypeForKind(RuntimeObjectMarkerKind kind)
+[[nodiscard]] bool MatchesVegetationKind(RuntimeVegetationType type, RuntimeObjectMarkerKind kind)
 {
     switch (kind) {
         case RuntimeObjectMarkerKind::kTree:
-            return RuntimeVegetationType::kTree;
+            return type == RuntimeVegetationType::kTree;
         case RuntimeObjectMarkerKind::kBush:
-            return RuntimeVegetationType::kBush;
+            return type == RuntimeVegetationType::kBush;
         case RuntimeObjectMarkerKind::kReed:
+            return type == RuntimeVegetationType::kShoreReed
+                || type == RuntimeVegetationType::kPuddleReed;
         case RuntimeObjectMarkerKind::kRuin:
         case RuntimeObjectMarkerKind::kCover:
         case RuntimeObjectMarkerKind::kLoot:
@@ -772,15 +774,27 @@ struct VegetationMeshBuffers {
         case RuntimeObjectMarkerKind::kUnknown:
             break;
     }
-    return RuntimeVegetationType::kNone;
+    return false;
 }
 
 [[nodiscard]] Color StaticVegetationColor(RuntimeObjectMarkerKind kind)
 {
-    if (kind == RuntimeObjectMarkerKind::kTree) {
-        return Color{10, 66, 28, 255};
+    switch (kind) {
+        case RuntimeObjectMarkerKind::kTree:
+            return Color{10, 66, 28, 255};
+        case RuntimeObjectMarkerKind::kBush:
+            return Color{92, 188, 82, 245};
+        case RuntimeObjectMarkerKind::kReed:
+            return Color{181, 196, 72, 220};
+        case RuntimeObjectMarkerKind::kRuin:
+        case RuntimeObjectMarkerKind::kCover:
+        case RuntimeObjectMarkerKind::kLoot:
+        case RuntimeObjectMarkerKind::kStructure:
+        case RuntimeObjectMarkerKind::kTrench:
+        case RuntimeObjectMarkerKind::kUnknown:
+            break;
     }
-    return Color{92, 188, 82, 245};
+    return Color{255, 255, 255, 255};
 }
 
 void AppendVegetationVertex(
@@ -827,14 +841,15 @@ void AppendVegetationQuad(
 void AppendVegetationPillar(
     VegetationMeshBuffers& mesh,
     Vector3 center,
+    float width,
     float height,
     Color color)
 {
-    constexpr float kHalfWidth = 0.25F;
-    const float x0 = center.x - kHalfWidth;
-    const float x1 = center.x + kHalfWidth;
-    const float z0 = center.z - kHalfWidth;
-    const float z1 = center.z + kHalfWidth;
+    const float half_width = width * 0.5F;
+    const float x0 = center.x - half_width;
+    const float x1 = center.x + half_width;
+    const float z0 = center.z - half_width;
+    const float z1 = center.z + half_width;
     const float y0 = center.y;
     const float y1 = center.y + height;
 
@@ -876,11 +891,6 @@ void AppendVegetationPillar(
         return mesh;
     }
 
-    const RuntimeVegetationType expected_type = VegetationTypeForKind(kind);
-    if (expected_type == RuntimeVegetationType::kNone) {
-        return mesh;
-    }
-
     const std::size_t tile_capacity = static_cast<std::size_t>(chunk.bounds.Width())
         * static_cast<std::size_t>(chunk.bounds.Height());
     mesh.vertices.reserve(tile_capacity * 5ULL * 4ULL * 3ULL);
@@ -894,24 +904,34 @@ void AppendVegetationPillar(
             const auto index = static_cast<std::size_t>(y) * static_cast<std::size_t>(map.info.width)
                 + static_cast<std::size_t>(x);
             if (index >= map.vegetation_type.cells.size()
-                || index >= map.vegetation_height.cells.size()
-                || static_cast<RuntimeVegetationType>(map.vegetation_type.cells[index]) != expected_type) {
+                || index >= map.vegetation_height.cells.size()) {
+                continue;
+            }
+            const auto type = static_cast<RuntimeVegetationType>(map.vegetation_type.cells[index]);
+            if (!MatchesVegetationKind(type, kind)) {
                 continue;
             }
 
-            const int height = static_cast<int>(map.vegetation_height.cells[index]);
-            if (height <= 0) {
+            const int source_height = static_cast<int>(map.vegetation_height.cells[index]);
+            if (source_height <= 0) {
                 continue;
             }
             const TileCoord tile{x, y};
-            const Vector3 base = TileCenterWorld(
+            Vector3 base = TileCenterWorld(
                 x,
                 y,
                 TerrainTopLevel(map, tile),
                 map.info.width,
                 map.info.height);
-            AppendVegetationPillar(mesh, base, static_cast<float>(height), color);
-            mesh.max_top = std::max(mesh.max_top, base.y + static_cast<float>(height));
+            float width = 0.50F;
+            float height = static_cast<float>(source_height);
+            if (kind == RuntimeObjectMarkerKind::kReed) {
+                width = 0.34F;
+                height = 0.34F;
+                base.y += 0.20F;
+            }
+            AppendVegetationPillar(mesh, base, width, height, color);
+            mesh.max_top = std::max(mesh.max_top, base.y + height);
         }
     }
     return mesh;
@@ -972,6 +992,9 @@ void AccumulateVegetationStats(
     } else if (kind == RuntimeObjectMarkerKind::kBush) {
         ++stats.bush_models;
         stats.bush_pillars += mesh.pillars;
+    } else if (kind == RuntimeObjectMarkerKind::kReed) {
+        ++stats.reed_models;
+        stats.reed_pillars += mesh.pillars;
     }
     stats.uploaded = stats.models > 0;
 }
@@ -986,7 +1009,10 @@ void AccumulateVegetationStats(
     if (!UsesStaticVegetationMesh(map)) {
         return max_top;
     }
-    for (RuntimeObjectMarkerKind kind : {RuntimeObjectMarkerKind::kTree, RuntimeObjectMarkerKind::kBush}) {
+    for (RuntimeObjectMarkerKind kind : {
+             RuntimeObjectMarkerKind::kTree,
+             RuntimeObjectMarkerKind::kBush,
+             RuntimeObjectMarkerKind::kReed}) {
         VegetationMeshBuffers mesh = BuildVegetationMeshBuffers(map, chunk, kind);
         if (mesh.pillars == 0 || mesh.faces == 0) {
             continue;
@@ -1029,19 +1055,23 @@ void DrawVegetationChunkModels(
     RaylibChunkMeshDebugOverlayOptions overlays,
     RaylibVegetationMeshStats& stats)
 {
+    stats.last_visible_chunks = 0;
     stats.last_draw_calls = 0;
     stats.last_drawn_pillars = 0;
-    if (models.empty() || (!overlays.show_object_trees && !overlays.show_object_bushes)) {
+    if (models.empty()
+        || (!overlays.show_object_trees && !overlays.show_object_bushes && !overlays.show_object_reeds)) {
         return;
     }
 
     const std::vector<ChunkVisibilityClass> classes = BuildChunkVisibilityClassMap(info, visibility_report);
+    std::vector<std::uint8_t> drawn_chunks(classes.size(), 0U);
     const int chunks_x = std::max(1, info.chunks_x);
     constexpr Vector3 kOrigin{0.0F, 0.0F, 0.0F};
     constexpr float kScale = 1.0F;
     for (const RaylibUploadedVegetationModel& vegetation : models) {
         const bool enabled = (vegetation.kind == RuntimeObjectMarkerKind::kTree && overlays.show_object_trees)
-            || (vegetation.kind == RuntimeObjectMarkerKind::kBush && overlays.show_object_bushes);
+            || (vegetation.kind == RuntimeObjectMarkerKind::kBush && overlays.show_object_bushes)
+            || (vegetation.kind == RuntimeObjectMarkerKind::kReed && overlays.show_object_reeds);
         if (!enabled || vegetation.coord.x < 0 || vegetation.coord.y < 0
             || vegetation.coord.x >= info.chunks_x || vegetation.coord.y >= info.chunks_y) {
             continue;
@@ -1052,6 +1082,10 @@ void DrawVegetationChunkModels(
             continue;
         }
         DrawModel(vegetation.model, kOrigin, kScale, VisibilityTint(classes[index]));
+        if (drawn_chunks[index] == 0U) {
+            drawn_chunks[index] = 1U;
+            ++stats.last_visible_chunks;
+        }
         ++stats.last_draw_calls;
         stats.last_drawn_pillars += vegetation.pillars;
     }
@@ -1415,16 +1449,11 @@ void DrawObjectMarkersOverlay(
         DrawObjectMarker(map.object_markers[index], map, build_result, visible_chunks, overlays);
     }
 
-    const bool static_vegetation = UsesStaticVegetationMesh(map);
-    if (static_vegetation && !overlays.show_object_reeds) {
+    if (UsesStaticVegetationMesh(map)) {
         return;
     }
     for (std::size_t index = vegetation_start; index < map.object_markers.size(); ++index) {
-        const RuntimeObjectMarker& marker = map.object_markers[index];
-        if (static_vegetation && marker.kind != RuntimeObjectMarkerKind::kReed) {
-            continue;
-        }
-        DrawObjectMarker(marker, map, build_result, visible_chunks, overlays);
+        DrawObjectMarker(map.object_markers[index], map, build_result, visible_chunks, overlays);
     }
 }
 
@@ -1816,7 +1845,10 @@ bool RaylibChunkMeshPreviewStats::IsValid() const
 
 bool RaylibVegetationMeshStats::IsValid() const
 {
-    return uploaded && models > 0 && pillars > 0 && faces == pillars * 5ULL
+    return uploaded && models > 0 && pillars > 0
+        && models == tree_models + bush_models + reed_models
+        && pillars == tree_pillars + bush_pillars + reed_pillars
+        && faces == pillars * 5ULL
         && vertices == faces * 4ULL && indices == faces * 6ULL;
 }
 
@@ -1847,7 +1879,7 @@ bool RaylibChunkMeshPreview::UploadAdditional(
     chunks_.reserve(chunks_.size() + build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL));
     visibility_items_.reserve(visibility_items_.size() + build_result.chunks.size());
     if (runtime_map != nullptr && UsesStaticVegetationMesh(*runtime_map)) {
-        vegetation_models_.reserve(vegetation_models_.size() + build_result.chunks.size() * 2ULL);
+        vegetation_models_.reserve(vegetation_models_.size() + build_result.chunks.size() * 3ULL);
     }
     const std::uint64_t before_models = stats_.models;
     for (const ChunkMeshData& chunk : build_result.chunks) {
@@ -1986,6 +2018,9 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
         } else if (vegetation.kind == RuntimeObjectMarkerKind::kBush) {
             ++vegetation_stats_.bush_models;
             vegetation_stats_.bush_pillars += vegetation.pillars;
+        } else if (vegetation.kind == RuntimeObjectMarkerKind::kReed) {
+            ++vegetation_stats_.reed_models;
+            vegetation_stats_.reed_pillars += vegetation.pillars;
         }
     }
     vegetation_stats_.uploaded = vegetation_stats_.models > 0;
@@ -2208,12 +2243,15 @@ std::string ToLogString(const RaylibVegetationMeshStats& stats)
     out << " models=" << stats.models;
     out << " tree_models=" << stats.tree_models;
     out << " bush_models=" << stats.bush_models;
+    out << " reed_models=" << stats.reed_models;
     out << " pillars=" << stats.pillars;
     out << " trees=" << stats.tree_pillars;
     out << " bushes=" << stats.bush_pillars;
+    out << " reeds=" << stats.reed_pillars;
     out << " faces=" << stats.faces;
     out << " vertices=" << stats.vertices;
     out << " indices=" << stats.indices;
+    out << " visible_chunks=" << stats.last_visible_chunks;
     out << " draw_calls=" << stats.last_draw_calls;
     out << " drawn_pillars=" << stats.last_drawn_pillars;
     return out.str();

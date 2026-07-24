@@ -177,6 +177,7 @@ void DrawHelpOverlay(
  *
  * @param workspace Workspace state used to build statistics.
  * @param map_2d_view Optional interactive 2D view.
+ * @param vegetation_stats Static vegetation upload and last-draw diagnostics.
  * @param camera_status Latest 3D camera diagnostics.
  * @param layout Current UI layout and window metrics.
  * @return Maximum scroll offset in logical rows, never negative.
@@ -184,6 +185,7 @@ void DrawHelpOverlay(
 [[nodiscard]] int StatsOverlayMaxScrollRows(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
+    const RaylibVegetationMeshStats& vegetation_stats,
     FreeFlyCameraStatus camera_status,
     const UiLayoutCache& layout);
 
@@ -192,6 +194,7 @@ void DrawHelpOverlay(
  *
  * @param workspace Workspace state containing map and renderer diagnostics.
  * @param map_2d_view Optional interactive 2D view.
+ * @param vegetation_stats Static vegetation upload and last-draw diagnostics.
  * @param camera_status Latest 3D camera diagnostics.
  * @param first_visible_row Requested logical scroll row.
  * @param fonts Fonts used for overlay text.
@@ -200,6 +203,7 @@ void DrawHelpOverlay(
 void DrawStatsOverlay(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
+    const RaylibVegetationMeshStats& vegetation_stats,
     FreeFlyCameraStatus camera_status,
     int first_visible_row,
     const UiFontSet& fonts,

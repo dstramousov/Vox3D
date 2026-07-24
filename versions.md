@@ -680,3 +680,10 @@
 - Reused the existing chunk visibility, progressive residency, and eviction pipeline for vegetation mesh upload, draw, and unload.
 - Skipped the 53k vegetation-marker scan when only tree and bush filters are enabled, while preserving legacy maps and reed/runtime-object drawing.
 - Added vegetation mesh upload and last-draw diagnostics for model, pillar, face, and draw-call counts.
+
+## v0.5.66 -> v0.5.67
+
+- Moved shore and puddle reed markers into the same static per-chunk vegetation mesh path used by trees and bushes.
+- Preserved the existing compact yellow-green reed marker appearance while removing per-frame `DrawCubeV` calls for new vegetation-grid maps.
+- Added reed mesh and pillar counters, visible vegetation chunk counts, and vegetation draw-call diagnostics to Stats and renderer logs.
+- Kept legacy vegetation visuals and the small runtime-object set on the existing marker draw path.

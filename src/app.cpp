@@ -1313,7 +1313,11 @@ void App::HandleWorkspaceInput(float dt)
         }
         if (delta != 0) {
             const int max_scroll = StatsOverlayMaxScrollRows(
-                workspace_, &map_2d_view_, preview_camera_.Status(), layout_cache_);
+                workspace_,
+                &map_2d_view_,
+                chunk_mesh_preview_.VegetationStats(),
+                preview_camera_.Status(),
+                layout_cache_);
             stats_overlay_scroll_rows_ = std::clamp(
                 stats_overlay_scroll_rows_ + delta, 0, max_scroll);
         }
@@ -1821,6 +1825,10 @@ void App::AdvanceProgressiveChunkBuild(float dt)
                 << static_cast<int>(std::lround(priority.lookahead_y));
             out << " models=" << chunk_mesh_preview_.Stats().models;
             out << " vegetation_models=" << chunk_mesh_preview_.VegetationStats().models;
+            out << " vegetation_visible_chunks="
+                << chunk_mesh_preview_.VegetationStats().last_visible_chunks;
+            out << " vegetation_draw_calls="
+                << chunk_mesh_preview_.VegetationStats().last_draw_calls;
             logger_.Info("progressive_build", out.str());
             workspace_.progressive_log_timer = 0.0F;
         }
@@ -1983,6 +1991,10 @@ void App::AdvanceProgressiveChunkBuild(float dt)
             << static_cast<int>(std::lround(priority.lookahead_y));
         out << " models=" << chunk_mesh_preview_.Stats().models;
         out << " vegetation_models=" << chunk_mesh_preview_.VegetationStats().models;
+        out << " vegetation_visible_chunks="
+            << chunk_mesh_preview_.VegetationStats().last_visible_chunks;
+        out << " vegetation_draw_calls="
+            << chunk_mesh_preview_.VegetationStats().last_draw_calls;
         logger_.Info("progressive_build", out.str());
         workspace_.progressive_log_timer = 0.0F;
     }
@@ -2049,6 +2061,7 @@ void App::Draw()
         DrawStatsOverlay(
             workspace_,
             &map_2d_view_,
+            chunk_mesh_preview_.VegetationStats(),
             preview_camera_.Status(),
             stats_overlay_scroll_rows_,
             UiFonts(),

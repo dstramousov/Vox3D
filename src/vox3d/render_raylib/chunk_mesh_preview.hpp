@@ -206,12 +206,15 @@ struct RaylibVegetationMeshStats {
     std::uint64_t models = 0;
     std::uint64_t tree_models = 0;
     std::uint64_t bush_models = 0;
+    std::uint64_t reed_models = 0;
     std::uint64_t pillars = 0;
     std::uint64_t tree_pillars = 0;
     std::uint64_t bush_pillars = 0;
+    std::uint64_t reed_pillars = 0;
     std::uint64_t faces = 0;
     std::uint64_t vertices = 0;
     std::uint64_t indices = 0;
+    std::uint64_t last_visible_chunks = 0;
     std::uint64_t last_draw_calls = 0;
     std::uint64_t last_drawn_pillars = 0;
 
@@ -224,7 +227,7 @@ struct RaylibVegetationMeshStats {
 };
 
 /**
- * @brief One uploaded tree or bush model for a single resident chunk.
+ * @brief One uploaded vegetation model for a single resident chunk.
  */
 struct RaylibUploadedVegetationModel {
     Model model{};
