@@ -81,6 +81,9 @@ private:
     void OpenSelectionInfoOverlay(std::string_view reason);
     void CloseSelectionInfoOverlay(std::string_view reason);
     void ScrollSelectionInfoOverlay(int delta_rows, std::string_view reason);
+    void OpenHelpOverlay(std::string_view reason);
+    void CloseHelpOverlay(std::string_view reason);
+    void ScrollHelpOverlay(int delta_rows, std::string_view reason);
     void SelectPreviousWorkspaceTool();
     void SelectNextWorkspaceTool();
     void ToggleWorkspaceTool(WorkspaceTool tool);
@@ -165,6 +168,8 @@ private:
     int selection_info_overlay_scroll_rows_ = 0;
     bool stats_overlay_open_ = false;
     int stats_overlay_scroll_rows_ = 0;
+    bool help_overlay_open_ = false;
+    int help_overlay_scroll_rows_ = 0;
     ProcessMemoryInfo process_memory_{};
     float process_memory_sample_timer_ = 0.0F;
     Font title_font_{};

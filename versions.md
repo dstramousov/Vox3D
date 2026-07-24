@@ -601,3 +601,10 @@
 - Resized the dynamic Stats overlay to exactly match the Selection Info overlay dimensions.
 - Removed the bright per-section cards and borders from the Stats overlay.
 - Kept the two-column table layout with compact section headings, aligned values, and scrolling when required.
+
+## v0.5.55 -> v0.5.56
+
+- Added an `F1` Help overlay using the same size, styling, scrolling, and modal input behavior as Selection Info and Stats.
+- Separated all documented workspace controls into a complete 2D section followed by a complete 3D section.
+- Made Help mutually exclusive with Selection Info and Stats, with `Esc` or `F1` closing the overlay.
+- Established Help content as part of the hotkey contract so future control changes must update it in the same patch.

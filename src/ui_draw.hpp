@@ -96,6 +96,29 @@ void DrawSelectionInfoOverlay(
     const UiLayoutCache& layout);
 
 /**
+ * @brief Returns the maximum scroll offset for the keyboard help overlay.
+ *
+ * @param layout Current UI layout and window metrics.
+ * @return Maximum first visible row index, never negative.
+ */
+[[nodiscard]] int HelpOverlayMaxScrollRows(const UiLayoutCache& layout);
+
+/**
+ * @brief Draws the 2D and 3D keyboard help overlay.
+ *
+ * The overlay keeps mode-specific controls in separate sections and uses the
+ * same geometry and visual style as the selection information overlay.
+ *
+ * @param first_visible_row Requested first visible content row.
+ * @param fonts Fonts used for overlay text.
+ * @param layout Current UI layout and window metrics.
+ */
+void DrawHelpOverlay(
+    int first_visible_row,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout);
+
+/**
  * @brief Returns the maximum scroll offset for the mode-specific statistics overlay.
  *
  * @param workspace Workspace state used to build statistics.

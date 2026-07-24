@@ -1244,7 +1244,41 @@ void App::HandleScreenInput(float dt)
 
 void App::HandleWorkspaceInput(float dt)
 {
+    if (help_overlay_open_) {
+        const bool close_by_escape = IsKeyPressed(KEY_ESCAPE);
+        const bool close_by_f1 = IsKeyPressed(KEY_F1);
+        if (close_by_escape || close_by_f1) {
+            CloseHelpOverlay(close_by_f1 ? "hotkey_f1" : "escape");
+            suppress_window_close_request_this_frame_ = true;
+            return;
+        }
+
+        const float wheel = GetMouseWheelMove();
+        if (wheel > 0.0001F) {
+            ScrollHelpOverlay(-3, "wheel");
+        } else if (wheel < -0.0001F) {
+            ScrollHelpOverlay(3, "wheel");
+        }
+        if (IsKeyPressed(KEY_PAGE_UP) || IsKeyPressed(KEY_UP)) {
+            ScrollHelpOverlay(-6, "page_up");
+        }
+        if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressed(KEY_DOWN)) {
+            ScrollHelpOverlay(6, "page_down");
+        }
+        if (IsKeyPressed(KEY_HOME)) {
+            ScrollHelpOverlay(-1000000, "home");
+        }
+        if (IsKeyPressed(KEY_END)) {
+            ScrollHelpOverlay(1000000, "end");
+        }
+        return;
+    }
+
     if (stats_overlay_open_) {
+        if (IsKeyPressed(KEY_F1)) {
+            OpenHelpOverlay("stats_hotkey_f1");
+            return;
+        }
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_S)) {
             stats_overlay_open_ = false;
             stats_overlay_scroll_rows_ = 0;
@@ -1274,6 +1308,10 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     if (selection_info_overlay_open_) {
+        if (IsKeyPressed(KEY_F1)) {
+            OpenHelpOverlay("selection_info_hotkey_f1");
+            return;
+        }
         if (IsKeyPressed(KEY_ESCAPE)) {
             CloseSelectionInfoOverlay("escape");
             suppress_window_close_request_this_frame_ = true;
@@ -1298,6 +1336,12 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_END)) {
             ScrollSelectionInfoOverlay(1000000, "end");
         }
+        return;
+    }
+
+    if (IsKeyPressed(KEY_F1)) {
+        preview_camera_.ReleaseMouse();
+        OpenHelpOverlay("hotkey_f1");
         return;
     }
 
@@ -1393,6 +1437,8 @@ void App::HandleWorkspaceInput(float dt)
         } else if (IsKeyPressed(KEY_S)) {
             selection_info_overlay_open_ = false;
             selection_info_overlay_scroll_rows_ = 0;
+            help_overlay_open_ = false;
+            help_overlay_scroll_rows_ = 0;
             stats_overlay_open_ = true;
             stats_overlay_scroll_rows_ = 0;
             preview_camera_.ReleaseMouse();
@@ -1963,6 +2009,12 @@ void App::Draw()
     DrawFpsCounter(UiFonts(), labels_, layout_cache_, process_memory_, config_.version);
     if (config_.debug_ui) {
         DrawDebugOverlay(UiFonts(), config_, window_config_, screen_, dialog_.type, main_menu_.State(), workspace_, hovered_item_, labels_, layout_cache_);
+    }
+    if (help_overlay_open_ && screen_ == AppScreen::kWorkspace) {
+        DrawHelpOverlay(
+            help_overlay_scroll_rows_,
+            UiFonts(),
+            layout_cache_);
     }
     if (stats_overlay_open_ && screen_ == AppScreen::kWorkspace) {
         DrawStatsOverlay(
@@ -2557,6 +2609,8 @@ void App::OpenSelectionInfoOverlay(std::string_view reason)
 {
     stats_overlay_open_ = false;
     stats_overlay_scroll_rows_ = 0;
+    help_overlay_open_ = false;
+    help_overlay_scroll_rows_ = 0;
     selection_info_overlay_open_ = true;
     selection_info_overlay_scroll_rows_ = 0;
     logger_.Debug("inspect", "overlay=open reason=" + std::string(reason));
@@ -2592,6 +2646,50 @@ void App::ScrollSelectionInfoOverlay(int delta_rows, std::string_view reason)
     logger_.Debug(
         "inspect",
         "overlay_scroll=" + std::to_string(selection_info_overlay_scroll_rows_)
+            + " reason=" + std::string(reason));
+}
+
+void App::OpenHelpOverlay(std::string_view reason)
+{
+    selection_info_overlay_open_ = false;
+    selection_info_overlay_scroll_rows_ = 0;
+    stats_overlay_open_ = false;
+    stats_overlay_scroll_rows_ = 0;
+    help_overlay_open_ = true;
+    help_overlay_scroll_rows_ = 0;
+    logger_.Debug("help", "overlay=open reason=" + std::string(reason));
+}
+
+void App::CloseHelpOverlay(std::string_view reason)
+{
+    if (!help_overlay_open_) {
+        return;
+    }
+
+    help_overlay_open_ = false;
+    help_overlay_scroll_rows_ = 0;
+    logger_.Debug("help", "overlay=closed reason=" + std::string(reason));
+}
+
+void App::ScrollHelpOverlay(int delta_rows, std::string_view reason)
+{
+    if (!help_overlay_open_ || delta_rows == 0) {
+        return;
+    }
+
+    const int max_scroll_rows = HelpOverlayMaxScrollRows(layout_cache_);
+    const int next_scroll = std::clamp(
+        help_overlay_scroll_rows_ + delta_rows,
+        0,
+        max_scroll_rows);
+    if (next_scroll == help_overlay_scroll_rows_) {
+        return;
+    }
+
+    help_overlay_scroll_rows_ = next_scroll;
+    logger_.Debug(
+        "help",
+        "overlay_scroll=" + std::to_string(help_overlay_scroll_rows_)
             + " reason=" + std::string(reason));
 }
 

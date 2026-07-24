@@ -1217,40 +1217,58 @@ struct SelectionInfoOverlayGeometry {
     return geometry;
 }
 
+// Keep this list synchronized with workspace input handling whenever controls change.
 [[nodiscard]] std::vector<std::string> BuildHelpPanelLines()
 {
     return {
-        "Hotkeys",
-        "  F2   Release mouse",
-        "  F3   2D / 3D",
-        "  F8   Mesh mode",
-        "  F9   Chunk size",
-        "  F10  Dirty rebuild probe",
-        "  F11  Color mode",
-        "  F12  Visibility mode",
-        "  I    Selection info",
-        "  T    Toggle transitions",
-        "  M    Toggle movement probe",
-        "  V    Toggle passability issues",
-        "  P    Start two-click path pick",
-        "  LMB  Pick start / goal in path pick",
-        "  X    Clear path probe",
-        "  RMB  Cancel path pick / release mouse",
-        "  Menu Validation -> Run Validation",
-        "  3D LMB pick tile in Select mode",
-        "  2D RMB select, LMB drag pan",
-        "  2D MMB open tile info",
-        "  2D wheel zoom around cursor",
-        "  Home / End  Focus Start / Goal",
-        "  F    Fit view",
-        "  R    Reset camera",
-        "  Esc  Release mouse first, then exit",
+        "2D controls",
+        "  LMB + drag       Pan map",
+        "  RMB              Select tile",
+        "  MMB              Select tile and open Info",
+        "  Wheel            Zoom around cursor",
+        "  + / -            Zoom in / out",
+        "  F                Fit whole map",
+        "  R                Reset 2D view",
+        "  Home             Focus Start",
+        "  End              Focus Goal",
+        "  I                Selection Info",
+        "  S                Statistics",
+        "  F1               Help",
+        "  Esc              Close overlay / exit",
+        "  Wheel over menu  Scroll side panel",
+        "  PgUp / PgDn      Scroll panel or overlay",
         "",
-        "3D Camera",
-        "  Click viewport to capture mouse",
-        "  WASD move, Q/E down/up",
-        "  Shift fast, Ctrl slow",
-        "  Wheel dolly",
+        "3D controls",
+        "  LMB (free)       Select tile and capture mouse",
+        "  MMB / RMB (free) Capture mouse",
+        "  Mouse move       Look around while captured",
+        "  W / A / S / D    Move",
+        "  Q / E            Move down / up",
+        "  Shift / Ctrl     Fast / slow movement",
+        "  Wheel            Dolly forward / backward",
+        "  RMB / F2 / Esc   Release captured mouse",
+        "  F                Fit map in viewport",
+        "  R                Reset camera",
+        "  I                Selection Info",
+        "  S (mouse free)   Statistics",
+        "  F1               Help",
+        "  F3 / P           Start path pick",
+        "  LMB in path pick Select Start, then Goal",
+        "  RMB / Esc        Cancel path pick",
+        "  X                Clear path probe",
+        "  T                Toggle transitions",
+        "  M                Toggle movement probe",
+        "  V (captured)     Toggle passability issues",
+        "  F4               Toggle chunk bounds",
+        "  F5               Toggle world grid",
+        "  F6               Toggle collision overlay",
+        "  F7               Toggle height overlay",
+        "  F8               Cycle mesh mode",
+        "  F9               Toggle chunk size",
+        "  F10              Run dirty rebuild probe",
+        "  F11              Cycle color mode",
+        "  F12              Cycle visibility mode",
+        "  Esc (mouse free) Close overlay / exit",
     };
 }
 
@@ -2640,6 +2658,148 @@ void DrawStatsOverlay(
                 kAccent);
         }
         if (scroll_row < max_scroll) {
+            const std::string more_hint = "v more";
+            const Vector2 more_size = Measure(
+                fonts.text,
+                more_hint,
+                geometry.footer_font_size,
+                footer_spacing);
+            DrawTextEx(
+                fonts.text,
+                more_hint.c_str(),
+                Vector2{
+                    geometry.content.x + geometry.content.width - more_size.x,
+                    geometry.content.y + geometry.content.height
+                        - geometry.footer_font_size,
+                },
+                geometry.footer_font_size,
+                footer_spacing,
+                kAccent);
+        }
+    }
+}
+
+int HelpOverlayMaxScrollRows(const UiLayoutCache& layout)
+{
+    const SelectionInfoOverlayGeometry geometry =
+        BuildSelectionInfoOverlayGeometry(layout);
+    const int total_rows = static_cast<int>(BuildHelpPanelLines().size());
+    return std::max(0, total_rows - geometry.visible_rows);
+}
+
+void DrawHelpOverlay(
+    int first_visible_row,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const SelectionInfoOverlayGeometry geometry =
+        BuildSelectionInfoOverlayGeometry(layout);
+    const std::vector<std::string> lines = BuildHelpPanelLines();
+    const int max_scroll_rows = std::max(
+        0,
+        static_cast<int>(lines.size()) - geometry.visible_rows);
+    const int first_row = std::clamp(
+        first_visible_row,
+        0,
+        max_scroll_rows);
+
+    DrawRectangle(0, 0, metrics.window_width, metrics.window_height, kModalDim);
+    DrawRectangleRounded(geometry.panel, 0.04F, 8, kPanel);
+    DrawRectangleRoundedLinesEx(
+        geometry.panel,
+        0.04F,
+        8,
+        std::max(1.0F, metrics.modal_border_width),
+        kPanelBorder);
+
+    const std::string title = "[ Help ]";
+    DrawTextEx(
+        fonts.text,
+        title.c_str(),
+        Vector2{
+            geometry.panel.x + geometry.padding,
+            geometry.panel.y + geometry.padding,
+        },
+        geometry.title_font_size,
+        FontSpacing(geometry.title_font_size),
+        kSelectedText);
+
+    BeginScissorMode(
+        static_cast<int>(std::floor(geometry.content.x)),
+        static_cast<int>(std::floor(geometry.content.y)),
+        static_cast<int>(std::ceil(geometry.content.width)),
+        static_cast<int>(std::ceil(geometry.content.height)));
+    float line_y = geometry.content.y;
+    const int last_row = std::min(
+        static_cast<int>(lines.size()),
+        first_row + geometry.visible_rows);
+    for (int index = first_row; index < last_row; ++index) {
+        const std::string& line = lines[static_cast<std::size_t>(index)];
+        if (!line.empty()) {
+            const bool section_header = line.rfind("  ", 0) != 0;
+            DrawTextEx(
+                fonts.text,
+                line.c_str(),
+                Vector2{geometry.content.x, line_y},
+                geometry.body_font_size,
+                FontSpacing(geometry.body_font_size),
+                section_header ? kAccent : kText);
+        }
+        line_y += geometry.line_height;
+    }
+    EndScissorMode();
+
+    const float footer_y = geometry.panel.y + geometry.panel.height
+        - geometry.padding - geometry.footer_font_size;
+    const std::string close_hint = "Esc / F1  Close";
+    DrawTextEx(
+        fonts.text,
+        close_hint.c_str(),
+        Vector2{geometry.panel.x + geometry.padding, footer_y},
+        geometry.footer_font_size,
+        FontSpacing(geometry.footer_font_size),
+        kMutedText);
+
+    if (max_scroll_rows > 0) {
+        const std::string scroll_hint = "Wheel / PgUp / PgDn";
+        const float footer_spacing = FontSpacing(geometry.footer_font_size);
+        const Vector2 hint_size = Measure(
+            fonts.text,
+            scroll_hint,
+            geometry.footer_font_size,
+            footer_spacing);
+        DrawTextEx(
+            fonts.text,
+            scroll_hint.c_str(),
+            Vector2{
+                geometry.panel.x + geometry.panel.width
+                    - geometry.padding - hint_size.x,
+                footer_y,
+            },
+            geometry.footer_font_size,
+            footer_spacing,
+            kMutedText);
+
+        if (first_row > 0) {
+            const std::string more_hint = "^ more";
+            const Vector2 more_size = Measure(
+                fonts.text,
+                more_hint,
+                geometry.footer_font_size,
+                footer_spacing);
+            DrawTextEx(
+                fonts.text,
+                more_hint.c_str(),
+                Vector2{
+                    geometry.content.x + geometry.content.width - more_size.x,
+                    geometry.content.y,
+                },
+                geometry.footer_font_size,
+                footer_spacing,
+                kAccent);
+        }
+        if (first_row < max_scroll_rows) {
             const std::string more_hint = "v more";
             const Vector2 more_size = Measure(
                 fonts.text,
