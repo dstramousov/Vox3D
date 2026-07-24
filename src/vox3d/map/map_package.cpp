@@ -244,7 +244,7 @@ void ExtractMetadata(MapPackageInfo& info, const std::filesystem::path& source_p
 
 void DiscoverKnownFiles(MapPackageInfo& info)
 {
-    constexpr std::array<std::string_view, 25> known_files{
+    constexpr std::array<std::string_view, 27> known_files{
         "map.json",
         "map_runtime.vxmap",
         "runtime_grids.json",
@@ -252,6 +252,8 @@ void DiscoverKnownFiles(MapPackageInfo& info)
         "layers/terrain.json",
         "layers/elevation.json",
         "layers/structure_height.json",
+        "layers/vegetation_type.json",
+        "layers/vegetation_height.json",
         "layers/collision.json",
         "layers/movement_costs.json",
         "layers/start_goal.json",
@@ -307,12 +309,14 @@ void EnableFastVxmapPackageMode(MapPackageInfo& info)
     info.elevation_available = true;
     info.collision_available = true;
 
-    constexpr std::array<std::string_view, 7> core_json_files{
+    constexpr std::array<std::string_view, 9> core_json_files{
         "runtime_grids.json",
         "layers/terrain.json",
         "layers/tile_grid.json",
         "layers/elevation.json",
         "layers/structure_height.json",
+        "layers/vegetation_type.json",
+        "layers/vegetation_height.json",
         "layers/collision.json",
         "elevation_model.json",
     };

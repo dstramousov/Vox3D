@@ -102,6 +102,13 @@ TileInspectResult InspectTile(
         result.structure_height_available = true;
         result.structure_height = map.structure_height.cells[index];
     }
+    if (map.info.vegetation_type_loaded && map.info.vegetation_height_loaded
+        && map.vegetation_type.Contains(tile) && map.vegetation_height.Contains(tile)) {
+        result.vegetation_available = true;
+        result.vegetation_type = static_cast<RuntimeVegetationType>(
+            map.vegetation_type.cells[index]);
+        result.vegetation_height = map.vegetation_height.cells[index];
+    }
     result.blocked = map.collision.cells[index] != 0U;
     if (map.movement_cost.Contains(tile)) {
         result.movement_cost_available = true;
@@ -162,6 +169,14 @@ std::string ToLogString(const TileInspectResult& result)
         out << " structure_height=" << static_cast<int>(result.structure_height);
         out << " structure_top="
             << result.elevation + 1 + static_cast<int>(result.structure_height);
+    }
+    if (result.vegetation_available) {
+        out << " vegetation=" << ToString(result.vegetation_type);
+        out << " vegetation_height=" << static_cast<int>(result.vegetation_height);
+        if (result.vegetation_type != RuntimeVegetationType::kNone) {
+            out << " vegetation_top="
+                << result.elevation + 1 + static_cast<int>(result.vegetation_height);
+        }
     }
     out << " blocked=" << (result.blocked ? "yes" : "no");
     if (result.movement_cost_available) {

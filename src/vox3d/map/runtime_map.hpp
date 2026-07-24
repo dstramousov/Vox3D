@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vox3d {
@@ -65,6 +66,25 @@ struct RuntimeGrid {
 /**
  * @brief Normalized runtime map summary used by future voxel/chunk builders.
  */
+
+/**
+ * @brief Compact vegetation type stored by map-package and VXMAP grids.
+ */
+enum class RuntimeVegetationType : std::uint8_t {
+    kNone = 0,
+    kTree = 1,
+    kBush = 2,
+    kShoreReed = 3,
+    kPuddleReed = 4,
+};
+
+/**
+ * @brief Returns the stable map-format label for a vegetation type.
+ *
+ * @param type Vegetation type code from the runtime grid.
+ * @return Stable lowercase label.
+ */
+[[nodiscard]] std::string_view ToString(RuntimeVegetationType type);
 
 /**
  * @brief Compact object-marker class used by the 3D diagnostic overlay.
@@ -184,6 +204,8 @@ struct RuntimeMapInfo {
     bool terrain_loaded = false;
     bool elevation_loaded = false;
     bool structure_height_loaded = false;
+    bool vegetation_type_loaded = false;
+    bool vegetation_height_loaded = false;
     bool collision_loaded = false;
     bool movement_cost_loaded = false;
     bool projectile_block_loaded = false;
@@ -211,6 +233,8 @@ struct RuntimeMapInfo {
     std::size_t runtime_binary_json_collision_mismatches = 0;
     std::size_t runtime_binary_json_height_mismatches = 0;
     std::size_t runtime_binary_json_structure_height_mismatches = 0;
+    std::size_t runtime_binary_json_vegetation_type_mismatches = 0;
+    std::size_t runtime_binary_json_vegetation_height_mismatches = 0;
     std::size_t runtime_binary_json_point_mismatches = 0;
     int runtime_binary_json_load_ms = 0;
     int runtime_binary_json_compare_ms = 0;
@@ -222,6 +246,16 @@ struct RuntimeMapInfo {
     int object_markers = 0;
     int runtime_objects = 0;
     int vegetation_markers = 0;
+    int vegetation_trees = 0;
+    int vegetation_bushes = 0;
+    int vegetation_shore_reeds = 0;
+    int vegetation_puddle_reeds = 0;
+    int vegetation_tree_height_2 = 0;
+    int vegetation_tree_height_3 = 0;
+    int vegetation_tree_height_4 = 0;
+    int vegetation_tree_height_5 = 0;
+    int vegetation_bush_height_1 = 0;
+    int vegetation_bush_height_2 = 0;
     int places = 0;
     int markers = 0;
 
@@ -247,6 +281,8 @@ struct RuntimeMap {
     RuntimeGrid<std::uint8_t> collision;
     RuntimeGrid<int> height;
     RuntimeGrid<std::uint8_t> structure_height;
+    RuntimeGrid<std::uint8_t> vegetation_type;
+    RuntimeGrid<std::uint8_t> vegetation_height;
     RuntimeGrid<int> movement_cost;
     RuntimeGrid<std::uint8_t> projectile_block;
     RuntimeGrid<std::uint8_t> vision_block;

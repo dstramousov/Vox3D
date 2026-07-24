@@ -572,6 +572,112 @@ constexpr std::uintmax_t kMaxRuntimeGridReadBytes = 64U * 1024U * 1024U;
     return grid;
 }
 
+[[nodiscard]] RuntimeGrid<std::uint8_t> ReadByteRowsGrid(
+    const MapPackageInfo& package,
+    std::string_view relative_path,
+    int maximum_value,
+    bool& source_present,
+    Diagnostics& diagnostics)
+{
+    RuntimeGrid<std::uint8_t> grid;
+    grid.width = package.width.value_or(0);
+    grid.height = package.height.value_or(0);
+
+    const std::filesystem::path path = package.path / relative_path;
+    source_present = Exists(path);
+    if (!source_present) {
+        grid.cells.assign(ExpectedCellCount(grid.width, grid.height), std::uint8_t{0});
+        return grid;
+    }
+
+    const std::string text = ReadTextFileLimited(path, kMaxRuntimeGridReadBytes, diagnostics);
+    if (text.empty()) {
+        return grid;
+    }
+
+    RuntimeGrid<int> parsed = ParseIntegerRowsGrid(
+        text,
+        grid.width,
+        grid.height,
+        relative_path,
+        "",
+        diagnostics);
+    if (!parsed.IsValid()) {
+        return grid;
+    }
+
+    grid.cells.reserve(parsed.cells.size());
+    for (int value : parsed.cells) {
+        if (value < 0 || value > maximum_value) {
+            diagnostics.AddWarning(
+                "runtime byte grid value outside supported range source="
+                + std::string(relative_path) + " value=" + std::to_string(value));
+            grid.cells.clear();
+            return grid;
+        }
+        grid.cells.push_back(static_cast<std::uint8_t>(value));
+    }
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<std::uint8_t> ReadVegetationTypeGrid(
+    const MapPackageInfo& package,
+    bool& source_present,
+    Diagnostics& diagnostics)
+{
+    return ReadByteRowsGrid(
+        package,
+        "layers/vegetation_type.json",
+        4,
+        source_present,
+        diagnostics);
+}
+
+[[nodiscard]] RuntimeGrid<std::uint8_t> ReadVegetationHeightGrid(
+    const MapPackageInfo& package,
+    bool& source_present,
+    Diagnostics& diagnostics)
+{
+    return ReadByteRowsGrid(
+        package,
+        "layers/vegetation_height.json",
+        5,
+        source_present,
+        diagnostics);
+}
+
+[[nodiscard]] bool IsValidVegetationPair(std::uint8_t type, std::uint8_t height)
+{
+    return (type == 0U && height == 0U)
+        || (type == 1U && height >= 2U && height <= 5U)
+        || (type == 2U && height >= 1U && height <= 2U)
+        || ((type == 3U || type == 4U) && height == 1U);
+}
+
+[[nodiscard]] bool ValidateVegetationGrids(
+    const RuntimeGrid<std::uint8_t>& type_grid,
+    const RuntimeGrid<std::uint8_t>& height_grid,
+    Diagnostics& diagnostics)
+{
+    if (!type_grid.IsValid() || !height_grid.IsValid()
+        || type_grid.width != height_grid.width
+        || type_grid.height != height_grid.height) {
+        diagnostics.AddWarning("runtime vegetation grids are unavailable or dimensionally inconsistent");
+        return false;
+    }
+
+    for (std::size_t index = 0; index < type_grid.cells.size(); ++index) {
+        if (!IsValidVegetationPair(type_grid.cells[index], height_grid.cells[index])) {
+            diagnostics.AddWarning(
+                "runtime vegetation type/height mismatch index=" + std::to_string(index)
+                + " type=" + std::to_string(static_cast<int>(type_grid.cells[index]))
+                + " height=" + std::to_string(static_cast<int>(height_grid.cells[index])));
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] RuntimeGrid<int> ReadHeightGrid(const MapPackageInfo& package, Diagnostics& diagnostics)
 {
     constexpr std::string_view kRuntimeFile = "runtime_grids.json";
@@ -680,6 +786,22 @@ void ReadStartGoal(RuntimeMap& runtime, const MapPackageInfo& package)
     if (ContainsToken(key, "building") || ContainsToken(key, "bunker") || ContainsToken(key, "mast")
         || ContainsToken(key, "beacon") || ContainsToken(key, "generator")) {
         return RuntimeObjectMarkerKind::kStructure;
+    }
+    return RuntimeObjectMarkerKind::kUnknown;
+}
+
+[[nodiscard]] RuntimeObjectMarkerKind VegetationMarkerKind(RuntimeVegetationType type)
+{
+    switch (type) {
+        case RuntimeVegetationType::kTree:
+            return RuntimeObjectMarkerKind::kTree;
+        case RuntimeVegetationType::kBush:
+            return RuntimeObjectMarkerKind::kBush;
+        case RuntimeVegetationType::kShoreReed:
+        case RuntimeVegetationType::kPuddleReed:
+            return RuntimeObjectMarkerKind::kReed;
+        case RuntimeVegetationType::kNone:
+            break;
     }
     return RuntimeObjectMarkerKind::kUnknown;
 }
@@ -986,7 +1108,37 @@ void ReadMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
     }
 }
 
-void ReadVegetationVisualMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
+[[nodiscard]] bool ReadVegetationGridMarkers(RuntimeMap& runtime)
+{
+    if (!runtime.info.vegetation_type_loaded || !runtime.info.vegetation_height_loaded
+        || !runtime.vegetation_type.IsValid() || !runtime.vegetation_height.IsValid()) {
+        return false;
+    }
+
+    for (int y = 0; y < runtime.info.height; ++y) {
+        for (int x = 0; x < runtime.info.width; ++x) {
+            const std::size_t index = static_cast<std::size_t>(y) * static_cast<std::size_t>(runtime.info.width)
+                + static_cast<std::size_t>(x);
+            const auto type = static_cast<RuntimeVegetationType>(runtime.vegetation_type.cells[index]);
+            if (type == RuntimeVegetationType::kNone) {
+                continue;
+            }
+
+            RuntimeObjectMarker marker;
+            marker.tile = TileCoord{x, y};
+            marker.kind = VegetationMarkerKind(type);
+            marker.type = std::string(ToString(type));
+            marker.role = "vegetation";
+            marker.height = static_cast<int>(runtime.vegetation_height.cells[index]);
+            marker.visual_only = true;
+            marker.blocks_movement = false;
+            AddRuntimeObjectMarker(runtime, std::move(marker));
+        }
+    }
+    return true;
+}
+
+void ReadLegacyVegetationVisualMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
 {
     constexpr std::string_view kVegetationFile = "render/vegetation_visual.json";
     const std::filesystem::path vegetation_path = package.path / kVegetationFile;
@@ -1067,7 +1219,9 @@ void ReadWorldOverlayData(RuntimeMap& runtime, const MapPackageInfo& package)
     ReadRuntimeObjects(runtime, package);
     ReadPlaces(runtime, package);
     ReadMarkers(runtime, package);
-    ReadVegetationVisualMarkers(runtime, package);
+    if (!ReadVegetationGridMarkers(runtime)) {
+        ReadLegacyVegetationVisualMarkers(runtime, package);
+    }
     runtime.info.object_markers = static_cast<int>(runtime.object_markers.size());
     runtime.info.object_markers_loaded = runtime.info.object_markers > 0;
     runtime.info.vegetation_markers = static_cast<int>(std::count_if(
@@ -1109,6 +1263,15 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
     }
     if (runtime.info.structure_height_loaded && !runtime.structure_height.IsValid()) {
         runtime.diagnostics.AddWarning("runtime structure height grid is not loaded");
+    }
+    if (runtime.info.vegetation_type_loaded && !runtime.vegetation_type.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime vegetation type grid is not loaded");
+    }
+    if (runtime.info.vegetation_height_loaded && !runtime.vegetation_height.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime vegetation height grid is not loaded");
+    }
+    if (runtime.info.vegetation_type_loaded != runtime.info.vegetation_height_loaded) {
+        runtime.diagnostics.AddWarning("runtime vegetation type and height sources are incomplete");
     }
     if (!runtime.info.start_goal_loaded) {
         runtime.diagnostics.AddWarning("runtime start/goal points are not fully loaded");
@@ -1160,12 +1323,99 @@ void UpdateStructureHeightStats(RuntimeMap& runtime)
     }
 }
 
+void UpdateVegetationStats(RuntimeMap& runtime)
+{
+    runtime.info.vegetation_trees = 0;
+    runtime.info.vegetation_bushes = 0;
+    runtime.info.vegetation_shore_reeds = 0;
+    runtime.info.vegetation_puddle_reeds = 0;
+    runtime.info.vegetation_tree_height_2 = 0;
+    runtime.info.vegetation_tree_height_3 = 0;
+    runtime.info.vegetation_tree_height_4 = 0;
+    runtime.info.vegetation_tree_height_5 = 0;
+    runtime.info.vegetation_bush_height_1 = 0;
+    runtime.info.vegetation_bush_height_2 = 0;
+
+    if (runtime.info.vegetation_type_loaded && runtime.info.vegetation_height_loaded
+        && runtime.vegetation_type.IsValid() && runtime.vegetation_height.IsValid()) {
+        for (std::size_t index = 0; index < runtime.vegetation_type.cells.size(); ++index) {
+            const auto type = static_cast<RuntimeVegetationType>(runtime.vegetation_type.cells[index]);
+            const std::uint8_t height = runtime.vegetation_height.cells[index];
+            switch (type) {
+                case RuntimeVegetationType::kNone:
+                    break;
+                case RuntimeVegetationType::kTree:
+                    ++runtime.info.vegetation_trees;
+                    switch (height) {
+                        case 2U:
+                            ++runtime.info.vegetation_tree_height_2;
+                            break;
+                        case 3U:
+                            ++runtime.info.vegetation_tree_height_3;
+                            break;
+                        case 4U:
+                            ++runtime.info.vegetation_tree_height_4;
+                            break;
+                        case 5U:
+                            ++runtime.info.vegetation_tree_height_5;
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                case RuntimeVegetationType::kBush:
+                    ++runtime.info.vegetation_bushes;
+                    if (height == 1U) {
+                        ++runtime.info.vegetation_bush_height_1;
+                    } else if (height == 2U) {
+                        ++runtime.info.vegetation_bush_height_2;
+                    }
+                    break;
+                case RuntimeVegetationType::kShoreReed:
+                    ++runtime.info.vegetation_shore_reeds;
+                    break;
+                case RuntimeVegetationType::kPuddleReed:
+                    ++runtime.info.vegetation_puddle_reeds;
+                    break;
+            }
+        }
+        return;
+    }
+
+    for (const RuntimeObjectMarker& marker : runtime.object_markers) {
+        if (!marker.visual_only || marker.role != "vegetation") {
+            continue;
+        }
+        switch (marker.kind) {
+            case RuntimeObjectMarkerKind::kTree:
+                ++runtime.info.vegetation_trees;
+                break;
+            case RuntimeObjectMarkerKind::kBush:
+                ++runtime.info.vegetation_bushes;
+                break;
+            case RuntimeObjectMarkerKind::kReed:
+                if (marker.type == "puddle_reed") {
+                    ++runtime.info.vegetation_puddle_reeds;
+                } else {
+                    ++runtime.info.vegetation_shore_reeds;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 struct JsonRuntimeCore {
     RuntimeGrid<std::string> terrain;
     RuntimeGrid<std::uint8_t> collision;
     RuntimeGrid<int> height;
     RuntimeGrid<std::uint8_t> structure_height;
     bool structure_height_present = false;
+    RuntimeGrid<std::uint8_t> vegetation_type;
+    RuntimeGrid<std::uint8_t> vegetation_height;
+    bool vegetation_type_present = false;
+    bool vegetation_height_present = false;
     std::optional<TileCoord> start;
     std::optional<TileCoord> goal;
     bool start_goal_loaded = false;
@@ -1198,6 +1448,23 @@ struct JsonRuntimeCore {
         package,
         core.structure_height_present,
         core.diagnostics);
+    core.vegetation_type = ReadVegetationTypeGrid(
+        package,
+        core.vegetation_type_present,
+        core.diagnostics);
+    core.vegetation_height = ReadVegetationHeightGrid(
+        package,
+        core.vegetation_height_present,
+        core.diagnostics);
+    if (core.vegetation_type_present != core.vegetation_height_present
+        || ((core.vegetation_type_present || core.vegetation_height_present)
+            && !ValidateVegetationGrids(
+                core.vegetation_type,
+                core.vegetation_height,
+                core.diagnostics))) {
+        core.vegetation_type.cells.clear();
+        core.vegetation_height.cells.clear();
+    }
 
     RuntimeMap start_goal_runtime;
     start_goal_runtime.info.width = info.width;
@@ -1221,6 +1488,12 @@ void ApplyJsonRuntimeCore(RuntimeMap& runtime, JsonRuntimeCore&& core)
     runtime.structure_height = std::move(core.structure_height);
     runtime.info.structure_height_loaded = core.structure_height_present
         && runtime.structure_height.IsValid();
+    runtime.vegetation_type = std::move(core.vegetation_type);
+    runtime.vegetation_height = std::move(core.vegetation_height);
+    runtime.info.vegetation_type_loaded = core.vegetation_type_present
+        && runtime.vegetation_type.IsValid();
+    runtime.info.vegetation_height_loaded = core.vegetation_height_present
+        && runtime.vegetation_height.IsValid();
     runtime.movement_cost = RuntimeGrid<int>{};
     runtime.projectile_block = RuntimeGrid<std::uint8_t>{};
     runtime.vision_block = RuntimeGrid<std::uint8_t>{};
@@ -1267,7 +1540,8 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
     info.runtime_binary_json_compare_checked = true;
 
     if (!json_core.terrain.IsValid() || !json_core.collision.IsValid() || !json_core.height.IsValid()
-        || !json_core.structure_height.IsValid()) {
+        || !json_core.structure_height.IsValid() || !json_core.vegetation_type.IsValid()
+        || !json_core.vegetation_height.IsValid()) {
         info.runtime_binary_json_compare_ok = false;
         info.runtime_binary_json_compare_reason = "json_core_unavailable";
         return;
@@ -1279,6 +1553,12 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
     info.runtime_binary_json_structure_height_mismatches = CountGridMismatches(
         runtime.structure_height,
         json_core.structure_height);
+    info.runtime_binary_json_vegetation_type_mismatches = CountGridMismatches(
+        runtime.vegetation_type,
+        json_core.vegetation_type);
+    info.runtime_binary_json_vegetation_height_mismatches = CountGridMismatches(
+        runtime.vegetation_height,
+        json_core.vegetation_height);
     info.runtime_binary_json_point_mismatches = 0;
     if (!SamePoint(runtime.info.start, json_core.start)) {
         ++info.runtime_binary_json_point_mismatches;
@@ -1291,6 +1571,8 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
         + info.runtime_binary_json_collision_mismatches
         + info.runtime_binary_json_height_mismatches
         + info.runtime_binary_json_structure_height_mismatches
+        + info.runtime_binary_json_vegetation_type_mismatches
+        + info.runtime_binary_json_vegetation_height_mismatches
         + info.runtime_binary_json_point_mismatches;
     info.runtime_binary_json_compare_ok = total == 0;
     info.runtime_binary_json_compare_reason = info.runtime_binary_json_compare_ok ? "ok" : "binary_json_mismatch";
@@ -1364,6 +1646,18 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
     runtime.info.structure_height_loaded = core.structure_height_present
         && runtime.structure_height.IsValid();
 
+    runtime.vegetation_type.width = runtime.info.width;
+    runtime.vegetation_type.height = runtime.info.height;
+    runtime.vegetation_type.cells = std::move(core.vegetation_type);
+    runtime.info.vegetation_type_loaded = core.vegetation_type_present
+        && runtime.vegetation_type.IsValid();
+
+    runtime.vegetation_height.width = runtime.info.width;
+    runtime.vegetation_height.height = runtime.info.height;
+    runtime.vegetation_height.cells = std::move(core.vegetation_height);
+    runtime.info.vegetation_height_loaded = core.vegetation_height_present
+        && runtime.vegetation_height.IsValid();
+
     runtime.movement_cost.width = runtime.info.width;
     runtime.movement_cost.height = runtime.info.height;
     runtime.movement_cost.cells.assign(core.movement_cost.begin(), core.movement_cost.end());
@@ -1421,6 +1715,23 @@ void BuildRuntimeTerrainOverview(RuntimeMap& runtime)
 }
 
 }  // namespace
+
+std::string_view ToString(RuntimeVegetationType type)
+{
+    switch (type) {
+        case RuntimeVegetationType::kNone:
+            return "none";
+        case RuntimeVegetationType::kTree:
+            return "tree";
+        case RuntimeVegetationType::kBush:
+            return "bush";
+        case RuntimeVegetationType::kShoreReed:
+            return "shore_reed";
+        case RuntimeVegetationType::kPuddleReed:
+            return "puddle_reed";
+    }
+    return "unknown";
+}
 
 bool RuntimeTileBounds::IsValid() const
 {
@@ -1501,6 +1812,26 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
             runtime.diagnostics);
         runtime.info.structure_height_loaded = structure_height_present
             && runtime.structure_height.IsValid();
+        bool vegetation_type_present = false;
+        bool vegetation_height_present = false;
+        runtime.vegetation_type = ReadVegetationTypeGrid(
+            package,
+            vegetation_type_present,
+            runtime.diagnostics);
+        runtime.vegetation_height = ReadVegetationHeightGrid(
+            package,
+            vegetation_height_present,
+            runtime.diagnostics);
+        const bool vegetation_valid = vegetation_type_present == vegetation_height_present
+            && (!vegetation_type_present
+                || ValidateVegetationGrids(
+                    runtime.vegetation_type,
+                    runtime.vegetation_height,
+                    runtime.diagnostics));
+        runtime.info.vegetation_type_loaded = vegetation_valid
+            && vegetation_type_present && runtime.vegetation_type.IsValid();
+        runtime.info.vegetation_height_loaded = vegetation_valid
+            && vegetation_height_present && runtime.vegetation_height.IsValid();
         ReadStartGoal(runtime, package);
     }
     runtime.info.terrain_loaded = runtime.terrain.IsValid();
@@ -1510,6 +1841,20 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
         runtime.structure_height.width = runtime.info.width;
         runtime.structure_height.height = runtime.info.height;
         runtime.structure_height.cells.assign(
+            ExpectedCellCount(runtime.info.width, runtime.info.height),
+            std::uint8_t{0});
+    }
+    if (!runtime.vegetation_type.IsValid()) {
+        runtime.vegetation_type.width = runtime.info.width;
+        runtime.vegetation_type.height = runtime.info.height;
+        runtime.vegetation_type.cells.assign(
+            ExpectedCellCount(runtime.info.width, runtime.info.height),
+            std::uint8_t{0});
+    }
+    if (!runtime.vegetation_height.IsValid()) {
+        runtime.vegetation_height.width = runtime.info.width;
+        runtime.vegetation_height.height = runtime.info.height;
+        runtime.vegetation_height.cells.assign(
             ExpectedCellCount(runtime.info.width, runtime.info.height),
             std::uint8_t{0});
     }
@@ -1523,6 +1868,7 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     UpdateStructureHeightStats(runtime);
     UpdateHeightRange(runtime);
     ReadWorldOverlayData(runtime, package);
+    UpdateVegetationStats(runtime);
     ValidateRuntimeMap(runtime);
     return runtime;
 }
@@ -1550,6 +1896,8 @@ std::string ToLogString(const RuntimeMap& map)
         out << " structure_2=" << map.info.structure_height_2;
         out << " structure_3=" << map.info.structure_height_3;
     }
+    out << " vegetation_type=" << (map.info.vegetation_type_loaded ? "loaded" : "legacy");
+    out << " vegetation_height=" << (map.info.vegetation_height_loaded ? "loaded" : "legacy");
     out << " movement=" << (map.info.movement_cost_loaded ? "loaded" : "missing");
     out << " projectile_block=" << (map.info.projectile_block_loaded ? "loaded" : "missing");
     out << " vision_block=" << (map.info.vision_block_loaded ? "loaded" : "missing");
@@ -1560,6 +1908,10 @@ std::string ToLogString(const RuntimeMap& map)
     out << " object_markers=" << map.info.object_markers;
     out << " runtime_objects=" << map.info.runtime_objects;
     out << " vegetation_markers=" << map.info.vegetation_markers;
+    out << " vegetation_trees=" << map.info.vegetation_trees;
+    out << " vegetation_bushes=" << map.info.vegetation_bushes;
+    out << " vegetation_shore_reeds=" << map.info.vegetation_shore_reeds;
+    out << " vegetation_puddle_reeds=" << map.info.vegetation_puddle_reeds;
     out << " places=" << map.info.places;
     out << " markers=" << map.info.markers;
     if (map.info.runtime_binary_checked) {
@@ -1585,6 +1937,10 @@ std::string ToLogString(const RuntimeMap& map)
             out << " height_mismatch=" << map.info.runtime_binary_json_height_mismatches;
             out << " structure_height_mismatch="
                 << map.info.runtime_binary_json_structure_height_mismatches;
+            out << " vegetation_type_mismatch="
+                << map.info.runtime_binary_json_vegetation_type_mismatches;
+            out << " vegetation_height_mismatch="
+                << map.info.runtime_binary_json_vegetation_height_mismatches;
             out << " point_mismatch=" << map.info.runtime_binary_json_point_mismatches;
         }
         out << " json_load_ms=" << map.info.runtime_binary_json_load_ms;

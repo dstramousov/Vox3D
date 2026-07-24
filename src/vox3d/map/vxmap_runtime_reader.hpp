@@ -63,9 +63,10 @@ struct VxmapRuntimeValidationReport {
  * @brief Core runtime grids decoded from a validated vxmap-runtime-v1 file.
  *
  * This structure contains the complete dense binary core covered by v1:
- * terrain, elevation, movement cost, collision, projectile/vision blocking,
- * cover, concealment, and start/goal. Higher-level semantic map data stays in
- * JSON and is loaded by RuntimeMap as before.
+ * terrain, elevation, structure and vegetation heights, vegetation types,
+ * movement cost, collision, projectile/vision blocking, cover, concealment,
+ * and start/goal. Higher-level semantic map data stays in JSON and is loaded
+ * by RuntimeMap as before.
  */
 struct VxmapRuntimeCore {
     bool loaded = false;
@@ -87,6 +88,10 @@ struct VxmapRuntimeCore {
     std::vector<std::uint8_t> concealment;
     std::vector<std::uint8_t> structure_height;
     bool structure_height_present = false;
+    std::vector<std::uint8_t> vegetation_type;
+    std::vector<std::uint8_t> vegetation_height;
+    bool vegetation_type_present = false;
+    bool vegetation_height_present = false;
     std::optional<TileCoord> start;
     std::optional<TileCoord> goal;
     int decode_ms = 0;

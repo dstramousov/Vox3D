@@ -651,3 +651,11 @@
 - Added exposed ruin tops and side walls with cross-chunk neighbor checks and a dedicated brown-gray ruin color in traversal and geographic modes.
 - Moved 3D picking, selection markers, collision markers, object markers, and contextual 2D-to-3D camera focus to the visible top of structure tiles.
 - Added ruin top/wall mesh counters to logs and the Stats overlay while preserving zero-height behavior for legacy maps.
+
+## v0.5.62 -> v0.5.63
+
+- Added `map-package-map-v13` / VXMAP 1.2 fast-path support for required regional vegetation type and height sections.
+- Added exact JSON fallback loading and optional binary-versus-JSON parity checks for both vegetation grids.
+- Rebuilt 2D vegetation markers from map-provided type and height data while preserving the legacy visual-file fallback for older maps.
+- Exposed vegetation type, height, top level, type counts, and height distributions in Selection Info, Stats, and runtime logs.
+- Kept 3D vegetation rendering unchanged so the new format can be verified independently before geometry changes.

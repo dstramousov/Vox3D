@@ -683,9 +683,10 @@ void DrawVegetationOverlay(
         if (zoom >= kVegetationLabelThreshold) {
             const float font_size = 9.0F / zoom;
             const float spacing = 0.5F / zoom;
+            const std::string label = marker.type + " h" + std::to_string(marker.height);
             DrawTextEx(
                 GetFontDefault(),
-                marker.type.c_str(),
+                label.c_str(),
                 Vector2{
                     center.x + marker_size * 0.5F + 2.0F / zoom,
                     center.y - font_size * 0.5F,

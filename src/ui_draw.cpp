@@ -1018,6 +1018,18 @@ struct TextPanelRow {
             + std::to_string(
                 tile.elevation + 1 + static_cast<int>(tile.structure_height)));
     }
+    if (tile.vegetation_available) {
+        lines.push_back("  Vegetation: " + std::string(ToString(tile.vegetation_type)));
+        if (tile.vegetation_type != RuntimeVegetationType::kNone) {
+            lines.push_back(
+                "  Vegetation height: "
+                + std::to_string(static_cast<int>(tile.vegetation_height)));
+            lines.push_back(
+                "  Vegetation top: "
+                + std::to_string(
+                    tile.elevation + 1 + static_cast<int>(tile.vegetation_height)));
+        }
+    }
     lines.push_back("  Collision: " + std::string(tile.blocked ? "blocked" : "free"));
     if (tile.movement_cost_available) {
         lines.push_back("  Movement cost: "
@@ -1086,22 +1098,24 @@ struct TextPanelRow {
         lines.push_back("  Objects: +" + std::to_string(object_count - 6) + " more");
     }
 
-    int vegetation_count = 0;
-    for (const RuntimeObjectMarker& marker : workspace_state.runtime_map.object_markers) {
-        if (!marker.visual_only || marker.role != "vegetation"
-            || !SameTile(marker.tile, tile.tile)) {
-            continue;
+    if (!tile.vegetation_available) {
+        int vegetation_count = 0;
+        for (const RuntimeObjectMarker& marker : workspace_state.runtime_map.object_markers) {
+            if (!marker.visual_only || marker.role != "vegetation"
+                || !SameTile(marker.tile, tile.tile)) {
+                continue;
+            }
+            ++vegetation_count;
+            if (vegetation_count <= 6) {
+                lines.push_back("  Vegetation: " + marker.type);
+            }
         }
-        ++vegetation_count;
-        if (vegetation_count <= 6) {
-            lines.push_back("  Vegetation: " + marker.type);
+        if (vegetation_count == 0) {
+            lines.push_back("  Vegetation: none");
+        } else if (vegetation_count > 6) {
+            lines.push_back(
+                "  Vegetation: +" + std::to_string(vegetation_count - 6) + " more");
         }
-    }
-    if (vegetation_count == 0) {
-        lines.push_back("  Vegetation: none");
-    } else if (vegetation_count > 6) {
-        lines.push_back(
-            "  Vegetation: +" + std::to_string(vegetation_count - 6) + " more");
     }
 
     int place_count = 0;
@@ -2492,6 +2506,20 @@ struct StatsOverlaySection {
         {"Height 1", std::to_string(workspace.runtime_map.info.structure_height_1)},
         {"Height 2", std::to_string(workspace.runtime_map.info.structure_height_2)},
         {"Height 3", std::to_string(workspace.runtime_map.info.structure_height_3)},
+    });
+
+    add("Vegetation", {
+        {"Source", workspace.runtime_map.info.vegetation_height_loaded ? "map grids" : "legacy visual"},
+        {"Trees", std::to_string(workspace.runtime_map.info.vegetation_trees)},
+        {"Bushes", std::to_string(workspace.runtime_map.info.vegetation_bushes)},
+        {"Shore reeds", std::to_string(workspace.runtime_map.info.vegetation_shore_reeds)},
+        {"Puddle reeds", std::to_string(workspace.runtime_map.info.vegetation_puddle_reeds)},
+        {"Tree H2 / H3", std::to_string(workspace.runtime_map.info.vegetation_tree_height_2)
+            + " / " + std::to_string(workspace.runtime_map.info.vegetation_tree_height_3)},
+        {"Tree H4 / H5", std::to_string(workspace.runtime_map.info.vegetation_tree_height_4)
+            + " / " + std::to_string(workspace.runtime_map.info.vegetation_tree_height_5)},
+        {"Bush H1 / H2", std::to_string(workspace.runtime_map.info.vegetation_bush_height_1)
+            + " / " + std::to_string(workspace.runtime_map.info.vegetation_bush_height_2)},
     });
 
     if (!workspace.show_3d_preview) {
