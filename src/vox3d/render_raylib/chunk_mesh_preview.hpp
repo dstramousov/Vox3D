@@ -199,6 +199,42 @@ struct RaylibChunkMeshPreviewStats {
 };
 
 /**
+ * @brief Upload and last-draw statistics for static vegetation chunk meshes.
+ */
+struct RaylibVegetationMeshStats {
+    bool uploaded = false;
+    std::uint64_t models = 0;
+    std::uint64_t tree_models = 0;
+    std::uint64_t bush_models = 0;
+    std::uint64_t pillars = 0;
+    std::uint64_t tree_pillars = 0;
+    std::uint64_t bush_pillars = 0;
+    std::uint64_t faces = 0;
+    std::uint64_t vertices = 0;
+    std::uint64_t indices = 0;
+    std::uint64_t last_draw_calls = 0;
+    std::uint64_t last_drawn_pillars = 0;
+
+    /**
+     * @brief Returns true when at least one vegetation model is uploaded.
+     *
+     * @return True if static vegetation GPU resources are available.
+     */
+    [[nodiscard]] bool IsValid() const;
+};
+
+/**
+ * @brief One uploaded tree or bush model for a single resident chunk.
+ */
+struct RaylibUploadedVegetationModel {
+    Model model{};
+    ChunkCoord coord{};
+    RuntimeObjectMarkerKind kind = RuntimeObjectMarkerKind::kUnknown;
+    std::uint64_t pillars = 0;
+    std::uint64_t faces = 0;
+};
+
+/**
  * @brief One uploaded raylib model plus the chunk metadata needed for culling.
  */
 struct RaylibUploadedChunkModel {
@@ -240,9 +276,13 @@ public:
      *
      * @param build_result Renderer-independent chunk mesh data.
      * @param color_mode Vertex-color mode applied during upload.
+     * @param runtime_map Optional runtime map used to build static tree and bush meshes.
      * @return True if at least one non-empty chunk model was uploaded.
      */
-    [[nodiscard]] bool Upload(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode);
+    [[nodiscard]] bool Upload(
+        const ChunkMeshBuildResult& build_result,
+        RaylibChunkMeshColorMode color_mode,
+        const RuntimeMap* runtime_map = nullptr);
 
     /**
      * @brief Uploads additional chunk mesh data without unloading existing models.
@@ -253,9 +293,13 @@ public:
      *
      * @param build_result Renderer-independent chunk mesh data for new chunks.
      * @param color_mode Vertex-color mode applied during upload.
+     * @param runtime_map Optional runtime map used to build static tree and bush meshes.
      * @return True if at least one additional model was uploaded.
      */
-    [[nodiscard]] bool UploadAdditional(const ChunkMeshBuildResult& build_result, RaylibChunkMeshColorMode color_mode);
+    [[nodiscard]] bool UploadAdditional(
+        const ChunkMeshBuildResult& build_result,
+        RaylibChunkMeshColorMode color_mode,
+        const RuntimeMap* runtime_map = nullptr);
 
     /**
      * @brief Unloads uploaded models for the specified chunk coordinates.
@@ -367,10 +411,19 @@ public:
      */
     [[nodiscard]] const RaylibChunkMeshPreviewStats& Stats() const;
 
+    /**
+     * @brief Returns static vegetation upload and last-draw statistics.
+     *
+     * @return Vegetation mesh statistics.
+     */
+    [[nodiscard]] const RaylibVegetationMeshStats& VegetationStats() const;
+
 private:
     std::vector<RaylibUploadedChunkModel> chunks_;
+    std::vector<RaylibUploadedVegetationModel> vegetation_models_;
     std::vector<ChunkVisibilityItem> visibility_items_;
     RaylibChunkMeshPreviewStats stats_;
+    mutable RaylibVegetationMeshStats vegetation_stats_;
 };
 
 /**
@@ -380,6 +433,14 @@ private:
  * @return Compact human-readable summary.
  */
 [[nodiscard]] std::string ToLogString(const RaylibChunkMeshPreviewStats& stats);
+
+/**
+ * @brief Builds a compact stable log string for static vegetation diagnostics.
+ *
+ * @param stats Vegetation mesh statistics.
+ * @return Compact human-readable summary.
+ */
+[[nodiscard]] std::string ToLogString(const RaylibVegetationMeshStats& stats);
 
 /**
  * @brief Builds a compact stable log string for visibility diagnostics.

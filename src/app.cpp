@@ -1820,6 +1820,7 @@ void App::AdvanceProgressiveChunkBuild(float dt)
             out << " lookahead=" << static_cast<int>(std::lround(priority.lookahead_x)) << ','
                 << static_cast<int>(std::lround(priority.lookahead_y));
             out << " models=" << chunk_mesh_preview_.Stats().models;
+            out << " vegetation_models=" << chunk_mesh_preview_.VegetationStats().models;
             logger_.Info("progressive_build", out.str());
             workspace_.progressive_log_timer = 0.0F;
         }
@@ -1933,7 +1934,10 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         } else {
             active_batch = ToChunkMeshBuildResult(batch_simple);
         }
-        uploaded = chunk_mesh_preview_.UploadAdditional(active_batch, ToRaylibColorMode(workspace_.color_mode));
+        uploaded = chunk_mesh_preview_.UploadAdditional(
+            active_batch,
+            ToRaylibColorMode(workspace_.color_mode),
+            &workspace_.runtime_map);
         if (!uploaded) {
             logger_.Warn("progressive_build", "batch produced no uploaded chunks");
         }
@@ -1978,6 +1982,7 @@ void App::AdvanceProgressiveChunkBuild(float dt)
         out << " lookahead=" << static_cast<int>(std::lround(priority.lookahead_x)) << ','
             << static_cast<int>(std::lround(priority.lookahead_y));
         out << " models=" << chunk_mesh_preview_.Stats().models;
+        out << " vegetation_models=" << chunk_mesh_preview_.VegetationStats().models;
         logger_.Info("progressive_build", out.str());
         workspace_.progressive_log_timer = 0.0F;
     }
@@ -2435,13 +2440,17 @@ void App::RunDirtyRebuildProbe(std::string_view reason)
 
 void App::UploadActiveChunkMesh(std::string_view reason)
 {
-    const bool uploaded = chunk_mesh_preview_.Upload(workspace_.chunk_meshes, ToRaylibColorMode(workspace_.color_mode));
+    const bool uploaded = chunk_mesh_preview_.Upload(
+        workspace_.chunk_meshes,
+        ToRaylibColorMode(workspace_.color_mode),
+        &workspace_.runtime_map);
     RefreshMeshOptimizationStats();
     UpdateVisibilityStats();
     logger_.Info(
         "render3d",
         "upload reason=" + std::string(reason) + " color=" + std::string(ToString(workspace_.color_mode)) + " "
-            + ToLogString(chunk_mesh_preview_.Stats()));
+            + ToLogString(chunk_mesh_preview_.Stats()) + " vegetation_"
+            + ToLogString(chunk_mesh_preview_.VegetationStats()));
     logger_.Info("mesh_stats", ToLogString(workspace_.mesh_stats));
     if (!uploaded) {
         logger_.Warn("render3d", "3D preview mesh upload failed or produced no drawable chunks");

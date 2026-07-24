@@ -672,3 +672,11 @@
 - Replaced broad Geographic elevation bands with one explicit terrain color for every supported level from -5 through 20.
 - Preserved the geographic water-to-lowland-to-highland progression while making adjacent terrain terraces visually distinguishable.
 - Kept ruin, tree, bush, traversal, chunk, and face-type colors unchanged.
+
+## v0.5.65 -> v0.5.66
+
+- Replaced per-frame `DrawCubeV` calls for map-provided trees and bushes with static per-chunk GPU meshes.
+- Kept each 0.50 x 0.50 vegetation pillar visually separate while preserving map-provided heights and existing colors.
+- Reused the existing chunk visibility, progressive residency, and eviction pipeline for vegetation mesh upload, draw, and unload.
+- Skipped the 53k vegetation-marker scan when only tree and bush filters are enabled, while preserving legacy maps and reed/runtime-object drawing.
+- Added vegetation mesh upload and last-draw diagnostics for model, pillar, face, and draw-call counts.
