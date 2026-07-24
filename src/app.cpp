@@ -1484,9 +1484,21 @@ void App::HandleWorkspaceInput(float dt)
                 "hotkey_end");
         }
         const Vector2 pick_mouse = GetMousePosition();
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
-            && PointInRect(pick_mouse, layout_cache_.workspace.map_overview)) {
-            SelectTileAtMouse(pick_mouse, "mouse_2d");
+        const bool mouse_in_map = PointInRect(
+            pick_mouse,
+            layout_cache_.workspace.map_overview);
+        if (mouse_in_map && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            SelectTileAtMouse(pick_mouse, "mouse_2d_right_select");
+        }
+        if (mouse_in_map && IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
+            const std::optional<TileCoord> picked_tile = map_2d_view_.ScreenToTile(
+                pick_mouse,
+                layout_cache_.workspace.map_overview);
+            if (picked_tile.has_value()) {
+                SelectTileAtMouse(pick_mouse, "mouse_2d_middle_info");
+                OpenSelectionInfoOverlay("mouse_2d_middle_info");
+                return;
+            }
         }
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
     } else {

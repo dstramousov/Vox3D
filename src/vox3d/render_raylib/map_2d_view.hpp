@@ -75,7 +75,7 @@ struct Map2DOverlayOptions {
  *
  * The view owns one-pixel-per-tile diagnostic textures and a Camera2D state.
  * Map coordinates use tile space where x grows right and y grows down. Mouse
- * wheel zoom is anchored at the cursor and middle-button dragging pans the map.
+ * wheel zoom is anchored at the cursor and left-button dragging pans the map.
  */
 class Map2DView {
 public:
@@ -130,7 +130,7 @@ public:
     void Unload();
 
     /**
-     * @brief Updates hover, wheel zoom, and middle-button panning.
+     * @brief Updates hover, wheel zoom, and left-button panning.
      *
      * @param viewport Screen-space rectangle used by the 2D map.
      * @param enabled True when the 2D workspace mode is active.

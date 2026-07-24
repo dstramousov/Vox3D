@@ -569,3 +569,11 @@
 - Enabled independent 2D overlays for Objects, Places, and Markers with viewport culling and zoom-dependent detail.
 - Added object footprints, collision footprints, orientation hints, place bounds, entrances, marker glyphs, and labels at inspection zoom.
 - Extended the `I` selection overlay with objects, places, and markers touching the selected tile.
+
+
+## v0.5.50 -> v0.5.51
+
+- Changed 2D map panning to left-button dragging while preserving cursor-anchored wheel zoom.
+- Changed 2D tile selection to right-click so selection no longer conflicts with map dragging.
+- Added middle-click tile inspection that selects the clicked tile and opens the existing `I` information overlay immediately.
+- Updated workspace help text for the new 2D mouse controls.

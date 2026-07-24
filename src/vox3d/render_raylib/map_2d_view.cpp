@@ -956,7 +956,7 @@ void Map2DView::Update(Rectangle viewport, bool enabled)
         }
     }
 
-    panning_ = mouse_in_viewport && IsMouseButtonDown(MOUSE_BUTTON_MIDDLE);
+    panning_ = mouse_in_viewport && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
     if (panning_) {
         const Vector2 delta = GetMouseDelta();
         target_.x -= delta.x / std::max(zoom_, 0.0001F);
