@@ -906,9 +906,24 @@ void DrawHeightOverlay(const RuntimeMap& map)
     }
 }
 
-[[nodiscard]] Color ObjectMarkerColor(RuntimeObjectMarkerKind kind)
+[[nodiscard]] bool UsesVegetationPillar(const RuntimeObjectMarker& marker)
 {
-    switch (kind) {
+    return marker.visual_only
+        && marker.role == "vegetation"
+        && (marker.kind == RuntimeObjectMarkerKind::kTree
+            || marker.kind == RuntimeObjectMarkerKind::kBush);
+}
+
+[[nodiscard]] Color ObjectMarkerColor(const RuntimeObjectMarker& marker)
+{
+    if (UsesVegetationPillar(marker)) {
+        if (marker.kind == RuntimeObjectMarkerKind::kTree) {
+            return Color{10, 66, 28, 255};
+        }
+        return Color{92, 188, 82, 245};
+    }
+
+    switch (marker.kind) {
         case RuntimeObjectMarkerKind::kTree:
             return Color{24, 118, 54, 235};
         case RuntimeObjectMarkerKind::kBush:
@@ -931,8 +946,14 @@ void DrawHeightOverlay(const RuntimeMap& map)
     return Color{220, 94, 184, 220};
 }
 
-[[nodiscard]] Vector3 ObjectMarkerSize()
+[[nodiscard]] Vector3 ObjectMarkerSize(const RuntimeObjectMarker& marker)
 {
+    if (UsesVegetationPillar(marker)) {
+        constexpr float kVegetationPillarWidth = 0.50F;
+        const float height = static_cast<float>(std::max(1, marker.height));
+        return Vector3{kVegetationPillarWidth, height, kVegetationPillarWidth};
+    }
+
     constexpr float kMarkerCubeSize = 0.34F;
     return Vector3{kMarkerCubeSize, kMarkerCubeSize, kMarkerCubeSize};
 }
@@ -1031,13 +1052,14 @@ void DrawObjectMarkersOverlay(
             continue;
         }
 
-        const Color color = ObjectMarkerColor(marker.kind);
-        const Vector3 size = ObjectMarkerSize();
+        const Color color = ObjectMarkerColor(marker);
+        const Vector3 size = ObjectMarkerSize(marker);
         const float terrain_level = TerrainTopLevel(map, marker.tile);
+        const float base_offset = UsesVegetationPillar(marker) ? 0.0F : 0.20F;
         const Vector3 base = TileCenterWorld(
             marker.tile.x,
             marker.tile.y,
-            terrain_level + 0.20F,
+            terrain_level + base_offset,
             build_result.info.map_width,
             build_result.info.map_height);
         const Vector3 center{base.x, base.y + size.y * 0.5F, base.z};

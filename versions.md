@@ -659,3 +659,10 @@
 - Rebuilt 2D vegetation markers from map-provided type and height data while preserving the legacy visual-file fallback for older maps.
 - Exposed vegetation type, height, top level, type counts, and height distributions in Selection Info, Stats, and runtime logs.
 - Kept 3D vegetation rendering unchanged so the new format can be verified independently before geometry changes.
+
+## v0.5.63 -> v0.5.64
+
+- Rendered map-provided tree and bush vegetation as separate centered vertical pillars using each marker's stored height.
+- Limited vegetation pillars to a 0.50 x 0.50 tile footprint so neighboring plants remain visually separate.
+- Added a very dark green tree color and a light green bush color while leaving reeds and non-vegetation runtime-object markers unchanged.
+- Kept the existing 3D Trees and Bushes filters, chunk visibility checks, terrain-relative placement, and legacy vegetation-height fallback behavior.
