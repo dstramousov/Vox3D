@@ -24,6 +24,7 @@ constexpr Color kDisabledText{96, 100, 112, 255};
 constexpr Color kMutedText{144, 150, 164, 255};
 constexpr Color kModalDim{0, 0, 0, 150};
 constexpr Color kAccent{255, 205, 96, 255};
+constexpr Color kHelpHotkey{255, 170, 72, 255};
 
 constexpr Color kEditorBackground{7, 118, 151, 255};
 constexpr Color kEditorViewport{152, 152, 149, 255};
@@ -1217,6 +1218,35 @@ struct SelectionInfoOverlayGeometry {
     return geometry;
 }
 
+struct HelpControlLine
+{
+    std::string_view hotkey;
+    std::string_view action;
+};
+
+[[nodiscard]] std::optional<HelpControlLine> ParseHelpControlLine(
+    std::string_view line)
+{
+    if (line.size() < 2 || line.rfind("  ", 0) != 0) {
+        return std::nullopt;
+    }
+
+    const std::string_view content = line.substr(2);
+    const std::size_t separator = content.find("  ");
+    if (separator == std::string_view::npos) {
+        return HelpControlLine{content, {}};
+    }
+
+    std::size_t action_start = separator;
+    while (action_start < content.size() && content[action_start] == ' ') {
+        ++action_start;
+    }
+    return HelpControlLine{
+        content.substr(0, separator),
+        content.substr(action_start),
+    };
+}
+
 // Keep this list synchronized with workspace input handling whenever controls change.
 [[nodiscard]] std::vector<std::string> BuildHelpPanelLines()
 {
@@ -1253,7 +1283,7 @@ struct SelectionInfoOverlayGeometry {
         "  S (mouse free)   Statistics",
         "  F1               Help",
         "  F3 / P           Start path pick",
-        "  LMB in path pick Select Start, then Goal",
+        "  LMB in path pick  Select Start, then Goal",
         "  RMB / Esc        Cancel path pick",
         "  X                Clear path probe",
         "  T                Toggle transitions",
@@ -2730,21 +2760,67 @@ void DrawHelpOverlay(
         static_cast<int>(std::floor(geometry.content.y)),
         static_cast<int>(std::ceil(geometry.content.width)),
         static_cast<int>(std::ceil(geometry.content.height)));
+    const float body_spacing = FontSpacing(geometry.body_font_size);
+    float hotkey_column_width = 0.0F;
+    for (const std::string& line : lines) {
+        const std::optional<HelpControlLine> control =
+            ParseHelpControlLine(line);
+        if (!control.has_value()) {
+            continue;
+        }
+        hotkey_column_width = std::max(
+            hotkey_column_width,
+            Measure(
+                fonts.text,
+                std::string(control->hotkey),
+                geometry.body_font_size,
+                body_spacing).x);
+    }
+
+    const float column_gap = std::max(18.0F, geometry.padding * 0.55F);
+    const float action_x = geometry.content.x + hotkey_column_width + column_gap;
+
     float line_y = geometry.content.y;
     const int last_row = std::min(
         static_cast<int>(lines.size()),
         first_row + geometry.visible_rows);
     for (int index = first_row; index < last_row; ++index) {
         const std::string& line = lines[static_cast<std::size_t>(index)];
-        if (!line.empty()) {
-            const bool section_header = line.rfind("  ", 0) != 0;
+        if (line.empty()) {
+            line_y += geometry.line_height;
+            continue;
+        }
+
+        const std::optional<HelpControlLine> control =
+            ParseHelpControlLine(line);
+        if (!control.has_value()) {
             DrawTextEx(
                 fonts.text,
                 line.c_str(),
                 Vector2{geometry.content.x, line_y},
                 geometry.body_font_size,
-                FontSpacing(geometry.body_font_size),
-                section_header ? kAccent : kText);
+                body_spacing,
+                kAccent);
+        } else {
+            const std::string hotkey(control->hotkey);
+            DrawTextEx(
+                fonts.text,
+                hotkey.c_str(),
+                Vector2{geometry.content.x, line_y},
+                geometry.body_font_size,
+                body_spacing,
+                kHelpHotkey);
+
+            if (!control->action.empty()) {
+                const std::string action(control->action);
+                DrawTextEx(
+                    fonts.text,
+                    action.c_str(),
+                    Vector2{action_x, line_y},
+                    geometry.body_font_size,
+                    body_spacing,
+                    kText);
+            }
         }
         line_y += geometry.line_height;
     }

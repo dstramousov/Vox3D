@@ -608,3 +608,9 @@
 - Separated all documented workspace controls into a complete 2D section followed by a complete 3D section.
 - Made Help mutually exclusive with Selection Info and Stats, with `Esc` or `F1` closing the overlay.
 - Established Help content as part of the hotkey contract so future control changes must update it in the same patch.
+
+## v0.5.56 -> v0.5.57
+
+- Aligned Help overlay actions to one fixed table column instead of spacing rows manually.
+- Highlighted the hotkey column in orange while keeping descriptions in the normal text color.
+- Preserved separate 2D and 3D control sections, modal sizing, and scrolling behavior.
