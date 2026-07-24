@@ -525,6 +525,53 @@ constexpr std::uintmax_t kMaxRuntimeGridReadBytes = 64U * 1024U * 1024U;
     return grid;
 }
 
+[[nodiscard]] RuntimeGrid<std::uint8_t> ReadStructureHeightGrid(
+    const MapPackageInfo& package,
+    bool& source_present,
+    Diagnostics& diagnostics)
+{
+    RuntimeGrid<std::uint8_t> grid;
+    grid.width = package.width.value_or(0);
+    grid.height = package.height.value_or(0);
+
+    constexpr std::string_view kStructureHeightFile = "layers/structure_height.json";
+    const std::filesystem::path path = package.path / kStructureHeightFile;
+    source_present = Exists(path);
+    if (!source_present) {
+        grid.cells.assign(ExpectedCellCount(grid.width, grid.height), std::uint8_t{0});
+        return grid;
+    }
+
+    const std::string text = ReadTextFileLimited(path, kMaxRuntimeGridReadBytes, diagnostics);
+    if (text.empty()) {
+        return grid;
+    }
+
+    RuntimeGrid<int> parsed = ParseIntegerRowsGrid(
+        text,
+        grid.width,
+        grid.height,
+        kStructureHeightFile,
+        "",
+        diagnostics);
+    if (!parsed.IsValid()) {
+        return grid;
+    }
+
+    grid.cells.reserve(parsed.cells.size());
+    for (int value : parsed.cells) {
+        if (value < 0 || value > 3) {
+            diagnostics.AddWarning(
+                "runtime structure height value outside supported range source="
+                + std::string(kStructureHeightFile) + " value=" + std::to_string(value));
+            grid.cells.clear();
+            return grid;
+        }
+        grid.cells.push_back(static_cast<std::uint8_t>(value));
+    }
+    return grid;
+}
+
 [[nodiscard]] RuntimeGrid<int> ReadHeightGrid(const MapPackageInfo& package, Diagnostics& diagnostics)
 {
     constexpr std::string_view kRuntimeFile = "runtime_grids.json";
@@ -1060,6 +1107,9 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
     if (!runtime.height.IsValid()) {
         runtime.diagnostics.AddWarning("runtime height grid is not loaded");
     }
+    if (runtime.info.structure_height_loaded && !runtime.structure_height.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime structure height grid is not loaded");
+    }
     if (!runtime.info.start_goal_loaded) {
         runtime.diagnostics.AddWarning("runtime start/goal points are not fully loaded");
     }
@@ -1075,10 +1125,47 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
     }));
 }
 
+void UpdateStructureHeightStats(RuntimeMap& runtime)
+{
+    runtime.info.structure_tiles = 0;
+    runtime.info.structure_height_1 = 0;
+    runtime.info.structure_height_2 = 0;
+    runtime.info.structure_height_3 = 0;
+    if (!runtime.structure_height.IsValid()) {
+        return;
+    }
+
+    for (const std::uint8_t value : runtime.structure_height.cells) {
+        switch (value) {
+            case 0U:
+                break;
+            case 1U:
+                ++runtime.info.structure_tiles;
+                ++runtime.info.structure_height_1;
+                break;
+            case 2U:
+                ++runtime.info.structure_tiles;
+                ++runtime.info.structure_height_2;
+                break;
+            case 3U:
+                ++runtime.info.structure_tiles;
+                ++runtime.info.structure_height_3;
+                break;
+            default:
+                runtime.diagnostics.AddWarning(
+                    "runtime structure height contains unsupported value="
+                    + std::to_string(static_cast<int>(value)));
+                return;
+        }
+    }
+}
+
 struct JsonRuntimeCore {
     RuntimeGrid<std::string> terrain;
     RuntimeGrid<std::uint8_t> collision;
     RuntimeGrid<int> height;
+    RuntimeGrid<std::uint8_t> structure_height;
+    bool structure_height_present = false;
     std::optional<TileCoord> start;
     std::optional<TileCoord> goal;
     bool start_goal_loaded = false;
@@ -1107,6 +1194,10 @@ struct JsonRuntimeCore {
     core.terrain = ReadTerrainGrid(package, core.diagnostics);
     core.collision = ReadCollisionGrid(package, core.diagnostics);
     core.height = ReadHeightGrid(package, core.diagnostics);
+    core.structure_height = ReadStructureHeightGrid(
+        package,
+        core.structure_height_present,
+        core.diagnostics);
 
     RuntimeMap start_goal_runtime;
     start_goal_runtime.info.width = info.width;
@@ -1127,6 +1218,9 @@ void ApplyJsonRuntimeCore(RuntimeMap& runtime, JsonRuntimeCore&& core)
     runtime.terrain = std::move(core.terrain);
     runtime.collision = std::move(core.collision);
     runtime.height = std::move(core.height);
+    runtime.structure_height = std::move(core.structure_height);
+    runtime.info.structure_height_loaded = core.structure_height_present
+        && runtime.structure_height.IsValid();
     runtime.movement_cost = RuntimeGrid<int>{};
     runtime.projectile_block = RuntimeGrid<std::uint8_t>{};
     runtime.vision_block = RuntimeGrid<std::uint8_t>{};
@@ -1172,7 +1266,8 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
     RuntimeMapInfo& info = runtime.info;
     info.runtime_binary_json_compare_checked = true;
 
-    if (!json_core.terrain.IsValid() || !json_core.collision.IsValid() || !json_core.height.IsValid()) {
+    if (!json_core.terrain.IsValid() || !json_core.collision.IsValid() || !json_core.height.IsValid()
+        || !json_core.structure_height.IsValid()) {
         info.runtime_binary_json_compare_ok = false;
         info.runtime_binary_json_compare_reason = "json_core_unavailable";
         return;
@@ -1181,6 +1276,9 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
     info.runtime_binary_json_terrain_mismatches = CountGridMismatches(runtime.terrain, json_core.terrain);
     info.runtime_binary_json_collision_mismatches = CountGridMismatches(runtime.collision, json_core.collision);
     info.runtime_binary_json_height_mismatches = CountGridMismatches(runtime.height, json_core.height);
+    info.runtime_binary_json_structure_height_mismatches = CountGridMismatches(
+        runtime.structure_height,
+        json_core.structure_height);
     info.runtime_binary_json_point_mismatches = 0;
     if (!SamePoint(runtime.info.start, json_core.start)) {
         ++info.runtime_binary_json_point_mismatches;
@@ -1192,6 +1290,7 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
     const std::size_t total = info.runtime_binary_json_terrain_mismatches
         + info.runtime_binary_json_collision_mismatches
         + info.runtime_binary_json_height_mismatches
+        + info.runtime_binary_json_structure_height_mismatches
         + info.runtime_binary_json_point_mismatches;
     info.runtime_binary_json_compare_ok = total == 0;
     info.runtime_binary_json_compare_reason = info.runtime_binary_json_compare_ok ? "ok" : "binary_json_mismatch";
@@ -1258,6 +1357,12 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
     runtime.height.width = runtime.info.width;
     runtime.height.height = runtime.info.height;
     runtime.height.cells.assign(core.elevation.begin(), core.elevation.end());
+
+    runtime.structure_height.width = runtime.info.width;
+    runtime.structure_height.height = runtime.info.height;
+    runtime.structure_height.cells = std::move(core.structure_height);
+    runtime.info.structure_height_loaded = core.structure_height_present
+        && runtime.structure_height.IsValid();
 
     runtime.movement_cost.width = runtime.info.width;
     runtime.movement_cost.height = runtime.info.height;
@@ -1389,11 +1494,25 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
         runtime.terrain = ReadTerrainGrid(package, runtime.diagnostics);
         runtime.collision = ReadCollisionGrid(package, runtime.diagnostics);
         runtime.height = ReadHeightGrid(package, runtime.diagnostics);
+        bool structure_height_present = false;
+        runtime.structure_height = ReadStructureHeightGrid(
+            package,
+            structure_height_present,
+            runtime.diagnostics);
+        runtime.info.structure_height_loaded = structure_height_present
+            && runtime.structure_height.IsValid();
         ReadStartGoal(runtime, package);
     }
     runtime.info.terrain_loaded = runtime.terrain.IsValid();
     runtime.info.collision_loaded = runtime.collision.IsValid();
     runtime.info.elevation_loaded = runtime.height.IsValid();
+    if (!runtime.structure_height.IsValid()) {
+        runtime.structure_height.width = runtime.info.width;
+        runtime.structure_height.height = runtime.info.height;
+        runtime.structure_height.cells.assign(
+            ExpectedCellCount(runtime.info.width, runtime.info.height),
+            std::uint8_t{0});
+    }
     runtime.info.movement_cost_loaded = runtime.movement_cost.IsValid();
     runtime.info.projectile_block_loaded = runtime.projectile_block.IsValid();
     runtime.info.vision_block_loaded = runtime.vision_block.IsValid();
@@ -1401,6 +1520,7 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     runtime.info.concealment_loaded = runtime.concealment.IsValid();
     BuildRuntimeTerrainOverview(runtime);
     runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
+    UpdateStructureHeightStats(runtime);
     UpdateHeightRange(runtime);
     ReadWorldOverlayData(runtime, package);
     ValidateRuntimeMap(runtime);
@@ -1423,6 +1543,13 @@ std::string ToLogString(const RuntimeMap& map)
         out << " blocked=" << map.info.blocked_cells;
     }
     out << " height=" << (map.info.elevation_loaded ? "loaded" : "missing");
+    out << " structure_height=" << (map.info.structure_height_loaded ? "loaded" : "default_zero");
+    if (map.info.structure_height_loaded) {
+        out << " structure_tiles=" << map.info.structure_tiles;
+        out << " structure_1=" << map.info.structure_height_1;
+        out << " structure_2=" << map.info.structure_height_2;
+        out << " structure_3=" << map.info.structure_height_3;
+    }
     out << " movement=" << (map.info.movement_cost_loaded ? "loaded" : "missing");
     out << " projectile_block=" << (map.info.projectile_block_loaded ? "loaded" : "missing");
     out << " vision_block=" << (map.info.vision_block_loaded ? "loaded" : "missing");
@@ -1456,6 +1583,8 @@ std::string ToLogString(const RuntimeMap& map)
             out << " terrain_mismatch=" << map.info.runtime_binary_json_terrain_mismatches;
             out << " collision_mismatch=" << map.info.runtime_binary_json_collision_mismatches;
             out << " height_mismatch=" << map.info.runtime_binary_json_height_mismatches;
+            out << " structure_height_mismatch="
+                << map.info.runtime_binary_json_structure_height_mismatches;
             out << " point_mismatch=" << map.info.runtime_binary_json_point_mismatches;
         }
         out << " json_load_ms=" << map.info.runtime_binary_json_load_ms;

@@ -995,6 +995,9 @@ bool App::Initialize()
         && workspace_.runtime_map.overview.IsValid()) {
         if (map_2d_view_.Load(workspace_.runtime_map)) {
             std::string loaded_layers = "terrain,elevation,collision";
+            if (map_2d_view_.IsLayerLoaded(Map2DBaseLayer::kStructureHeight)) {
+                loaded_layers += ",structure_height";
+            }
             if (map_2d_view_.IsLayerLoaded(Map2DBaseLayer::kMovementCost)) {
                 loaded_layers += ",movement";
             }
@@ -3296,6 +3299,9 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::kLayerElevation:
             workspace_.map_2d_base_layer = Map2DBaseLayer::kElevation;
+            break;
+        case WorkspacePanelItem::kLayerStructureHeight:
+            workspace_.map_2d_base_layer = Map2DBaseLayer::kStructureHeight;
             break;
         case WorkspacePanelItem::kLayerCollision:
             workspace_.map_2d_base_layer = Map2DBaseLayer::kCollision;

@@ -39,6 +39,8 @@ struct TileInspectResult {
     TileCoord tile;
     std::string terrain;
     int elevation = 0;
+    bool structure_height_available = false;
+    std::uint8_t structure_height = 0;
     bool blocked = false;
     bool movement_cost_available = false;
     int movement_cost = -1;

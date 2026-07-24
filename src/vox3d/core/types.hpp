@@ -26,6 +26,7 @@ struct LevelRange {
 enum class Map2DBaseLayer {
     kTerrain,
     kElevation,
+    kStructureHeight,
     kCollision,
     kMovementCost,
     kProjectileBlock,

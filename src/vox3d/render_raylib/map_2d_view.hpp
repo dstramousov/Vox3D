@@ -242,6 +242,7 @@ private:
 
     Texture2D terrain_texture_{};
     Texture2D elevation_texture_{};
+    Texture2D structure_height_texture_{};
     Texture2D collision_texture_{};
     Texture2D movement_cost_texture_{};
     Texture2D projectile_block_texture_{};

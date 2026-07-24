@@ -183,6 +183,7 @@ struct RuntimeMapInfo {
     std::string schema_version;
     bool terrain_loaded = false;
     bool elevation_loaded = false;
+    bool structure_height_loaded = false;
     bool collision_loaded = false;
     bool movement_cost_loaded = false;
     bool projectile_block_loaded = false;
@@ -209,10 +210,15 @@ struct RuntimeMapInfo {
     std::size_t runtime_binary_json_terrain_mismatches = 0;
     std::size_t runtime_binary_json_collision_mismatches = 0;
     std::size_t runtime_binary_json_height_mismatches = 0;
+    std::size_t runtime_binary_json_structure_height_mismatches = 0;
     std::size_t runtime_binary_json_point_mismatches = 0;
     int runtime_binary_json_load_ms = 0;
     int runtime_binary_json_compare_ms = 0;
     int blocked_cells = 0;
+    int structure_tiles = 0;
+    int structure_height_1 = 0;
+    int structure_height_2 = 0;
+    int structure_height_3 = 0;
     int object_markers = 0;
     int runtime_objects = 0;
     int vegetation_markers = 0;
@@ -240,6 +246,7 @@ struct RuntimeMap {
     RuntimeGrid<std::string> terrain;
     RuntimeGrid<std::uint8_t> collision;
     RuntimeGrid<int> height;
+    RuntimeGrid<std::uint8_t> structure_height;
     RuntimeGrid<int> movement_cost;
     RuntimeGrid<std::uint8_t> projectile_block;
     RuntimeGrid<std::uint8_t> vision_block;

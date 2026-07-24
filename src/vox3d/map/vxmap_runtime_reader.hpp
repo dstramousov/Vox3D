@@ -85,6 +85,8 @@ struct VxmapRuntimeCore {
     std::vector<std::uint8_t> vision_block;
     std::vector<std::uint8_t> cover;
     std::vector<std::uint8_t> concealment;
+    std::vector<std::uint8_t> structure_height;
+    bool structure_height_present = false;
     std::optional<TileCoord> start;
     std::optional<TileCoord> goal;
     int decode_ms = 0;

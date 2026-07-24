@@ -50,6 +50,10 @@ constexpr std::array<ElevationColorStop, 8> kElevationPalette{{
     ElevationColorStop{20, Color{221, 216, 203, 255}},
 }};
 
+constexpr Color kStructureHeight0{28, 31, 33, 255};
+constexpr Color kStructureHeight1{105, 100, 94, 255};
+constexpr Color kStructureHeight2{158, 137, 109, 255};
+constexpr Color kStructureHeight3{214, 177, 112, 255};
 constexpr Color kCollisionFree{62, 145, 86, 255};
 constexpr Color kCollisionBlocked{178, 58, 52, 255};
 constexpr Color kMovementBlocked{38, 40, 44, 255};
@@ -85,6 +89,13 @@ constexpr std::array<Map2DLegendEntry, 8> kElevationLegend{{
     Map2DLegendEntry{kElevationPalette[5].color, "10 high"},
     Map2DLegendEntry{kElevationPalette[6].color, "16 mountain"},
     Map2DLegendEntry{kElevationPalette[7].color, "20 peak"},
+}};
+
+constexpr std::array<Map2DLegendEntry, 4> kStructureHeightLegend{{
+    Map2DLegendEntry{kStructureHeight0, "No structure"},
+    Map2DLegendEntry{kStructureHeight1, "Height 1"},
+    Map2DLegendEntry{kStructureHeight2, "Height 2"},
+    Map2DLegendEntry{kStructureHeight3, "Height 3"},
 }};
 
 constexpr std::array<Map2DLegendEntry, 2> kCollisionLegend{{
@@ -192,6 +203,22 @@ constexpr std::array<Map2DLegendEntry, 3> kConcealmentLegend{{
         return InterpolateColor(lower.color, upper.color, amount);
     }
     return kElevationPalette.back().color;
+}
+
+[[nodiscard]] Color StructureHeightColor(std::uint8_t height)
+{
+    switch (height) {
+        case 0U:
+            return kStructureHeight0;
+        case 1U:
+            return kStructureHeight1;
+        case 2U:
+            return kStructureHeight2;
+        case 3U:
+            return kStructureHeight3;
+        default:
+            return Color{220, 60, 80, 255};
+    }
 }
 
 [[nodiscard]] Color CollisionColor(std::uint8_t collision)
@@ -811,6 +838,8 @@ std::span<const Map2DLegendEntry> Map2DLegendFor(
             return kTerrainLegend;
         case Map2DBaseLayer::kElevation:
             return kElevationLegend;
+        case Map2DBaseLayer::kStructureHeight:
+            return kStructureHeightLegend;
         case Map2DBaseLayer::kCollision:
             return kCollisionLegend;
         case Map2DBaseLayer::kMovementCost:
@@ -855,6 +884,7 @@ bool Map2DView::Load(const RuntimeMap& runtime_map)
     };
     if (!dimensions_match(runtime_map.height)
         || !dimensions_match(runtime_map.collision)
+        || !dimensions_match(runtime_map.structure_height)
         || !dimensions_match(runtime_map.movement_cost)
         || !dimensions_match(runtime_map.projectile_block)
         || !dimensions_match(runtime_map.vision_block)
@@ -883,6 +913,11 @@ bool Map2DView::Load(const RuntimeMap& runtime_map)
         Unload();
         last_load_error_ = "elevation_texture_upload_failed";
         return false;
+    }
+    if (runtime_map.info.structure_height_loaded && runtime_map.structure_height.IsValid()) {
+        structure_height_texture_ = upload_colors(
+            runtime_map.structure_height.cells,
+            StructureHeightColor);
     }
     collision_texture_ = upload_colors(runtime_map.collision.cells, CollisionColor);
     if (collision_texture_.id == 0) {
@@ -961,6 +996,7 @@ void Map2DView::Unload()
 {
     UnloadTextureIfLoaded(&terrain_texture_);
     UnloadTextureIfLoaded(&elevation_texture_);
+    UnloadTextureIfLoaded(&structure_height_texture_);
     UnloadTextureIfLoaded(&collision_texture_);
     UnloadTextureIfLoaded(&movement_cost_texture_);
     UnloadTextureIfLoaded(&projectile_block_texture_);
@@ -1344,6 +1380,8 @@ const Texture2D* Map2DView::TextureFor(Map2DBaseLayer base_layer) const
             return &terrain_texture_;
         case Map2DBaseLayer::kElevation:
             return &elevation_texture_;
+        case Map2DBaseLayer::kStructureHeight:
+            return &structure_height_texture_;
         case Map2DBaseLayer::kCollision:
             return &collision_texture_;
         case Map2DBaseLayer::kMovementCost:

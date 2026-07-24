@@ -98,6 +98,10 @@ TileInspectResult InspectTile(
     result.valid = true;
     result.terrain = map.terrain.cells[index];
     result.elevation = map.height.cells[index];
+    if (map.info.structure_height_loaded && map.structure_height.Contains(tile)) {
+        result.structure_height_available = true;
+        result.structure_height = map.structure_height.cells[index];
+    }
     result.blocked = map.collision.cells[index] != 0U;
     if (map.movement_cost.Contains(tile)) {
         result.movement_cost_available = true;
@@ -154,6 +158,11 @@ std::string ToLogString(const TileInspectResult& result)
 
     out << " terrain=" << result.terrain;
     out << " elevation=" << result.elevation;
+    if (result.structure_height_available) {
+        out << " structure_height=" << static_cast<int>(result.structure_height);
+        out << " structure_top="
+            << result.elevation + 1 + static_cast<int>(result.structure_height);
+    }
     out << " blocked=" << (result.blocked ? "yes" : "no");
     if (result.movement_cost_available) {
         out << " movement_cost=" << result.movement_cost;

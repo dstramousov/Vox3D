@@ -22,7 +22,7 @@ namespace {
 constexpr std::uint64_t kHeaderSize = 128;
 constexpr std::uint64_t kSectionEntrySize = 64;
 constexpr std::uint32_t kSupportedMajor = 1;
-constexpr std::uint32_t kSupportedMinor = 0;
+constexpr std::uint32_t kSupportedMinor = 1;
 constexpr std::uint32_t kEndianMarker = 0x01020304U;
 constexpr std::uint32_t kKnownHeaderFlags = 0x0000006FU;
 constexpr std::uint32_t kExpectedHeaderFlags = 0x0000004FU;
@@ -45,6 +45,7 @@ constexpr std::uint32_t kTypeProjectileBlockBits = 24;
 constexpr std::uint32_t kTypeVisionBlockBits = 25;
 constexpr std::uint32_t kTypeCoverGrid = 26;
 constexpr std::uint32_t kTypeConcealmentGrid = 27;
+constexpr std::uint32_t kTypeStructureHeightGrid = 28;
 constexpr std::uint32_t kTypeStartGoal = 30;
 
 constexpr std::array<std::uint32_t, 6> kRequiredGlobalSections{
@@ -56,7 +57,7 @@ constexpr std::array<std::uint32_t, 6> kRequiredGlobalSections{
     kTypeStartGoal,
 };
 
-constexpr std::array<std::uint32_t, 8> kRequiredRegionSections{
+constexpr std::array<std::uint32_t, 8> kRequiredRegionSectionsV10{
     kTypeTerrainGrid,
     kTypeElevationGrid,
     kTypeMovementGrid,
@@ -66,6 +67,19 @@ constexpr std::array<std::uint32_t, 8> kRequiredRegionSections{
     kTypeCoverGrid,
     kTypeConcealmentGrid,
 };
+
+constexpr std::array<std::uint32_t, 9> kRequiredRegionSectionsV11{
+    kTypeTerrainGrid,
+    kTypeElevationGrid,
+    kTypeMovementGrid,
+    kTypeCollisionBits,
+    kTypeProjectileBlockBits,
+    kTypeVisionBlockBits,
+    kTypeCoverGrid,
+    kTypeConcealmentGrid,
+    kTypeStructureHeightGrid,
+};
+
 
 struct Header {
     std::uint32_t format_major = 0;
@@ -85,6 +99,22 @@ struct Header {
     std::uint32_t header_crc32 = 0;
     std::uint32_t table_crc32 = 0;
 };
+
+[[nodiscard]] std::uint32_t RequiredRegionalSectionCount(const Header& header)
+{
+    return header.format_minor >= 1U
+        ? static_cast<std::uint32_t>(kRequiredRegionSectionsV11.size())
+        : static_cast<std::uint32_t>(kRequiredRegionSectionsV10.size());
+}
+
+[[nodiscard]] bool IsKnownRequiredRegionalSection(const Header& header, std::uint32_t section_type)
+{
+    if (std::find(kRequiredRegionSectionsV10.begin(), kRequiredRegionSectionsV10.end(), section_type)
+        != kRequiredRegionSectionsV10.end()) {
+        return true;
+    }
+    return header.format_minor >= 1U && section_type == kTypeStructureHeightGrid;
+}
 
 struct SectionEntry {
     std::uint32_t section_type = 0;
@@ -479,7 +509,9 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     const std::uint32_t expected_regions_x = (header.width_tiles + header.region_size_tiles - 1U) / header.region_size_tiles;
     const std::uint32_t expected_regions_y = (header.height_tiles + header.region_size_tiles - 1U) / header.region_size_tiles;
     const std::uint32_t expected_regions = expected_regions_x * expected_regions_y;
-    if (region_count != expected_regions || header.section_count != 6U + region_count * 8U) {
+    const std::uint32_t regional_section_count = RequiredRegionalSectionCount(header);
+    if (region_count != expected_regions
+        || header.section_count != 6U + region_count * regional_section_count) {
         Fail(report, "invalid_region_index");
         return false;
     }
@@ -489,8 +521,7 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
         if ((entry.section_flags & kSectionFlagRequired) != 0U) {
             const bool known_global = std::find(kRequiredGlobalSections.begin(), kRequiredGlobalSections.end(), entry.section_type)
                 != kRequiredGlobalSections.end();
-            const bool known_region = std::find(kRequiredRegionSections.begin(), kRequiredRegionSections.end(), entry.section_type)
-                != kRequiredRegionSections.end();
+            const bool known_region = IsKnownRequiredRegionalSection(header, entry.section_type);
             if (!known_global && !known_region) {
                 Fail(report, "unknown_required_section");
                 return false;
@@ -778,6 +809,7 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
         return false;
     }
     const std::uint32_t regions_x = (header.width_tiles + header.region_size_tiles - 1U) / header.region_size_tiles;
+    const std::uint32_t regional_section_count = RequiredRegionalSectionCount(header);
     regions.clear();
     regions.reserve(region_count);
     for (std::uint32_t i = 0; i < region_count; ++i) {
@@ -795,7 +827,8 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
         }
         if (region.region_id != i || region.region_x != i % regions_x || region.region_y != i / regions_x
             || region.width == 0 || region.height == 0 || region.tile_count != static_cast<std::uint32_t>(region.width) * region.height
-            || region.section_count != 8U || region.first_section_table_index != 6U + i * 8U) {
+            || region.section_count != regional_section_count
+            || region.first_section_table_index != 6U + i * regional_section_count) {
             reason = "invalid_region_index";
             return false;
         }
@@ -864,6 +897,8 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     core.vision_block.assign(tile_count, 0);
     core.cover.assign(tile_count, 0);
     core.concealment.assign(tile_count, 0);
+    core.structure_height.assign(tile_count, 0);
+    core.structure_height_present = header.format_minor >= 1U;
 
     for (const RegionRecord& region : regions) {
         const SectionEntry* terrain_grid = FindRegionalSection(entries, region, kTypeTerrainGrid);
@@ -874,9 +909,13 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
         const SectionEntry* vision_block_bits = FindRegionalSection(entries, region, kTypeVisionBlockBits);
         const SectionEntry* cover_grid = FindRegionalSection(entries, region, kTypeCoverGrid);
         const SectionEntry* concealment_grid = FindRegionalSection(entries, region, kTypeConcealmentGrid);
+        const SectionEntry* structure_height_grid = header.format_minor >= 1U
+            ? FindRegionalSection(entries, region, kTypeStructureHeightGrid)
+            : nullptr;
         if (terrain_grid == nullptr || elevation_grid == nullptr || movement_grid == nullptr
             || collision_bits == nullptr || projectile_block_bits == nullptr || vision_block_bits == nullptr
-            || cover_grid == nullptr || concealment_grid == nullptr) {
+            || cover_grid == nullptr || concealment_grid == nullptr
+            || (header.format_minor >= 1U && structure_height_grid == nullptr)) {
             core.fallback_reason = "missing_regional_grid";
             return false;
         }
@@ -888,7 +927,10 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             || projectile_block_bits->element_count != region.tile_count
             || vision_block_bits->element_count != region.tile_count
             || cover_grid->element_count != region.tile_count
-            || concealment_grid->element_count != region.tile_count) {
+            || concealment_grid->element_count != region.tile_count
+            || (structure_height_grid != nullptr
+                && (structure_height_grid->element_stride != 1U
+                    || structure_height_grid->element_count != region.tile_count))) {
             core.fallback_reason = "bad_regional_grid";
             return false;
         }
@@ -898,7 +940,9 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             || movement_grid->stored_size != expected_i16_size || collision_bits->stored_size != expected_bitset_size
             || projectile_block_bits->stored_size != expected_bitset_size
             || vision_block_bits->stored_size != expected_bitset_size
-            || cover_grid->stored_size != region.tile_count || concealment_grid->stored_size != region.tile_count) {
+            || cover_grid->stored_size != region.tile_count || concealment_grid->stored_size != region.tile_count
+            || (structure_height_grid != nullptr
+                && structure_height_grid->stored_size != region.tile_count)) {
             core.fallback_reason = "bad_regional_grid_size";
             return false;
         }
@@ -927,6 +971,15 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
                 core.vision_block[global_index] = BitsetValue(data, *vision_block_bits, local_index) ? 1U : 0U;
                 core.cover[global_index] = data[static_cast<std::size_t>(cover_grid->offset + local_index)];
                 core.concealment[global_index] = data[static_cast<std::size_t>(concealment_grid->offset + local_index)];
+                if (structure_height_grid != nullptr) {
+                    const std::uint8_t structure_height =
+                        data[static_cast<std::size_t>(structure_height_grid->offset + local_index)];
+                    if (structure_height > 3U) {
+                        core.fallback_reason = "bad_structure_height_grid";
+                        return false;
+                    }
+                    core.structure_height[global_index] = structure_height;
+                }
             }
         }
     }

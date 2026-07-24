@@ -635,3 +635,11 @@
 - Displayed the exact vegetation-marker count in the 2D side menu and Stats overlay.
 - Added vegetation entries to Selection Info for the selected tile while preserving runtime objects as a separate data source.
 - Rendered vegetation markers by type above the current 2D base layer, with labels available at close zoom levels.
+
+## v0.5.60 -> v0.5.61
+
+- Added full `structure_height` runtime support for `map-package-map-v12`, including JSON loading and legacy zero-filled fallback for older maps.
+- Added VXMAP 1.1 decoding for required regional section type 28 while preserving VXMAP 1.0 compatibility.
+- Added binary-versus-JSON parity checks and runtime statistics for ruin heights 1, 2, and 3.
+- Added a 2D `Ruin Height` base layer and exposed ground top, structure height, and structure top in Selection Info.
+- Kept 3D terrain geometry unchanged so the new format can be verified independently before ruin mesh generation.

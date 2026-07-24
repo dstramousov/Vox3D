@@ -114,6 +114,7 @@ enum class WorkspacePanelItem {
     k2DBaseLayerGroup,
     kLayerTerrain,
     kLayerElevation,
+    kLayerStructureHeight,
     kLayerCollision,
     kLayerMovementCost,
     kLayerProjectileBlock,

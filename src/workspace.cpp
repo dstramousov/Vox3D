@@ -181,6 +181,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "layer_terrain";
         case WorkspacePanelItem::kLayerElevation:
             return "layer_elevation";
+        case WorkspacePanelItem::kLayerStructureHeight:
+            return "layer_structure_height";
         case WorkspacePanelItem::kLayerCollision:
             return "layer_collision";
         case WorkspacePanelItem::kLayerMovementCost:
@@ -805,6 +807,11 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             1,
             workspace.runtime_map.info.elevation_loaded,
             workspace.map_2d_base_layer == Map2DBaseLayer::kElevation));
+        items.push_back(Radio(
+            Item::kLayerStructureHeight,
+            1,
+            workspace.runtime_map.info.structure_height_loaded,
+            workspace.map_2d_base_layer == Map2DBaseLayer::kStructureHeight));
         items.push_back(Radio(
             Item::kLayerCollision,
             1,

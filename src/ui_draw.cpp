@@ -330,6 +330,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "Terrain";
         case Map2DBaseLayer::kElevation:
             return "Elevation";
+        case Map2DBaseLayer::kStructureHeight:
+            return "Ruin Height";
         case Map2DBaseLayer::kCollision:
             return "Collision";
         case Map2DBaseLayer::kMovementCost:
@@ -369,6 +371,10 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return map.terrain.IsValid() ? map.terrain.cells[index] : "unavailable";
         case Map2DBaseLayer::kElevation:
             return map.height.IsValid() ? std::to_string(map.height.cells[index]) : "unavailable";
+        case Map2DBaseLayer::kStructureHeight:
+            return map.info.structure_height_loaded && map.structure_height.IsValid()
+                ? std::to_string(static_cast<int>(map.structure_height.cells[index]))
+                : "unavailable";
         case Map2DBaseLayer::kCollision:
             return map.collision.IsValid()
                 ? (map.collision.cells[index] == 0U ? "passable" : "blocked")
@@ -1000,6 +1006,16 @@ struct TextPanelRow {
     lines.push_back("  Tile: " + TileCoordText(tile.tile));
     lines.push_back("  Terrain: " + tile.terrain);
     lines.push_back("  Elevation: " + std::to_string(tile.elevation));
+    lines.push_back("  Ground top: " + std::to_string(tile.elevation + 1));
+    if (tile.structure_height_available) {
+        lines.push_back(
+            "  Structure height: "
+            + std::to_string(static_cast<int>(tile.structure_height)));
+        lines.push_back(
+            "  Structure top: "
+            + std::to_string(
+                tile.elevation + 1 + static_cast<int>(tile.structure_height)));
+    }
     lines.push_back("  Collision: " + std::string(tile.blocked ? "blocked" : "free"));
     if (tile.movement_cost_available) {
         lines.push_back("  Movement cost: "
@@ -1382,6 +1398,8 @@ struct HelpControlLine
             return labels.workspace_terrain_label;
         case WorkspacePanelItem::kLayerElevation:
             return labels.workspace_elevation_label;
+        case WorkspacePanelItem::kLayerStructureHeight:
+            return "Ruin Height";
         case WorkspacePanelItem::kLayerCollision:
             return labels.workspace_collision_label;
         case WorkspacePanelItem::kLayerMovementCost:
@@ -2464,6 +2482,14 @@ struct StatsOverlaySection {
         {"Vegetation", std::to_string(workspace.runtime_map.info.vegetation_markers)},
         {"Places", std::to_string(workspace.runtime_map.places.size())},
         {"Markers", std::to_string(workspace.runtime_map.markers.size())},
+    });
+
+    add("Ruin Height", {
+        {"Source", workspace.runtime_map.info.structure_height_loaded ? "map" : "legacy zero"},
+        {"Wall tiles", std::to_string(workspace.runtime_map.info.structure_tiles)},
+        {"Height 1", std::to_string(workspace.runtime_map.info.structure_height_1)},
+        {"Height 2", std::to_string(workspace.runtime_map.info.structure_height_2)},
+        {"Height 3", std::to_string(workspace.runtime_map.info.structure_height_3)},
     });
 
     if (!workspace.show_3d_preview) {
