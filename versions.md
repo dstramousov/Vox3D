@@ -595,3 +595,9 @@
 - Restored the `camera_status` and `labels` parameter names in the legacy Stats panel builder so its remaining call sites compile.
 - Marked the now-unused workspace-layout camera and label parameters unnamed after the persistent Stats tab removal.
 - Fixed the full application build regression introduced by the previous warning cleanup.
+
+## v0.5.54 -> v0.5.55
+
+- Resized the dynamic Stats overlay to exactly match the Selection Info overlay dimensions.
+- Removed the bright per-section cards and borders from the Stats overlay.
+- Kept the two-column table layout with compact section headings, aligned values, and scrolling when required.

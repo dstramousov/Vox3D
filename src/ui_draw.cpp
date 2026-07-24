@@ -2422,34 +2422,28 @@ struct StatsOverlayGeometry {
     float padding = 0.0F;
     float title_font_size = 0.0F;
     float body_font_size = 0.0F;
+    float footer_font_size = 0.0F;
     float line_height = 0.0F;
     float column_gap = 0.0F;
+    float section_gap = 0.0F;
 };
 
 [[nodiscard]] StatsOverlayGeometry BuildStatsOverlayGeometry(const UiLayoutCache& layout)
 {
     const UiMetrics& metrics = layout.metrics;
-    const float margin = std::max(12.0F, 20.0F * metrics.scale);
+    const SelectionInfoOverlayGeometry info_geometry =
+        BuildSelectionInfoOverlayGeometry(layout);
+
     StatsOverlayGeometry geometry;
-    geometry.padding = std::max(10.0F, 16.0F * metrics.scale);
-    geometry.title_font_size = std::max(16.0F, metrics.workspace_tab_font_size);
-    geometry.body_font_size = std::max(11.0F, metrics.workspace_status_font_size - 1.0F);
-    geometry.line_height = geometry.body_font_size + std::max(4.0F, 5.0F * metrics.scale);
-    geometry.column_gap = std::max(10.0F, 14.0F * metrics.scale);
-    geometry.panel = Rectangle{
-        margin,
-        margin,
-        static_cast<float>(metrics.window_width) - margin * 2.0F,
-        static_cast<float>(metrics.window_height) - margin * 2.0F,
-    };
-    const float header = geometry.title_font_size + geometry.padding * 1.6F;
-    const float footer = geometry.body_font_size + geometry.padding * 1.4F;
-    geometry.content = Rectangle{
-        geometry.panel.x + geometry.padding,
-        geometry.panel.y + header,
-        geometry.panel.width - geometry.padding * 2.0F,
-        geometry.panel.height - header - footer,
-    };
+    geometry.panel = info_geometry.panel;
+    geometry.content = info_geometry.content;
+    geometry.padding = info_geometry.padding;
+    geometry.title_font_size = info_geometry.title_font_size;
+    geometry.body_font_size = info_geometry.body_font_size;
+    geometry.footer_font_size = info_geometry.footer_font_size;
+    geometry.line_height = info_geometry.line_height;
+    geometry.column_gap = std::max(14.0F, 18.0F * metrics.scale);
+    geometry.section_gap = std::max(6.0F, 8.0F * metrics.scale);
     return geometry;
 }
 
@@ -2460,9 +2454,12 @@ struct StatsOverlayGeometry {
     float height = 0.0F;
     for (std::size_t index = 0; index < sections.size(); index += 2U) {
         const std::size_t left_rows = sections[index].rows.size();
-        const std::size_t right_rows = index + 1U < sections.size() ? sections[index + 1U].rows.size() : 0U;
-        const float card_rows = static_cast<float>(std::max(left_rows, right_rows) + 1U);
-        height += geometry.padding + card_rows * geometry.line_height + geometry.padding * 0.7F;
+        const std::size_t right_rows = index + 1U < sections.size()
+            ? sections[index + 1U].rows.size()
+            : 0U;
+        height += static_cast<float>(std::max(left_rows, right_rows) + 1U)
+            * geometry.line_height;
+        height += geometry.section_gap;
     }
     return height;
 }
@@ -2474,8 +2471,13 @@ int StatsOverlayMaxScrollRows(
     const UiLayoutCache& layout)
 {
     const StatsOverlayGeometry geometry = BuildStatsOverlayGeometry(layout);
-    const auto sections = BuildStatsOverlaySections(workspace, map_2d_view, camera_status);
-    const float overflow = std::max(0.0F, StatsOverlayContentHeight(sections, geometry) - geometry.content.height);
+    const auto sections = BuildStatsOverlaySections(
+        workspace,
+        map_2d_view,
+        camera_status);
+    const float overflow = std::max(
+        0.0F,
+        StatsOverlayContentHeight(sections, geometry) - geometry.content.height);
     return static_cast<int>(std::ceil(overflow / geometry.line_height));
 }
 
@@ -2489,59 +2491,174 @@ void DrawStatsOverlay(
 {
     const UiMetrics& metrics = layout.metrics;
     const StatsOverlayGeometry geometry = BuildStatsOverlayGeometry(layout);
-    const auto sections = BuildStatsOverlaySections(workspace, map_2d_view, camera_status);
-    const int max_scroll = StatsOverlayMaxScrollRows(workspace, map_2d_view, camera_status, layout);
-    const float scroll_y = static_cast<float>(std::clamp(first_visible_row, 0, max_scroll)) * geometry.line_height;
+    const auto sections = BuildStatsOverlaySections(
+        workspace,
+        map_2d_view,
+        camera_status);
+    const int max_scroll = StatsOverlayMaxScrollRows(
+        workspace,
+        map_2d_view,
+        camera_status,
+        layout);
+    const int scroll_row = std::clamp(first_visible_row, 0, max_scroll);
+    const float scroll_y = static_cast<float>(scroll_row)
+        * geometry.line_height;
 
     DrawRectangle(0, 0, metrics.window_width, metrics.window_height, kModalDim);
-    DrawRectangleRounded(geometry.panel, 0.025F, 8, kPanel);
-    DrawRectangleRoundedLinesEx(geometry.panel, 0.025F, 8, std::max(1.0F, metrics.modal_border_width), kPanelBorder);
-    const std::string title = workspace.show_3d_preview ? "[ Stats - 3D ]" : "[ Stats - 2D ]";
-    DrawTextEx(fonts.text, title.c_str(),
-        Vector2{geometry.panel.x + geometry.padding, geometry.panel.y + geometry.padding},
-        geometry.title_font_size, FontSpacing(geometry.title_font_size), kSelectedText);
+    DrawRectangleRounded(geometry.panel, 0.04F, 8, kPanel);
+    DrawRectangleRoundedLinesEx(
+        geometry.panel,
+        0.04F,
+        8,
+        std::max(1.0F, metrics.modal_border_width),
+        kPanelBorder);
 
-    BeginScissorMode(static_cast<int>(geometry.content.x), static_cast<int>(geometry.content.y),
-        static_cast<int>(geometry.content.width), static_cast<int>(geometry.content.height));
-    const float column_width = (geometry.content.width - geometry.column_gap) * 0.5F;
+    const std::string title = workspace.show_3d_preview
+        ? "[ Stats - 3D ]"
+        : "[ Stats - 2D ]";
+    DrawTextEx(
+        fonts.text,
+        title.c_str(),
+        Vector2{
+            geometry.panel.x + geometry.padding,
+            geometry.panel.y + geometry.padding,
+        },
+        geometry.title_font_size,
+        FontSpacing(geometry.title_font_size),
+        kSelectedText);
+
+    BeginScissorMode(
+        static_cast<int>(std::floor(geometry.content.x)),
+        static_cast<int>(std::floor(geometry.content.y)),
+        static_cast<int>(std::ceil(geometry.content.width)),
+        static_cast<int>(std::ceil(geometry.content.height)));
+
+    const float column_width =
+        (geometry.content.width - geometry.column_gap) * 0.5F;
     float y = geometry.content.y - scroll_y;
     for (std::size_t index = 0; index < sections.size(); index += 2U) {
         const std::size_t left_rows = sections[index].rows.size();
-        const std::size_t right_rows = index + 1U < sections.size() ? sections[index + 1U].rows.size() : 0U;
-        const float card_height = geometry.padding + static_cast<float>(std::max(left_rows, right_rows) + 1U) * geometry.line_height;
+        const std::size_t right_rows = index + 1U < sections.size()
+            ? sections[index + 1U].rows.size()
+            : 0U;
+        const float group_height =
+            static_cast<float>(std::max(left_rows, right_rows) + 1U)
+                * geometry.line_height
+            + geometry.section_gap;
+
         for (int column = 0; column < 2; ++column) {
-            const std::size_t section_index = index + static_cast<std::size_t>(column);
+            const std::size_t section_index =
+                index + static_cast<std::size_t>(column);
             if (section_index >= sections.size()) {
                 continue;
             }
-            const float x = geometry.content.x + static_cast<float>(column) * (column_width + geometry.column_gap);
-            const Rectangle card{x, y, column_width, card_height};
-            DrawRectangleRounded(card, 0.035F, 6, kEditorViewport);
-            DrawRectangleRoundedLinesEx(card, 0.035F, 6, 1.0F, kEditorBorder);
+
+            const float x = geometry.content.x
+                + static_cast<float>(column)
+                    * (column_width + geometry.column_gap);
             const StatsOverlaySection& section = sections[section_index];
-            float row_y = y + geometry.padding * 0.55F;
-            DrawTextEx(fonts.text, section.title.c_str(), Vector2{x + geometry.padding, row_y},
-                geometry.body_font_size, FontSpacing(geometry.body_font_size), kAccent);
+            float row_y = y;
+            DrawTextEx(
+                fonts.text,
+                section.title.c_str(),
+                Vector2{x, row_y},
+                geometry.body_font_size,
+                FontSpacing(geometry.body_font_size),
+                kAccent);
             row_y += geometry.line_height;
-            const float value_x = x + column_width * 0.53F;
+
+            const float value_x = x + column_width * 0.56F;
             for (const auto& [key, value] : section.rows) {
-                DrawTextEx(fonts.text, key.c_str(), Vector2{x + geometry.padding, row_y},
-                    geometry.body_font_size, FontSpacing(geometry.body_font_size), kMutedText);
-                DrawTextEx(fonts.text, value.c_str(), Vector2{value_x, row_y},
-                    geometry.body_font_size, FontSpacing(geometry.body_font_size), kText);
+                DrawTextEx(
+                    fonts.text,
+                    key.c_str(),
+                    Vector2{x, row_y},
+                    geometry.body_font_size,
+                    FontSpacing(geometry.body_font_size),
+                    kMutedText);
+                DrawTextEx(
+                    fonts.text,
+                    value.c_str(),
+                    Vector2{value_x, row_y},
+                    geometry.body_font_size,
+                    FontSpacing(geometry.body_font_size),
+                    kText);
                 row_y += geometry.line_height;
             }
         }
-        y += card_height + geometry.padding * 0.7F;
+        y += group_height;
     }
     EndScissorMode();
 
-    const std::string footer = max_scroll > 0
-        ? "Esc / S  Close     Wheel / PgUp / PgDn  Scroll"
-        : "Esc / S  Close";
-    DrawTextEx(fonts.text, footer.c_str(),
-        Vector2{geometry.panel.x + geometry.padding, geometry.panel.y + geometry.panel.height - geometry.padding - geometry.body_font_size},
-        geometry.body_font_size, FontSpacing(geometry.body_font_size), kMutedText);
+    const float footer_y = geometry.panel.y + geometry.panel.height
+        - geometry.padding - geometry.footer_font_size;
+    const std::string close_hint = "Esc / S  Close";
+    DrawTextEx(
+        fonts.text,
+        close_hint.c_str(),
+        Vector2{geometry.panel.x + geometry.padding, footer_y},
+        geometry.footer_font_size,
+        FontSpacing(geometry.footer_font_size),
+        kMutedText);
+
+    if (max_scroll > 0) {
+        const std::string scroll_hint = "Wheel / PgUp / PgDn";
+        const float footer_spacing = FontSpacing(geometry.footer_font_size);
+        const Vector2 hint_size = Measure(
+            fonts.text,
+            scroll_hint,
+            geometry.footer_font_size,
+            footer_spacing);
+        DrawTextEx(
+            fonts.text,
+            scroll_hint.c_str(),
+            Vector2{
+                geometry.panel.x + geometry.panel.width
+                    - geometry.padding - hint_size.x,
+                footer_y,
+            },
+            geometry.footer_font_size,
+            footer_spacing,
+            kMutedText);
+
+        if (scroll_row > 0) {
+            const std::string more_hint = "^ more";
+            const Vector2 more_size = Measure(
+                fonts.text,
+                more_hint,
+                geometry.footer_font_size,
+                footer_spacing);
+            DrawTextEx(
+                fonts.text,
+                more_hint.c_str(),
+                Vector2{
+                    geometry.content.x + geometry.content.width - more_size.x,
+                    geometry.content.y,
+                },
+                geometry.footer_font_size,
+                footer_spacing,
+                kAccent);
+        }
+        if (scroll_row < max_scroll) {
+            const std::string more_hint = "v more";
+            const Vector2 more_size = Measure(
+                fonts.text,
+                more_hint,
+                geometry.footer_font_size,
+                footer_spacing);
+            DrawTextEx(
+                fonts.text,
+                more_hint.c_str(),
+                Vector2{
+                    geometry.content.x + geometry.content.width - more_size.x,
+                    geometry.content.y + geometry.content.height
+                        - geometry.footer_font_size,
+                },
+                geometry.footer_font_size,
+                footer_spacing,
+                kAccent);
+        }
+    }
 }
 
 int SelectionInfoOverlayMaxScrollRows(
