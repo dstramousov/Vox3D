@@ -6,6 +6,7 @@
 #include "process_metrics.hpp"
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "vox3d/render_raylib/free_fly_camera.hpp"
+#include "vox3d/render_raylib/gpu_diagnostics.hpp"
 #include "vox3d/render_raylib/map_2d_view.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
@@ -118,6 +119,7 @@ void DrawWorkspace(
     const RaylibChunkMeshPreview* mesh_preview,
     const Camera3D* preview_camera,
     FreeFlyCameraStatus camera_status,
+    GpuDiagnostics* gpu_diagnostics,
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout);
@@ -186,6 +188,10 @@ void DrawHelpOverlay(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
     const RaylibVegetationMeshStats& vegetation_stats,
+    const RaylibGpuResourceStats& gpu_resources,
+    const RaylibGpuStreamingStats& gpu_streaming,
+    const RaylibRenderFrameStats& render_frame,
+    const GpuDiagnosticsSnapshot& gpu_diagnostics,
     FreeFlyCameraStatus camera_status,
     const UiLayoutCache& layout);
 
@@ -204,6 +210,10 @@ void DrawStatsOverlay(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
     const RaylibVegetationMeshStats& vegetation_stats,
+    const RaylibGpuResourceStats& gpu_resources,
+    const RaylibGpuStreamingStats& gpu_streaming,
+    const RaylibRenderFrameStats& render_frame,
+    const GpuDiagnosticsSnapshot& gpu_diagnostics,
     FreeFlyCameraStatus camera_status,
     int first_visible_row,
     const UiFontSet& fonts,
@@ -223,6 +233,7 @@ void DrawFpsCounter(
     const UiLabels& labels,
     const UiLayoutCache& layout,
     const ProcessMemoryInfo& memory,
+    const GpuDiagnosticsSnapshot& gpu_diagnostics,
     std::string_view version);
 
 /**

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstdlib>
 #include <cstddef>
 #include <cstdint>
@@ -937,6 +938,15 @@ void AppendVegetationPillar(
     return mesh;
 }
 
+constexpr std::uint64_t kGpuVertexBytes = 3ULL * sizeof(float)
+    + 3ULL * sizeof(float) + 4ULL * sizeof(unsigned char);
+constexpr std::uint64_t kGpuIndexBytes = sizeof(unsigned short);
+
+[[nodiscard]] std::uint64_t GpuBufferBytes(std::uint64_t vertices, std::uint64_t indices)
+{
+    return vertices * kGpuVertexBytes + indices * kGpuIndexBytes;
+}
+
 [[nodiscard]] Model LoadVegetationModel(const VegetationMeshBuffers& source)
 {
     if (source.vertices.empty() || source.indices.empty()
@@ -1021,7 +1031,18 @@ void AccumulateVegetationStats(
         if (model.meshCount <= 0 || model.meshes == nullptr) {
             continue;
         }
-        models.push_back(RaylibUploadedVegetationModel{model, chunk.coord, kind, mesh.pillars, mesh.faces});
+        const std::uint64_t vertices = mesh.faces * 4ULL;
+        const std::uint64_t indices = mesh.faces * 6ULL;
+        models.push_back(RaylibUploadedVegetationModel{
+            model,
+            chunk.coord,
+            kind,
+            mesh.pillars,
+            mesh.faces,
+            vertices,
+            indices,
+            GpuBufferBytes(vertices, indices),
+        });
         AccumulateVegetationStats(kind, mesh, stats);
         max_top = std::max(max_top, mesh.max_top);
     }
@@ -1149,10 +1170,22 @@ void DrawVegetationChunkModels(
     return result;
 }
 
+[[nodiscard]] std::uint64_t RuinFaceCount(const ChunkMeshData& mesh)
+{
+    return static_cast<std::uint64_t>(std::count_if(
+        mesh.faces.begin(),
+        mesh.faces.end(),
+        [](const MeshFace& face) { return face.block_type == BlockTypeId::kRuinStructure; }));
+}
+
 void AccumulateUploadStats(const ChunkMeshData& mesh, RaylibChunkMeshPreviewStats& stats)
 {
+    const std::uint64_t faces = static_cast<std::uint64_t>(mesh.faces.size());
+    const std::uint64_t ruin_faces = RuinFaceCount(mesh);
     ++stats.models;
-    stats.faces += static_cast<std::uint64_t>(mesh.faces.size());
+    stats.faces += faces;
+    stats.ruin_faces += ruin_faces;
+    stats.terrain_faces += faces - ruin_faces;
     stats.vertices += static_cast<std::uint64_t>(mesh.vertices.size());
     stats.indices += static_cast<std::uint64_t>(mesh.indices.size());
 }
@@ -1875,6 +1908,10 @@ bool RaylibChunkMeshPreview::UploadAdditional(
         return false;
     }
 
+    const auto upload_started = std::chrono::steady_clock::now();
+    const std::uint64_t bytes_before = gpu_resource_stats_.current_bytes;
+    const std::uint64_t models_before = stats_.models + vegetation_stats_.models;
+
     const bool split_terrain_passes = build_result.info.mode == ChunkMeshBuildMode::kTerrainSurface;
     chunks_.reserve(chunks_.size() + build_result.chunks.size() * (split_terrain_passes ? 3ULL : 1ULL));
     visibility_items_.reserve(visibility_items_.size() + build_result.chunks.size());
@@ -1918,6 +1955,10 @@ bool RaylibChunkMeshPreview::UploadAdditional(
                     continue;
                 }
 
+                const std::uint64_t faces = pass_mesh.FaceCount();
+                const std::uint64_t ruin_faces = RuinFaceCount(pass_mesh);
+                const std::uint64_t vertices = static_cast<std::uint64_t>(pass_mesh.vertices.size());
+                const std::uint64_t indices = static_cast<std::uint64_t>(pass_mesh.indices.size());
                 chunks_.push_back(RaylibUploadedChunkModel{
                     model,
                     chunk.coord,
@@ -1925,7 +1966,12 @@ bool RaylibChunkMeshPreview::UploadAdditional(
                     world_bounds,
                     pass,
                     visibility_item_index,
-                    pass_mesh.FaceCount(),
+                    faces,
+                    faces - ruin_faces,
+                    ruin_faces,
+                    vertices,
+                    indices,
+                    GpuBufferBytes(vertices, indices),
                 });
                 AccumulateUploadStats(pass_mesh, stats_);
             }
@@ -1943,6 +1989,10 @@ bool RaylibChunkMeshPreview::UploadAdditional(
             continue;
         }
 
+        const std::uint64_t faces = chunk.FaceCount();
+        const std::uint64_t ruin_faces = RuinFaceCount(chunk);
+        const std::uint64_t vertices = static_cast<std::uint64_t>(chunk.vertices.size());
+        const std::uint64_t indices = static_cast<std::uint64_t>(chunk.indices.size());
         chunks_.push_back(RaylibUploadedChunkModel{
             model,
             chunk.coord,
@@ -1950,12 +2000,29 @@ bool RaylibChunkMeshPreview::UploadAdditional(
             world_bounds,
             TerrainRenderPass::kBody,
             visibility_item_index,
-            chunk.FaceCount(),
+            faces,
+            faces - ruin_faces,
+            ruin_faces,
+            vertices,
+            indices,
+            GpuBufferBytes(vertices, indices),
         });
         AccumulateUploadStats(chunk, stats_);
     }
 
     stats_.uploaded = !chunks_.empty();
+    RebuildGpuResourceStats();
+    const std::uint64_t uploaded_bytes = gpu_resource_stats_.current_bytes >= bytes_before
+        ? gpu_resource_stats_.current_bytes - bytes_before
+        : 0ULL;
+    const std::uint64_t uploaded_models = stats_.models + vegetation_stats_.models - models_before;
+    const double upload_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - upload_started).count();
+    gpu_streaming_stats_.uploaded_bytes_this_frame += uploaded_bytes;
+    gpu_streaming_stats_.upload_time_this_frame_ms += upload_ms;
+    gpu_streaming_stats_.uploaded_models_this_frame += uploaded_models;
+    gpu_streaming_stats_.total_uploaded_bytes += uploaded_bytes;
+    gpu_streaming_stats_.total_uploaded_models += uploaded_models;
     return stats_.models > before_models;
 }
 
@@ -1975,6 +2042,7 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
     std::vector<RaylibUploadedChunkModel> kept;
     kept.reserve(chunks_.size());
     std::vector<ChunkCoord> removed_unique;
+    std::uint64_t removed_models = 0;
     for (RaylibUploadedChunkModel& chunk : chunks_) {
         if (!should_remove(chunk.coord)) {
             kept.push_back(std::move(chunk));
@@ -1983,6 +2051,7 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
         if (chunk.model.meshCount > 0 && chunk.model.meshes != nullptr) {
             UnloadModel(chunk.model);
         }
+        ++removed_models;
         const bool known = std::any_of(removed_unique.begin(), removed_unique.end(), [&](ChunkCoord removed) {
             return removed.x == chunk.coord.x && removed.y == chunk.coord.y;
         });
@@ -2003,6 +2072,7 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
         if (vegetation.model.meshCount > 0 && vegetation.model.meshes != nullptr) {
             UnloadModel(vegetation.model);
         }
+        ++removed_models;
     }
     vegetation_models_ = std::move(kept_vegetation);
     vegetation_stats_ = RaylibVegetationMeshStats{};
@@ -2010,8 +2080,8 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
         ++vegetation_stats_.models;
         vegetation_stats_.pillars += vegetation.pillars;
         vegetation_stats_.faces += vegetation.faces;
-        vegetation_stats_.vertices += vegetation.faces * 4ULL;
-        vegetation_stats_.indices += vegetation.faces * 6ULL;
+        vegetation_stats_.vertices += vegetation.vertices;
+        vegetation_stats_.indices += vegetation.indices;
         if (vegetation.kind == RuntimeObjectMarkerKind::kTree) {
             ++vegetation_stats_.tree_models;
             vegetation_stats_.tree_pillars += vegetation.pillars;
@@ -2042,10 +2112,15 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
         }
         ++stats_.models;
         stats_.faces += chunk.faces;
-        stats_.vertices += chunk.faces * 4ULL;
-        stats_.indices += chunk.faces * 6ULL;
+        stats_.terrain_faces += chunk.terrain_faces;
+        stats_.ruin_faces += chunk.ruin_faces;
+        stats_.vertices += chunk.vertices;
+        stats_.indices += chunk.indices;
     }
     stats_.uploaded = !chunks_.empty();
+    gpu_streaming_stats_.unloaded_models_this_frame += removed_models;
+    gpu_streaming_stats_.total_unloaded_models += removed_models;
+    RebuildGpuResourceStats();
     return removed_unique.size();
 }
 
@@ -2068,6 +2143,7 @@ void RaylibChunkMeshPreview::Draw(
     const PassabilityValidationReport* passability,
     RaylibPassabilityValidationOverlayOptions passability_overlay) const
 {
+    render_frame_stats_ = RaylibRenderFrameStats{};
     if (!IsUploaded() || viewport.width <= 1.0F || viewport.height <= 1.0F) {
         return;
     }
@@ -2089,13 +2165,19 @@ void RaylibChunkMeshPreview::Draw(
     for (const RaylibUploadedChunkModel& chunk : chunks_) {
         if (!IsTerrainPassEnabled(chunk.terrain_pass, terrain_passes)
             || chunk.visibility_item_index >= visibility_report.entries.size()) {
+            ++render_frame_stats_.models_skipped;
             continue;
         }
         const ChunkVisibilityClass visibility_class = visibility_report.entries[chunk.visibility_item_index].visibility_class;
         if (visibility_class == ChunkVisibilityClass::kHidden) {
+            ++render_frame_stats_.models_skipped;
             continue;
         }
         DrawModel(chunk.model, kOrigin, kScale, VisibilityTint(visibility_class));
+        ++render_frame_stats_.model_draw_calls;
+        ++render_frame_stats_.models_drawn;
+        render_frame_stats_.vertices_submitted += chunk.vertices;
+        render_frame_stats_.triangles_submitted += chunk.indices / 3ULL;
     }
     DrawVegetationChunkModels(
         vegetation_models_,
@@ -2103,6 +2185,13 @@ void RaylibChunkMeshPreview::Draw(
         visibility_report,
         overlays,
         vegetation_stats_);
+    render_frame_stats_.model_draw_calls += vegetation_stats_.last_draw_calls;
+    render_frame_stats_.models_drawn += vegetation_stats_.last_draw_calls;
+    render_frame_stats_.models_skipped += vegetation_models_.size() >= vegetation_stats_.last_draw_calls
+        ? static_cast<std::uint64_t>(vegetation_models_.size()) - vegetation_stats_.last_draw_calls
+        : 0ULL;
+    render_frame_stats_.vertices_submitted += vegetation_stats_.last_drawn_pillars * 20ULL;
+    render_frame_stats_.triangles_submitted += vegetation_stats_.last_drawn_pillars * 10ULL;
 
     DrawHiddenChunkBounds(chunks_, build_result, visibility_report, visibility.show_hidden_bounds);
     if (transition_features != nullptr) {
@@ -2190,6 +2279,7 @@ RaylibChunkVisibilityStats RaylibChunkMeshPreview::CalculateVisibilityStats(
 
 void RaylibChunkMeshPreview::Unload()
 {
+    const std::uint64_t unloaded_models = static_cast<std::uint64_t>(chunks_.size() + vegetation_models_.size());
     for (RaylibUploadedChunkModel& chunk : chunks_) {
         if (chunk.model.meshCount > 0 && chunk.model.meshes != nullptr) {
             UnloadModel(chunk.model);
@@ -2205,6 +2295,10 @@ void RaylibChunkMeshPreview::Unload()
     visibility_items_.clear();
     stats_ = RaylibChunkMeshPreviewStats{};
     vegetation_stats_ = RaylibVegetationMeshStats{};
+    render_frame_stats_ = RaylibRenderFrameStats{};
+    gpu_streaming_stats_.unloaded_models_this_frame += unloaded_models;
+    gpu_streaming_stats_.total_unloaded_models += unloaded_models;
+    RebuildGpuResourceStats();
 }
 
 bool RaylibChunkMeshPreview::IsUploaded() const
@@ -2222,12 +2316,64 @@ const RaylibVegetationMeshStats& RaylibChunkMeshPreview::VegetationStats() const
     return vegetation_stats_;
 }
 
+void RaylibChunkMeshPreview::BeginFrameDiagnostics()
+{
+    gpu_streaming_stats_.uploaded_bytes_this_frame = 0;
+    gpu_streaming_stats_.upload_time_this_frame_ms = 0.0;
+    gpu_streaming_stats_.uploaded_models_this_frame = 0;
+    gpu_streaming_stats_.unloaded_models_this_frame = 0;
+}
+
+const RaylibGpuResourceStats& RaylibChunkMeshPreview::GpuResourceStats() const
+{
+    return gpu_resource_stats_;
+}
+
+const RaylibGpuStreamingStats& RaylibChunkMeshPreview::GpuStreamingStats() const
+{
+    return gpu_streaming_stats_;
+}
+
+const RaylibRenderFrameStats& RaylibChunkMeshPreview::RenderFrameStats() const
+{
+    return render_frame_stats_;
+}
+
+void RaylibChunkMeshPreview::RebuildGpuResourceStats()
+{
+    RaylibGpuResourceStats rebuilt;
+    for (const RaylibUploadedChunkModel& chunk : chunks_) {
+        rebuilt.vertex_buffer_bytes += chunk.vertices * kGpuVertexBytes;
+        rebuilt.index_buffer_bytes += chunk.indices * kGpuIndexBytes;
+        rebuilt.terrain_bytes += GpuBufferBytes(chunk.terrain_faces * 4ULL, chunk.terrain_faces * 6ULL);
+        rebuilt.ruin_bytes += GpuBufferBytes(chunk.ruin_faces * 4ULL, chunk.ruin_faces * 6ULL);
+        ++rebuilt.mesh_count;
+    }
+    for (const RaylibUploadedVegetationModel& vegetation : vegetation_models_) {
+        rebuilt.vertex_buffer_bytes += vegetation.vertices * kGpuVertexBytes;
+        rebuilt.index_buffer_bytes += vegetation.indices * kGpuIndexBytes;
+        if (vegetation.kind == RuntimeObjectMarkerKind::kTree) {
+            rebuilt.tree_bytes += vegetation.gpu_bytes;
+        } else if (vegetation.kind == RuntimeObjectMarkerKind::kBush) {
+            rebuilt.bush_bytes += vegetation.gpu_bytes;
+        } else if (vegetation.kind == RuntimeObjectMarkerKind::kReed) {
+            rebuilt.reed_bytes += vegetation.gpu_bytes;
+        }
+        ++rebuilt.mesh_count;
+    }
+    rebuilt.current_bytes = rebuilt.vertex_buffer_bytes + rebuilt.index_buffer_bytes;
+    rebuilt.peak_bytes = std::max(gpu_resource_stats_.peak_bytes, rebuilt.current_bytes);
+    gpu_resource_stats_ = rebuilt;
+}
+
 std::string ToLogString(const RaylibChunkMeshPreviewStats& stats)
 {
     std::ostringstream out;
     out << "status=" << (stats.IsValid() ? "loaded" : "unavailable");
     out << " models=" << stats.models;
     out << " faces=" << stats.faces;
+    out << " terrain_faces=" << stats.terrain_faces;
+    out << " ruin_faces=" << stats.ruin_faces;
     out << " vertices=" << stats.vertices;
     out << " indices=" << stats.indices;
     if (stats.skipped_chunks > 0) {

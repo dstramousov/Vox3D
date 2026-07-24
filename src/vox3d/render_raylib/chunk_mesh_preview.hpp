@@ -186,6 +186,8 @@ struct RaylibChunkMeshPreviewStats {
     bool uploaded = false;
     std::uint64_t models = 0;
     std::uint64_t faces = 0;
+    std::uint64_t terrain_faces = 0;
+    std::uint64_t ruin_faces = 0;
     std::uint64_t vertices = 0;
     std::uint64_t indices = 0;
     std::uint64_t skipped_chunks = 0;
@@ -196,6 +198,51 @@ struct RaylibChunkMeshPreviewStats {
      * @return True if GPU resources were uploaded successfully.
      */
     [[nodiscard]] bool IsValid() const;
+};
+
+
+/**
+ * @brief Logical GPU buffer usage tracked from uploaded preview resources.
+ *
+ * Values cover position, normal, vertex-color, and 16-bit index buffers owned
+ * by chunk and vegetation meshes. Driver metadata and shared raylib resources
+ * are intentionally excluded.
+ */
+struct RaylibGpuResourceStats {
+    std::uint64_t current_bytes = 0;
+    std::uint64_t peak_bytes = 0;
+    std::uint64_t vertex_buffer_bytes = 0;
+    std::uint64_t index_buffer_bytes = 0;
+    std::uint64_t terrain_bytes = 0;
+    std::uint64_t ruin_bytes = 0;
+    std::uint64_t tree_bytes = 0;
+    std::uint64_t bush_bytes = 0;
+    std::uint64_t reed_bytes = 0;
+    std::uint64_t mesh_count = 0;
+};
+
+/**
+ * @brief Per-frame and cumulative mesh upload diagnostics.
+ */
+struct RaylibGpuStreamingStats {
+    std::uint64_t uploaded_bytes_this_frame = 0;
+    double upload_time_this_frame_ms = 0.0;
+    std::uint64_t uploaded_models_this_frame = 0;
+    std::uint64_t unloaded_models_this_frame = 0;
+    std::uint64_t total_uploaded_bytes = 0;
+    std::uint64_t total_uploaded_models = 0;
+    std::uint64_t total_unloaded_models = 0;
+};
+
+/**
+ * @brief Last submitted static-mesh workload for the 3D preview.
+ */
+struct RaylibRenderFrameStats {
+    std::uint64_t model_draw_calls = 0;
+    std::uint64_t models_drawn = 0;
+    std::uint64_t models_skipped = 0;
+    std::uint64_t vertices_submitted = 0;
+    std::uint64_t triangles_submitted = 0;
 };
 
 /**
@@ -235,6 +282,9 @@ struct RaylibUploadedVegetationModel {
     RuntimeObjectMarkerKind kind = RuntimeObjectMarkerKind::kUnknown;
     std::uint64_t pillars = 0;
     std::uint64_t faces = 0;
+    std::uint64_t vertices = 0;
+    std::uint64_t indices = 0;
+    std::uint64_t gpu_bytes = 0;
 };
 
 /**
@@ -248,6 +298,11 @@ struct RaylibUploadedChunkModel {
     TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
     std::size_t visibility_item_index = 0;
     std::uint64_t faces = 0;
+    std::uint64_t terrain_faces = 0;
+    std::uint64_t ruin_faces = 0;
+    std::uint64_t vertices = 0;
+    std::uint64_t indices = 0;
+    std::uint64_t gpu_bytes = 0;
 };
 
 /**
@@ -421,12 +476,37 @@ public:
      */
     [[nodiscard]] const RaylibVegetationMeshStats& VegetationStats() const;
 
+    /**
+     * @brief Resets per-frame upload and unload counters before application updates.
+     */
+    void BeginFrameDiagnostics();
+
+    /**
+     * @brief Returns tracked logical GPU resource usage.
+     */
+    [[nodiscard]] const RaylibGpuResourceStats& GpuResourceStats() const;
+
+    /**
+     * @brief Returns current mesh streaming diagnostics.
+     */
+    [[nodiscard]] const RaylibGpuStreamingStats& GpuStreamingStats() const;
+
+    /**
+     * @brief Returns the last submitted static-mesh workload.
+     */
+    [[nodiscard]] const RaylibRenderFrameStats& RenderFrameStats() const;
+
 private:
+    void RebuildGpuResourceStats();
+
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
     std::vector<ChunkVisibilityItem> visibility_items_;
     RaylibChunkMeshPreviewStats stats_;
     mutable RaylibVegetationMeshStats vegetation_stats_;
+    RaylibGpuResourceStats gpu_resource_stats_;
+    RaylibGpuStreamingStats gpu_streaming_stats_;
+    mutable RaylibRenderFrameStats render_frame_stats_;
 };
 
 /**

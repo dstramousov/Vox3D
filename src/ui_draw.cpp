@@ -142,6 +142,51 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return out.str();
 }
 
+[[nodiscard]] std::string CompactMilliseconds(double value)
+{
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2) << value << " ms";
+    return out.str();
+}
+
+[[nodiscard]] std::string FormatByteCount(std::uint64_t bytes)
+{
+    std::ostringstream out;
+    const double mib = static_cast<double>(bytes) / (1024.0 * 1024.0);
+    if (mib >= 1.0) {
+        out << std::fixed << std::setprecision(mib >= 100.0 ? 0 : 1) << mib << " MiB";
+        return out.str();
+    }
+    const double kib = static_cast<double>(bytes) / 1024.0;
+    if (kib >= 1.0) {
+        out << std::fixed << std::setprecision(kib >= 100.0 ? 0 : 1) << kib << " KiB";
+        return out.str();
+    }
+    out << bytes << " B";
+    return out.str();
+}
+
+[[nodiscard]] std::string OptionalByteCount(bool available, std::uint64_t bytes)
+{
+    return available ? FormatByteCount(bytes) : "n/a";
+}
+
+[[nodiscard]] std::string GpuFrameStatusText(const GpuDiagnosticsSnapshot& gpu)
+{
+    if (!gpu.timer_query_supported) {
+        return "n/a";
+    }
+    if (!gpu.render_active) {
+        return "idle";
+    }
+    if (!gpu.gpu_sample_available) {
+        return "warming";
+    }
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << gpu.gpu_frame_average_ms << " ms";
+    return out.str();
+}
+
 [[nodiscard]] std::string CompactPercent(double ratio)
 {
     std::ostringstream out;
@@ -2478,6 +2523,10 @@ struct StatsOverlaySection {
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
     const RaylibVegetationMeshStats& vegetation_stats,
+    const RaylibGpuResourceStats& gpu_resources,
+    const RaylibGpuStreamingStats& gpu_streaming,
+    const RaylibRenderFrameStats& render_frame,
+    const GpuDiagnosticsSnapshot& gpu_diagnostics,
     FreeFlyCameraStatus camera_status)
 {
     std::vector<StatsOverlaySection> sections;
@@ -2561,6 +2610,45 @@ struct StatsOverlaySection {
         {"Position", CompactVector(camera_status.position)},
         {"Speed", CompactFloat(camera_status.speed)},
     });
+    add("GPU Device", {
+        {"Vendor", gpu_diagnostics.vendor},
+        {"Renderer", gpu_diagnostics.renderer},
+        {"OpenGL", gpu_diagnostics.opengl_version},
+        {"GLSL", gpu_diagnostics.glsl_version},
+        {"Timer queries", gpu_diagnostics.timer_query_supported ? "supported" : "unavailable"},
+        {"VRAM source", gpu_diagnostics.driver_memory.source},
+    });
+    add("GPU Performance", {
+        {"CPU frame avg", CompactMilliseconds(gpu_diagnostics.cpu_frame_average_ms)},
+        {"GPU frame last", gpu_diagnostics.gpu_sample_available ? CompactMilliseconds(gpu_diagnostics.gpu_frame_last_ms) : "n/a"},
+        {"GPU frame avg", GpuFrameStatusText(gpu_diagnostics)},
+        {"GPU frame peak", gpu_diagnostics.gpu_sample_available ? CompactMilliseconds(gpu_diagnostics.gpu_frame_peak_ms) : "n/a"},
+        {"Model draw calls", std::to_string(render_frame.model_draw_calls)},
+        {"Models drawn / skipped", std::to_string(render_frame.models_drawn) + " / " + std::to_string(render_frame.models_skipped)},
+        {"Vertices submitted", std::to_string(render_frame.vertices_submitted)},
+        {"Triangles submitted", std::to_string(render_frame.triangles_submitted)},
+        {"Chunks resident / visible", std::to_string(workspace.visibility_stats.resident_chunks) + " / " + std::to_string(workspace.visibility_stats.visible_chunks)},
+        {"Chunks culled", std::to_string(workspace.visibility_stats.hidden_chunks)},
+    });
+    add("GPU Memory", {
+        {"Tracked current", FormatByteCount(gpu_resources.current_bytes)},
+        {"Tracked peak", FormatByteCount(gpu_resources.peak_bytes)},
+        {"Terrain", FormatByteCount(gpu_resources.terrain_bytes)},
+        {"Ruins", FormatByteCount(gpu_resources.ruin_bytes)},
+        {"Trees", FormatByteCount(gpu_resources.tree_bytes)},
+        {"Bushes", FormatByteCount(gpu_resources.bush_bytes)},
+        {"Reeds", FormatByteCount(gpu_resources.reed_bytes)},
+        {"Vertex buffers", FormatByteCount(gpu_resources.vertex_buffer_bytes)},
+        {"Index buffers", FormatByteCount(gpu_resources.index_buffer_bytes)},
+        {"GPU meshes", std::to_string(gpu_resources.mesh_count)},
+    });
+    add("Driver VRAM", {
+        {"Total", OptionalByteCount(gpu_diagnostics.driver_memory.total_available, gpu_diagnostics.driver_memory.total_bytes)},
+        {"Free", OptionalByteCount(gpu_diagnostics.driver_memory.free_available, gpu_diagnostics.driver_memory.free_bytes)},
+        {"Used estimate", OptionalByteCount(gpu_diagnostics.driver_memory.used_available, gpu_diagnostics.driver_memory.used_bytes)},
+        {"Evictions", gpu_diagnostics.driver_memory.eviction_available ? std::to_string(gpu_diagnostics.driver_memory.eviction_count) : "n/a"},
+        {"Evicted memory", OptionalByteCount(gpu_diagnostics.driver_memory.eviction_available, gpu_diagnostics.driver_memory.evicted_bytes)},
+    });
     add("Visibility", {
         {"Mode", VisibilityModeLabel(workspace.visibility_mode)},
         {"Resident", std::to_string(workspace.visibility_stats.resident_chunks)},
@@ -2623,9 +2711,16 @@ struct StatsOverlaySection {
         {"Drops", std::to_string(workspace.passability_validation.stats.suspicious_drops)},
         {"Isolated", std::to_string(workspace.passability_validation.stats.isolated_tiles)},
     });
-    add("Streaming", {
-        {"Built", std::to_string(workspace.progressive_chunks_built) + " / " + std::to_string(workspace.progressive_chunks_total)},
-        {"Pending", std::to_string(workspace.progressive_chunks_total - workspace.progressive_chunks_built)},
+    add("Streaming / Upload", {
+        {"Built chunks", std::to_string(workspace.progressive_chunks_built) + " / " + std::to_string(workspace.progressive_chunks_total)},
+        {"Pending uploads", std::to_string(workspace.progressive_pending_chunks.size())},
+        {"Uploaded this frame", FormatByteCount(gpu_streaming.uploaded_bytes_this_frame)},
+        {"Upload time", CompactMilliseconds(gpu_streaming.upload_time_this_frame_ms)},
+        {"Uploaded models", std::to_string(gpu_streaming.uploaded_models_this_frame)},
+        {"Total uploaded", FormatByteCount(gpu_streaming.total_uploaded_bytes)},
+        {"Total built meshes", std::to_string(gpu_streaming.total_uploaded_models)},
+        {"Unloaded meshes", std::to_string(gpu_streaming.total_unloaded_models)},
+        {"Dirty chunks", std::to_string(workspace.chunk_mesh_cache.info.dirty_chunks)},
         {"FPS", std::to_string(GetFPS())},
     });
     return sections;
@@ -2683,6 +2778,10 @@ int StatsOverlayMaxScrollRows(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
     const RaylibVegetationMeshStats& vegetation_stats,
+    const RaylibGpuResourceStats& gpu_resources,
+    const RaylibGpuStreamingStats& gpu_streaming,
+    const RaylibRenderFrameStats& render_frame,
+    const GpuDiagnosticsSnapshot& gpu_diagnostics,
     FreeFlyCameraStatus camera_status,
     const UiLayoutCache& layout)
 {
@@ -2691,6 +2790,10 @@ int StatsOverlayMaxScrollRows(
         workspace,
         map_2d_view,
         vegetation_stats,
+        gpu_resources,
+        gpu_streaming,
+        render_frame,
+        gpu_diagnostics,
         camera_status);
     const float overflow = std::max(
         0.0F,
@@ -2702,6 +2805,10 @@ void DrawStatsOverlay(
     const WorkspaceState& workspace,
     const Map2DView* map_2d_view,
     const RaylibVegetationMeshStats& vegetation_stats,
+    const RaylibGpuResourceStats& gpu_resources,
+    const RaylibGpuStreamingStats& gpu_streaming,
+    const RaylibRenderFrameStats& render_frame,
+    const GpuDiagnosticsSnapshot& gpu_diagnostics,
     FreeFlyCameraStatus camera_status,
     int first_visible_row,
     const UiFontSet& fonts,
@@ -2713,11 +2820,19 @@ void DrawStatsOverlay(
         workspace,
         map_2d_view,
         vegetation_stats,
+        gpu_resources,
+        gpu_streaming,
+        render_frame,
+        gpu_diagnostics,
         camera_status);
     const int max_scroll = StatsOverlayMaxScrollRows(
         workspace,
         map_2d_view,
         vegetation_stats,
+        gpu_resources,
+        gpu_streaming,
+        render_frame,
+        gpu_diagnostics,
         camera_status,
         layout);
     const int scroll_row = std::clamp(first_visible_row, 0, max_scroll);
@@ -3210,6 +3325,7 @@ void DrawWorkspace(
     const RaylibChunkMeshPreview* mesh_preview,
     const Camera3D* preview_camera,
     FreeFlyCameraStatus camera_status,
+    GpuDiagnostics* gpu_diagnostics,
     const UiFontSet& fonts,
     const UiLabels& labels,
     const UiLayoutCache& layout)
@@ -3427,7 +3543,12 @@ void DrawWorkspace(
         }
     }
 
-    if (workspace_state.show_3d_preview && mesh_preview != nullptr && preview_camera != nullptr && mesh_preview->IsUploaded()) {
+    const bool gpu_render_active = workspace_state.show_3d_preview
+        && mesh_preview != nullptr && preview_camera != nullptr && mesh_preview->IsUploaded();
+    if (gpu_diagnostics != nullptr) {
+        gpu_diagnostics->SetRenderActive(gpu_render_active);
+    }
+    if (gpu_render_active) {
         DrawRectangleRec(workspace.map_overview, Color{18, 22, 24, 255});
         const RaylibChunkMeshDebugOverlayOptions overlays{
             workspace_state.show_3d_chunk_bounds,
@@ -3461,6 +3582,9 @@ void DrawWorkspace(
                 ? workspace.map_overview.width / workspace.map_overview.height
                 : 1.0F,
         };
+        if (gpu_diagnostics != nullptr) {
+            gpu_diagnostics->BeginWorldRender();
+        }
         mesh_preview->Draw(
             workspace.map_overview,
             workspace_state.chunk_meshes,
@@ -3503,6 +3627,9 @@ void DrawWorkspace(
                 workspace_state.show_passability_suspicious_drops,
                 workspace_state.show_passability_isolated_tiles,
             });
+        if (gpu_diagnostics != nullptr) {
+            gpu_diagnostics->EndWorldRender();
+        }
         DrawRectangleLinesEx(workspace.map_overview, metrics.workspace_border_width, Color{235, 235, 220, 255});
     } else {
         if (map_2d_view != nullptr && map_2d_view->IsLoaded()) {
@@ -3569,26 +3696,55 @@ void DrawFpsCounter(
     const UiLabels& labels,
     const UiLayoutCache& layout,
     const ProcessMemoryInfo& memory,
+    const GpuDiagnosticsSnapshot& gpu_diagnostics,
     std::string_view version)
 {
+    struct StatusSegment {
+        std::string text;
+        bool highlighted = false;
+    };
+
     const UiMetrics& metrics = layout.metrics;
     const Font font = fonts.text;
-    const std::string text = "v" + std::string(version) + " | " + labels.fps_label + ": " + std::to_string(GetFPS())
-        + " | " + labels.memory_label + ": "
-        + (memory.available ? FormatMemory(memory.resident_bytes, labels) : labels.debug_none);
+    const std::string memory_value = memory.available
+        ? FormatMemory(memory.resident_bytes, labels)
+        : labels.debug_none;
+    const std::array<StatusSegment, 8> segments{{
+        {"v", false},
+        {std::string(version), true},
+        {" | " + labels.fps_label + ": ", false},
+        {std::to_string(GetFPS()), true},
+        {" | GPU: ", false},
+        {GpuFrameStatusText(gpu_diagnostics), true},
+        {" | " + labels.memory_label + ": ", false},
+        {memory_value, true},
+    }};
+
     const float spacing = FontSpacing(metrics.fps_font_size);
-    const Vector2 size = Measure(font, text, metrics.fps_font_size, spacing);
+    float total_width = 0.0F;
+    float text_height = 0.0F;
+    for (const StatusSegment& segment : segments) {
+        const Vector2 size = Measure(font, segment.text, metrics.fps_font_size, spacing);
+        total_width += size.x;
+        text_height = std::max(text_height, size.y);
+    }
+
     const Rectangle status = layout.workspace.status_bar;
     const float y = status.height > 1.0F
-        ? status.y + (status.height - size.y) * 0.5F
+        ? status.y + (status.height - text_height) * 0.5F
         : metrics.screen_padding;
-    DrawTextEx(
-        font,
-        text.c_str(),
-        Vector2{static_cast<float>(metrics.window_width) - size.x - metrics.screen_padding * 0.35F, y},
-        metrics.fps_font_size,
-        spacing,
-        status.height > 1.0F ? kEditorStatusText : kText);
+    float x = static_cast<float>(metrics.window_width) - total_width - metrics.screen_padding * 0.35F;
+    const Color normal_color = status.height > 1.0F ? kEditorStatusText : kText;
+    for (const StatusSegment& segment : segments) {
+        DrawTextEx(
+            font,
+            segment.text.c_str(),
+            Vector2{x, y},
+            metrics.fps_font_size,
+            spacing,
+            segment.highlighted ? kHelpHotkey : normal_color);
+        x += Measure(font, segment.text, metrics.fps_font_size, spacing).x;
+    }
 }
 
 void DrawDebugOverlay(

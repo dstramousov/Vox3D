@@ -947,6 +947,16 @@ bool App::Initialize()
     }
 
     window_initialized_ = true;
+    gpu_diagnostics_.Initialize();
+    {
+        const GpuDiagnosticsSnapshot& gpu = gpu_diagnostics_.Snapshot();
+        logger_.Info(
+            "gpu",
+            "vendor=\"" + gpu.vendor + "\" renderer=\"" + gpu.renderer
+                + "\" opengl=\"" + gpu.opengl_version + "\" glsl=\"" + gpu.glsl_version
+                + "\" timer_query=" + std::string(gpu.timer_query_supported ? "yes" : "no")
+                + " vram_source=" + gpu.driver_memory.source);
+    }
 
     const int monitor_index = GetCurrentMonitor();
     const Vector2 monitor_position = GetMonitorPosition(monitor_index);
@@ -1145,6 +1155,8 @@ int App::Run()
         suppress_window_close_request_this_frame_ = false;
 
         const float dt = GetFrameTime();
+        chunk_mesh_preview_.BeginFrameDiagnostics();
+        gpu_diagnostics_.BeginApplicationFrame(dt);
         HandleInput(dt);
         Update(dt);
 
@@ -1171,6 +1183,7 @@ void App::Shutdown()
 {
     preview_camera_.ReleaseMouse();
     UnloadPreviewResources();
+    gpu_diagnostics_.Shutdown();
     UnloadUiFonts();
     if (window_initialized_) {
         CloseWindow();
@@ -1316,6 +1329,10 @@ void App::HandleWorkspaceInput(float dt)
                 workspace_,
                 &map_2d_view_,
                 chunk_mesh_preview_.VegetationStats(),
+                chunk_mesh_preview_.GpuResourceStats(),
+                chunk_mesh_preview_.GpuStreamingStats(),
+                chunk_mesh_preview_.RenderFrameStats(),
+                gpu_diagnostics_.Snapshot(),
                 preview_camera_.Status(),
                 layout_cache_);
             stats_overlay_scroll_rows_ = std::clamp(
@@ -2031,6 +2048,7 @@ void App::Draw()
                 &chunk_mesh_preview_,
                 &preview_camera_.Camera(),
                 preview_camera_.Status(),
+                &gpu_diagnostics_,
                 UiFonts(),
                 labels_,
                 layout_cache_);
@@ -2047,7 +2065,13 @@ void App::Draw()
             layout_cache_);
     }
 
-    DrawFpsCounter(UiFonts(), labels_, layout_cache_, process_memory_, config_.version);
+    DrawFpsCounter(
+        UiFonts(),
+        labels_,
+        layout_cache_,
+        process_memory_,
+        gpu_diagnostics_.Snapshot(),
+        config_.version);
     if (config_.debug_ui) {
         DrawDebugOverlay(UiFonts(), config_, window_config_, screen_, dialog_.type, main_menu_.State(), workspace_, hovered_item_, labels_, layout_cache_);
     }
@@ -2062,6 +2086,10 @@ void App::Draw()
             workspace_,
             &map_2d_view_,
             chunk_mesh_preview_.VegetationStats(),
+            chunk_mesh_preview_.GpuResourceStats(),
+            chunk_mesh_preview_.GpuStreamingStats(),
+            chunk_mesh_preview_.RenderFrameStats(),
+            gpu_diagnostics_.Snapshot(),
             preview_camera_.Status(),
             stats_overlay_scroll_rows_,
             UiFonts(),

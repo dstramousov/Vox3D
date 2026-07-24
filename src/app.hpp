@@ -8,6 +8,7 @@
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "vox3d/render_raylib/free_fly_camera.hpp"
 #include "vox3d/render_raylib/map_2d_view.hpp"
+#include "vox3d/render_raylib/gpu_diagnostics.hpp"
 #include "ui_fonts.hpp"
 #include "ui_labels.hpp"
 #include "ui_layout.hpp"
@@ -157,6 +158,7 @@ private:
     WorkspaceState workspace_;
     Map2DView map_2d_view_;
     RaylibChunkMeshPreview chunk_mesh_preview_;
+    GpuDiagnostics gpu_diagnostics_;
     FreeFlyCameraController preview_camera_;
     std::string hovered_item_ = "none";
     UiLayoutCache layout_cache_{};

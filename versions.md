@@ -687,3 +687,11 @@
 - Preserved the existing compact yellow-green reed marker appearance while removing per-frame `DrawCubeV` calls for new vegetation-grid maps.
 - Added reed mesh and pillar counters, visible vegetation chunk counts, and vegetation draw-call diagnostics to Stats and renderer logs.
 - Kept legacy vegetation visuals and the small runtime-object set on the existing marker draw path.
+
+
+## v0.5.67 -> v0.5.68
+
+- Added non-blocking OpenGL timer-query diagnostics for averaged and peak 3D GPU frame time.
+- Added GPU device, tracked mesh memory, driver VRAM, render workload, and streaming/upload sections to Stats - 3D.
+- Added a compact GPU frame-time value to the lower-right status bar and highlighted version, FPS, GPU, and memory values in orange.
+- Added logical GPU buffer accounting for terrain, ruins, trees, bushes, and reeds with current and peak usage.
