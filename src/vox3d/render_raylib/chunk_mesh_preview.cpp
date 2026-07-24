@@ -127,30 +127,44 @@ struct RgbaColor {
     return BaseColor(fallback_type);
 }
 
+constexpr int kGeographicMinLevel = -5;
+constexpr int kGeographicMaxLevel = 20;
+
+// Keep one explicit color per supported elevation so adjacent terrain terraces remain distinguishable.
+constexpr std::array<RgbaColor, kGeographicMaxLevel - kGeographicMinLevel + 1>
+    kGeographicLevelColors{{
+        RgbaColor{17, 45, 101, 255},   // -5
+        RgbaColor{20, 63, 132, 255},   // -4
+        RgbaColor{24, 82, 158, 255},   // -3
+        RgbaColor{35, 105, 180, 255},  // -2
+        RgbaColor{55, 134, 193, 255},  // -1
+        RgbaColor{33, 104, 55, 255},   // 0
+        RgbaColor{42, 120, 59, 255},   // 1
+        RgbaColor{52, 137, 63, 255},   // 2
+        RgbaColor{66, 151, 67, 255},   // 3
+        RgbaColor{82, 164, 71, 255},   // 4
+        RgbaColor{101, 174, 75, 255},  // 5
+        RgbaColor{122, 181, 77, 255},  // 6
+        RgbaColor{145, 185, 78, 255},  // 7
+        RgbaColor{170, 186, 79, 255},  // 8
+        RgbaColor{193, 181, 75, 255},  // 9
+        RgbaColor{208, 170, 67, 255},  // 10
+        RgbaColor{218, 155, 58, 255},  // 11
+        RgbaColor{221, 138, 50, 255},  // 12
+        RgbaColor{214, 119, 45, 255},  // 13
+        RgbaColor{199, 101, 43, 255},  // 14
+        RgbaColor{181, 87, 46, 255},   // 15
+        RgbaColor{160, 77, 51, 255},   // 16
+        RgbaColor{141, 70, 56, 255},   // 17
+        RgbaColor{122, 65, 61, 255},   // 18
+        RgbaColor{164, 151, 136, 255}, // 19
+        RgbaColor{231, 231, 220, 255}, // 20
+    }};
+
 [[nodiscard]] RgbaColor GeographicBaseColor(int level)
 {
-    if (level <= -3) {
-        return RgbaColor{27, 73, 137, 255};
-    }
-    if (level <= -1) {
-        return RgbaColor{56, 132, 190, 255};
-    }
-    if (level <= 2) {
-        return RgbaColor{71, 143, 75, 255};
-    }
-    if (level <= 6) {
-        return RgbaColor{119, 173, 83, 255};
-    }
-    if (level <= 10) {
-        return RgbaColor{199, 190, 94, 255};
-    }
-    if (level <= 14) {
-        return RgbaColor{205, 139, 52, 255};
-    }
-    if (level <= 18) {
-        return RgbaColor{121, 84, 59, 255};
-    }
-    return RgbaColor{230, 229, 218, 255};
+    const int clamped_level = std::clamp(level, kGeographicMinLevel, kGeographicMaxLevel);
+    return kGeographicLevelColors[static_cast<std::size_t>(clamped_level - kGeographicMinLevel)];
 }
 
 [[nodiscard]] RgbaColor ChunkBaseColor(ChunkCoord coord)

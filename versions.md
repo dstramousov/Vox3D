@@ -666,3 +666,9 @@
 - Limited vegetation pillars to a 0.50 x 0.50 tile footprint so neighboring plants remain visually separate.
 - Added a very dark green tree color and a light green bush color while leaving reeds and non-vegetation runtime-object markers unchanged.
 - Kept the existing 3D Trees and Bushes filters, chunk visibility checks, terrain-relative placement, and legacy vegetation-height fallback behavior.
+
+## v0.5.64 -> v0.5.65
+
+- Replaced broad Geographic elevation bands with one explicit terrain color for every supported level from -5 through 20.
+- Preserved the geographic water-to-lowland-to-highland progression while making adjacent terrain terraces visually distinguishable.
+- Kept ruin, tree, bush, traversal, chunk, and face-type colors unchanged.
