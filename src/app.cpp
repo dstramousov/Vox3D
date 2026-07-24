@@ -2995,6 +2995,30 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
                 std::string("overlay=start_goal enabled=")
                     + (workspace_.show_2d_start_goal ? "yes" : "no"));
             break;
+        case WorkspacePanelItem::k2DObjects:
+            workspace_.show_2d_objects = !workspace_.show_2d_objects;
+            layout_dirty_ = true;
+            logger_.Info(
+                "map2d",
+                std::string("overlay=objects enabled=")
+                    + (workspace_.show_2d_objects ? "yes" : "no"));
+            break;
+        case WorkspacePanelItem::k2DPlaces:
+            workspace_.show_2d_places = !workspace_.show_2d_places;
+            layout_dirty_ = true;
+            logger_.Info(
+                "map2d",
+                std::string("overlay=places enabled=")
+                    + (workspace_.show_2d_places ? "yes" : "no"));
+            break;
+        case WorkspacePanelItem::k2DMarkers:
+            workspace_.show_2d_markers = !workspace_.show_2d_markers;
+            layout_dirty_ = true;
+            logger_.Info(
+                "map2d",
+                std::string("overlay=markers enabled=")
+                    + (workspace_.show_2d_markers ? "yes" : "no"));
+            break;
         case WorkspacePanelItem::kMode2DMap:
             workspace_.show_3d_preview = false;
             preview_camera_.ReleaseMouse();

@@ -956,6 +956,30 @@ struct TextPanelRow {
     return text;
 }
 
+[[nodiscard]] bool SameTile(TileCoord left, TileCoord right)
+{
+    return left.x == right.x && left.y == right.y;
+}
+
+[[nodiscard]] bool TileInList(
+    TileCoord tile,
+    const std::vector<TileCoord>& tiles)
+{
+    return std::any_of(tiles.begin(), tiles.end(), [tile](TileCoord candidate) {
+        return SameTile(tile, candidate);
+    });
+}
+
+[[nodiscard]] bool ObjectTouchesTile(
+    const RuntimeMapObject& object,
+    TileCoord tile)
+{
+    return SameTile(object.anchor, tile)
+        || TileInList(tile, object.footprint)
+        || TileInList(tile, object.collision_footprint)
+        || object.visual_bounds.Contains(tile);
+}
+
 [[nodiscard]] std::vector<std::string> BuildInspectPanelLines(const WorkspaceState& workspace_state)
 {
     std::vector<std::string> lines;
@@ -1016,6 +1040,68 @@ struct TextPanelRow {
     } else {
         lines.push_back("  VXMAP region: unavailable");
     }
+    lines.push_back("");
+    lines.push_back("World data");
+
+    int object_count = 0;
+    for (const RuntimeMapObject& object : workspace_state.runtime_map.runtime_objects) {
+        if (!ObjectTouchesTile(object, tile.tile)) {
+            continue;
+        }
+        ++object_count;
+        if (object_count <= 6) {
+            lines.push_back("  Object: " + object.id + " [" + object.type + "]");
+            lines.push_back("    Anchor: " + TileCoordText(object.anchor)
+                + ", orientation: "
+                + (object.orientation.empty() ? std::string("none") : object.orientation));
+            lines.push_back("    Blocks M/P/V: "
+                + std::string(object.blocks_movement ? "yes" : "no") + "/"
+                + std::string(object.blocks_projectiles ? "yes" : "no") + "/"
+                + std::string(object.blocks_vision ? "yes" : "no"));
+        }
+    }
+    if (object_count == 0) {
+        lines.push_back("  Objects: none");
+    } else if (object_count > 6) {
+        lines.push_back("  Objects: +" + std::to_string(object_count - 6) + " more");
+    }
+
+    int place_count = 0;
+    for (const RuntimePlace& place : workspace_state.runtime_map.places) {
+        const bool inside = SameTile(place.center, tile.tile)
+            || place.bounds.Contains(tile.tile);
+        if (!inside) {
+            continue;
+        }
+        ++place_count;
+        if (place_count <= 4) {
+            lines.push_back("  Place: " + place.id + " [" + place.type + "]");
+            lines.push_back("    Center: " + TileCoordText(place.center)
+                + ", radius: " + std::to_string(place.radius));
+        }
+    }
+    if (place_count == 0) {
+        lines.push_back("  Places: none");
+    } else if (place_count > 4) {
+        lines.push_back("  Places: +" + std::to_string(place_count - 4) + " more");
+    }
+
+    int marker_count = 0;
+    for (const RuntimeMapMarker& marker : workspace_state.runtime_map.markers) {
+        if (!SameTile(marker.tile, tile.tile)) {
+            continue;
+        }
+        ++marker_count;
+        if (marker_count <= 6) {
+            lines.push_back("  Marker: " + marker.id + " [" + marker.type + "]");
+        }
+    }
+    if (marker_count == 0) {
+        lines.push_back("  Markers: none");
+    } else if (marker_count > 6) {
+        lines.push_back("  Markers: +" + std::to_string(marker_count - 6) + " more");
+    }
+
     lines.push_back("");
     lines.push_back("Transitions");
     lines.push_back("  Total: " + std::to_string(tile.transitions.total));
@@ -1291,11 +1377,12 @@ struct SelectionInfoOverlayGeometry {
         case WorkspacePanelItem::k2DStartGoal:
             return "Start / Goal";
         case WorkspacePanelItem::k2DObjects:
-            return labels.workspace_tool_objects;
+            return labels.workspace_tool_objects + " ("
+                + std::to_string(workspace_state.runtime_map.info.runtime_objects) + ")";
         case WorkspacePanelItem::k2DPlaces:
-            return "Places";
+            return "Places (" + std::to_string(workspace_state.runtime_map.info.places) + ")";
         case WorkspacePanelItem::k2DMarkers:
-            return "Markers";
+            return "Markers (" + std::to_string(workspace_state.runtime_map.info.markers) + ")";
         case WorkspacePanelItem::k2DRoutes:
             return "Routes";
         case WorkspacePanelItem::k2DWorldGraph:
@@ -2643,6 +2730,12 @@ void DrawWorkspace(
             overlays.show_start_goal = workspace_state.show_2d_start_goal;
             overlays.start = workspace_state.runtime_map.info.start;
             overlays.goal = workspace_state.runtime_map.info.goal;
+            overlays.show_objects = workspace_state.show_2d_objects;
+            overlays.objects = workspace_state.runtime_map.runtime_objects;
+            overlays.show_places = workspace_state.show_2d_places;
+            overlays.places = workspace_state.runtime_map.places;
+            overlays.show_markers = workspace_state.show_2d_markers;
+            overlays.markers = workspace_state.runtime_map.markers;
             overlays.selection = workspace_state.selected_tile.IsValid()
                 ? std::optional<TileCoord>{workspace_state.selected_tile.tile}
                 : std::nullopt;

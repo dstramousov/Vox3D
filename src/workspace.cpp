@@ -872,9 +872,21 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
             1,
             workspace.runtime_map.info.start_goal_loaded,
             workspace.show_2d_start_goal));
-        items.push_back(Checkbox(Item::k2DObjects, 1, false, false));
-        items.push_back(Checkbox(Item::k2DPlaces, 1, false, false));
-        items.push_back(Checkbox(Item::k2DMarkers, 1, false, false));
+        items.push_back(Checkbox(
+            Item::k2DObjects,
+            1,
+            workspace.runtime_map.info.runtime_objects_loaded,
+            workspace.show_2d_objects));
+        items.push_back(Checkbox(
+            Item::k2DPlaces,
+            1,
+            workspace.runtime_map.info.places_loaded,
+            workspace.show_2d_places));
+        items.push_back(Checkbox(
+            Item::k2DMarkers,
+            1,
+            workspace.runtime_map.info.markers_loaded,
+            workspace.show_2d_markers));
         items.push_back(Checkbox(Item::k2DRoutes, 1, false, false));
     }
     return items;

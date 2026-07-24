@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace vox3d {
@@ -23,6 +25,13 @@ constexpr float kPartitionLabelFontPixels = 11.0F;
 constexpr float kPartitionLabelSpacingPixels = 1.0F;
 constexpr float kChunkLabelMinimumWidthPixels = 52.0F;
 constexpr float kRegionLabelMinimumWidthPixels = 80.0F;
+constexpr float kObjectFootprintThreshold = 7.0F;
+constexpr float kObjectCollisionThreshold = 11.0F;
+constexpr float kObjectOrientationThreshold = 13.0F;
+constexpr float kObjectLabelThreshold = 22.0F;
+constexpr float kPlaceDetailThreshold = 5.0F;
+constexpr float kPlaceLabelThreshold = 8.0F;
+constexpr float kMarkerLabelThreshold = 10.0F;
 
 struct ElevationColorStop {
     int level = 0;
@@ -396,6 +405,356 @@ void DrawEndpointMarker(
         font_size,
         spacing,
         Color{20, 24, 24, 255});
+}
+
+
+[[nodiscard]] bool TileNearVisibleWorld(
+    TileCoord tile,
+    Rectangle visible_world,
+    float margin)
+{
+    return static_cast<float>(tile.x) + 1.0F >= visible_world.x - margin
+        && static_cast<float>(tile.y) + 1.0F >= visible_world.y - margin
+        && static_cast<float>(tile.x) <= visible_world.x + visible_world.width + margin
+        && static_cast<float>(tile.y) <= visible_world.y + visible_world.height + margin;
+}
+
+[[nodiscard]] bool BoundsIntersectVisibleWorld(
+    const RuntimeTileBounds& bounds,
+    Rectangle visible_world)
+{
+    if (!bounds.IsValid()) {
+        return false;
+    }
+    return static_cast<float>(bounds.max_x + 1) >= visible_world.x
+        && static_cast<float>(bounds.max_y + 1) >= visible_world.y
+        && static_cast<float>(bounds.min_x) <= visible_world.x + visible_world.width
+        && static_cast<float>(bounds.min_y) <= visible_world.y + visible_world.height;
+}
+
+[[nodiscard]] Color ObjectColor(RuntimeObjectMarkerKind kind)
+{
+    switch (kind) {
+        case RuntimeObjectMarkerKind::kTree:
+            return Color{52, 142, 72, 255};
+        case RuntimeObjectMarkerKind::kBush:
+            return Color{92, 164, 75, 255};
+        case RuntimeObjectMarkerKind::kReed:
+            return Color{154, 177, 74, 255};
+        case RuntimeObjectMarkerKind::kRuin:
+            return Color{162, 151, 143, 255};
+        case RuntimeObjectMarkerKind::kCover:
+            return Color{221, 163, 72, 255};
+        case RuntimeObjectMarkerKind::kLoot:
+            return Color{241, 214, 77, 255};
+        case RuntimeObjectMarkerKind::kStructure:
+            return Color{103, 177, 213, 255};
+        case RuntimeObjectMarkerKind::kTrench:
+            return Color{171, 113, 68, 255};
+        case RuntimeObjectMarkerKind::kUnknown:
+            return Color{202, 103, 196, 255};
+    }
+    return Color{202, 103, 196, 255};
+}
+
+[[nodiscard]] Color MarkerColor(std::string_view type)
+{
+    if (type == "start") {
+        return Color{96, 225, 118, 255};
+    }
+    if (type == "goal") {
+        return Color{238, 91, 78, 255};
+    }
+    if (type == "loot") {
+        return Color{244, 211, 72, 255};
+    }
+    if (type == "story") {
+        return Color{195, 110, 222, 255};
+    }
+    if (type == "defensive_point") {
+        return Color{232, 139, 70, 255};
+    }
+    if (type == "point_of_interest") {
+        return Color{81, 188, 221, 255};
+    }
+    return Color{214, 214, 206, 255};
+}
+
+[[nodiscard]] std::string_view MarkerGlyph(std::string_view type)
+{
+    if (type == "start") {
+        return "S";
+    }
+    if (type == "goal") {
+        return "G";
+    }
+    if (type == "loot") {
+        return "$";
+    }
+    if (type == "story") {
+        return "!";
+    }
+    if (type == "defensive_point") {
+        return "D";
+    }
+    if (type == "point_of_interest") {
+        return "P";
+    }
+    return "M";
+}
+
+void DrawTileFootprint(
+    std::span<const TileCoord> tiles,
+    Rectangle visible_world,
+    float zoom,
+    Color fill,
+    Color outline)
+{
+    const float line_width = std::max(1.0F / zoom, 0.02F);
+    for (const TileCoord tile : tiles) {
+        if (!TileNearVisibleWorld(tile, visible_world, 0.0F)) {
+            continue;
+        }
+        const Rectangle tile_bounds{
+            static_cast<float>(tile.x),
+            static_cast<float>(tile.y),
+            1.0F,
+            1.0F,
+        };
+        if (fill.a > 0) {
+            DrawRectangleRec(tile_bounds, fill);
+        }
+        DrawRectangleLinesEx(tile_bounds, line_width, outline);
+    }
+}
+
+void DrawObjectOrientation(
+    const RuntimeMapObject& object,
+    float zoom,
+    Color color)
+{
+    Vector2 direction{};
+    if (object.orientation == "east_west") {
+        direction = Vector2{1.0F, 0.0F};
+    } else if (object.orientation == "north_south"
+        || object.orientation == "vertical") {
+        direction = Vector2{0.0F, 1.0F};
+    } else {
+        return;
+    }
+
+    const Vector2 center{
+        static_cast<float>(object.anchor.x) + 0.5F,
+        static_cast<float>(object.anchor.y) + 0.5F,
+    };
+    const float half_length = std::clamp(7.0F / zoom, 0.3F, 0.75F);
+    const float line_width = std::max(1.5F / zoom, 0.025F);
+    DrawLineEx(
+        Vector2{
+            center.x - direction.x * half_length,
+            center.y - direction.y * half_length,
+        },
+        Vector2{
+            center.x + direction.x * half_length,
+            center.y + direction.y * half_length,
+        },
+        line_width,
+        color);
+}
+
+void DrawRuntimeObjectsOverlay(
+    std::span<const RuntimeMapObject> objects,
+    Rectangle visible_world,
+    float zoom)
+{
+    for (const RuntimeMapObject& object : objects) {
+        const bool visible = TileNearVisibleWorld(object.anchor, visible_world, 3.0F)
+            || BoundsIntersectVisibleWorld(object.visual_bounds, visible_world);
+        if (!visible) {
+            continue;
+        }
+
+        const Color color = ObjectColor(object.kind);
+        if (zoom >= kObjectFootprintThreshold) {
+            DrawTileFootprint(
+                object.footprint,
+                visible_world,
+                zoom,
+                Color{color.r, color.g, color.b, 48},
+                Color{color.r, color.g, color.b, 205});
+        }
+        if (zoom >= kObjectCollisionThreshold) {
+            DrawTileFootprint(
+                object.collision_footprint,
+                visible_world,
+                zoom,
+                Color{0, 0, 0, 0},
+                Color{235, 74, 70, 220});
+        }
+
+        const Vector2 center{
+            static_cast<float>(object.anchor.x) + 0.5F,
+            static_cast<float>(object.anchor.y) + 0.5F,
+        };
+        const float radius = std::clamp(4.5F / zoom, 0.16F, 0.72F);
+        DrawCircleV(center, radius + std::max(1.0F / zoom, 0.025F), Color{18, 22, 24, 235});
+        DrawCircleV(center, radius, color);
+        if (object.interactive) {
+            DrawCircleLinesV(
+                center,
+                radius + std::max(2.0F / zoom, 0.05F),
+                Color{245, 230, 111, 235});
+        }
+
+        if (zoom >= kObjectOrientationThreshold) {
+            DrawObjectOrientation(object, zoom, Color{22, 26, 28, 235});
+        }
+        if (zoom >= kObjectLabelThreshold) {
+            const float font_size = 9.0F / zoom;
+            const float spacing = 0.5F / zoom;
+            DrawTextEx(
+                GetFontDefault(),
+                object.type.c_str(),
+                Vector2{
+                    center.x + radius + 2.0F / zoom,
+                    center.y - font_size * 0.5F,
+                },
+                font_size,
+                spacing,
+                Color{244, 244, 232, 245});
+        }
+    }
+}
+
+void DrawPlacesOverlay(
+    std::span<const RuntimePlace> places,
+    Rectangle visible_world,
+    float zoom)
+{
+    const float line_width = std::max(1.5F / zoom, 0.025F);
+    for (const RuntimePlace& place : places) {
+        const RuntimeTileBounds fallback_bounds{
+            place.center.x - place.radius,
+            place.center.y - place.radius,
+            place.center.x + place.radius,
+            place.center.y + place.radius,
+        };
+        const RuntimeTileBounds& bounds = place.bounds.IsValid()
+            ? place.bounds
+            : fallback_bounds;
+        if (!BoundsIntersectVisibleWorld(bounds, visible_world)
+            && !TileNearVisibleWorld(place.center, visible_world, static_cast<float>(place.radius))) {
+            continue;
+        }
+
+        const Color place_color{74, 202, 218, 220};
+        const Vector2 center{
+            static_cast<float>(place.center.x) + 0.5F,
+            static_cast<float>(place.center.y) + 0.5F,
+        };
+        if (place.radius > 0) {
+            DrawCircleV(
+                center,
+                static_cast<float>(place.radius),
+                Color{place_color.r, place_color.g, place_color.b, 24});
+            DrawCircleLinesV(center, static_cast<float>(place.radius), place_color);
+        }
+        if (zoom >= kPlaceDetailThreshold && bounds.IsValid()) {
+            DrawRectangleLinesEx(
+                Rectangle{
+                    static_cast<float>(bounds.min_x),
+                    static_cast<float>(bounds.min_y),
+                    static_cast<float>(bounds.max_x - bounds.min_x + 1),
+                    static_cast<float>(bounds.max_y - bounds.min_y + 1),
+                },
+                line_width,
+                Color{place_color.r, place_color.g, place_color.b, 180});
+            const float entrance_radius = std::clamp(3.5F / zoom, 0.12F, 0.45F);
+            for (const RuntimePlaceEntrance& entrance : place.entrances) {
+                DrawCircleV(
+                    Vector2{
+                        static_cast<float>(entrance.tile.x) + 0.5F,
+                        static_cast<float>(entrance.tile.y) + 0.5F,
+                    },
+                    entrance_radius,
+                    Color{245, 236, 154, 235});
+            }
+        }
+        DrawCircleV(center, std::clamp(4.0F / zoom, 0.16F, 0.55F), place_color);
+        if (zoom >= kPlaceLabelThreshold) {
+            const float font_size = 10.0F / zoom;
+            const float spacing = 0.5F / zoom;
+            DrawTextEx(
+                GetFontDefault(),
+                place.type.c_str(),
+                Vector2{
+                    center.x + 4.0F / zoom,
+                    center.y - font_size * 0.6F,
+                },
+                font_size,
+                spacing,
+                Color{210, 247, 250, 245});
+        }
+    }
+}
+
+void DrawMarkersOverlay(
+    std::span<const RuntimeMapMarker> markers,
+    Rectangle visible_world,
+    float zoom,
+    bool endpoints_already_drawn)
+{
+    for (const RuntimeMapMarker& marker : markers) {
+        if (endpoints_already_drawn
+            && (marker.type == "start" || marker.type == "goal")) {
+            continue;
+        }
+        if (!TileNearVisibleWorld(marker.tile, visible_world, 1.0F)) {
+            continue;
+        }
+
+        const Vector2 center{
+            static_cast<float>(marker.tile.x) + 0.5F,
+            static_cast<float>(marker.tile.y) + 0.5F,
+        };
+        const Color color = MarkerColor(marker.type);
+        const float radius = std::clamp(6.0F / zoom, 0.22F, 0.85F);
+        DrawCircleV(center, radius + std::max(1.5F / zoom, 0.035F), Color{18, 22, 24, 240});
+        DrawCircleV(center, radius, color);
+
+        const std::string glyph(MarkerGlyph(marker.type));
+        const float glyph_size = 9.0F / zoom;
+        const float glyph_spacing = 0.5F / zoom;
+        const Vector2 glyph_bounds = MeasureTextEx(
+            GetFontDefault(),
+            glyph.c_str(),
+            glyph_size,
+            glyph_spacing);
+        DrawTextEx(
+            GetFontDefault(),
+            glyph.c_str(),
+            Vector2{
+                center.x - glyph_bounds.x * 0.5F,
+                center.y - glyph_bounds.y * 0.5F,
+            },
+            glyph_size,
+            glyph_spacing,
+            Color{24, 27, 28, 255});
+
+        if (zoom >= kMarkerLabelThreshold) {
+            const float font_size = 9.0F / zoom;
+            DrawTextEx(
+                GetFontDefault(),
+                marker.type.c_str(),
+                Vector2{
+                    center.x + radius + 2.0F / zoom,
+                    center.y - font_size * 0.5F,
+                },
+                font_size,
+                0.5F / zoom,
+                Color{246, 243, 226, 245});
+        }
+    }
 }
 
 }  // namespace
@@ -812,6 +1171,20 @@ void Map2DView::Draw(
             1.5F,
             "C ",
             kChunkLabelMinimumWidthPixels);
+    }
+
+    if (overlays.show_places) {
+        DrawPlacesOverlay(overlays.places, visible_world, zoom_);
+    }
+    if (overlays.show_objects) {
+        DrawRuntimeObjectsOverlay(overlays.objects, visible_world, zoom_);
+    }
+    if (overlays.show_markers) {
+        DrawMarkersOverlay(
+            overlays.markers,
+            visible_world,
+            zoom_,
+            overlays.show_start_goal);
     }
 
     if (overlays.show_start_goal) {

@@ -94,6 +94,84 @@ struct RuntimeObjectMarker {
     bool visual_only = false;
 };
 
+/**
+ * @brief Inclusive tile-space bounds used by 2D map diagnostics.
+ */
+struct RuntimeTileBounds {
+    int min_x = 0;
+    int min_y = 0;
+    int max_x = -1;
+    int max_y = -1;
+
+    /**
+     * @brief Returns true when the bounds contain at least one tile.
+     *
+     * @return True when minimum coordinates do not exceed maximum coordinates.
+     */
+    [[nodiscard]] bool IsValid() const;
+
+    /**
+     * @brief Checks whether a tile coordinate is inside the inclusive bounds.
+     *
+     * @param tile Tile coordinate to test.
+     * @return True when the tile is inside valid bounds.
+     */
+    [[nodiscard]] bool Contains(TileCoord tile) const;
+};
+
+/**
+ * @brief Runtime object data required by the interactive 2D map inspector.
+ */
+struct RuntimeMapObject {
+    std::string id;
+    std::string type;
+    std::string role;
+    TileCoord anchor;
+    RuntimeObjectMarkerKind kind = RuntimeObjectMarkerKind::kUnknown;
+    std::string orientation;
+    std::vector<TileCoord> footprint;
+    std::vector<TileCoord> collision_footprint;
+    RuntimeTileBounds visual_bounds;
+    int elevation = 0;
+    int height = 0;
+    bool blocks_movement = false;
+    bool blocks_projectiles = false;
+    bool blocks_vision = false;
+    bool interactive = false;
+};
+
+/**
+ * @brief Named entrance attached to a runtime place.
+ */
+struct RuntimePlaceEntrance {
+    std::string id;
+    std::string side;
+    TileCoord tile;
+};
+
+/**
+ * @brief Semantic place region displayed by the interactive 2D map inspector.
+ */
+struct RuntimePlace {
+    std::string id;
+    std::string type;
+    std::string role;
+    TileCoord center;
+    int radius = 0;
+    RuntimeTileBounds bounds;
+    std::vector<RuntimePlaceEntrance> entrances;
+};
+
+/**
+ * @brief Semantic map marker displayed by the interactive 2D map inspector.
+ */
+struct RuntimeMapMarker {
+    std::string id;
+    std::string type;
+    std::string source;
+    TileCoord tile;
+};
+
 struct RuntimeMapInfo {
     int width = 0;
     int height = 0;
@@ -113,6 +191,9 @@ struct RuntimeMapInfo {
     bool concealment_loaded = false;
     bool start_goal_loaded = false;
     bool object_markers_loaded = false;
+    bool runtime_objects_loaded = false;
+    bool places_loaded = false;
+    bool markers_loaded = false;
     bool runtime_binary_checked = false;
     bool runtime_binary_valid = false;
     bool runtime_binary_loaded = false;
@@ -132,6 +213,9 @@ struct RuntimeMapInfo {
     int runtime_binary_json_compare_ms = 0;
     int blocked_cells = 0;
     int object_markers = 0;
+    int runtime_objects = 0;
+    int places = 0;
+    int markers = 0;
 
     /**
      * @brief Returns true when the runtime map dimensions are usable.
@@ -160,6 +244,9 @@ struct RuntimeMap {
     RuntimeGrid<std::uint8_t> cover;
     RuntimeGrid<std::uint8_t> concealment;
     std::vector<RuntimeObjectMarker> object_markers;
+    std::vector<RuntimeMapObject> runtime_objects;
+    std::vector<RuntimePlace> places;
+    std::vector<RuntimeMapMarker> markers;
     Diagnostics diagnostics;
 
     /**

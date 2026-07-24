@@ -39,8 +39,8 @@ struct Map2DLegendEntry {
  * @brief Optional vector overlays drawn above a 2D diagnostic base layer.
  *
  * Partition sizes are expressed in map tiles. Invalid or zero partition sizes
- * disable the corresponding overlay. Start, goal, and selection coordinates
- * are ignored when they fall outside the loaded map.
+ * disable the corresponding overlay. Start, goal, object, place, marker, and
+ * selection coordinates are ignored when they fall outside the loaded map.
  */
 struct Map2DOverlayOptions {
     bool show_grid = false;
@@ -52,6 +52,12 @@ struct Map2DOverlayOptions {
     bool show_start_goal = false;
     std::optional<TileCoord> start;
     std::optional<TileCoord> goal;
+    bool show_objects = false;
+    std::span<const RuntimeMapObject> objects;
+    bool show_places = false;
+    std::span<const RuntimePlace> places;
+    bool show_markers = false;
+    std::span<const RuntimeMapMarker> markers;
     std::optional<TileCoord> selection;
 };
 

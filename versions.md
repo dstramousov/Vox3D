@@ -562,3 +562,10 @@
 - Added zoom-dependent chunk and region labels while keeping the tile grid separate from partition overlays.
 - Added `Home` and `End` navigation to center the 2D map on Start and Goal at inspection scale.
 - Extended the `I` selection overlay with VXMAP region coordinates and clipped region bounds.
+
+## v0.5.49 -> v0.5.50
+
+- Loaded runtime objects, places, and semantic markers from the real map-package JSON files into normalized runtime data.
+- Enabled independent 2D overlays for Objects, Places, and Markers with viewport culling and zoom-dependent detail.
+- Added object footprints, collision footprints, orientation hints, place bounds, entrances, marker glyphs, and labels at inspection zoom.
+- Extended the `I` selection overlay with objects, places, and markers touching the selected tile.

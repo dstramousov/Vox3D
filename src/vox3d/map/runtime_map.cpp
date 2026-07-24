@@ -637,6 +637,15 @@ void ReadStartGoal(RuntimeMap& runtime, const MapPackageInfo& package)
     return RuntimeObjectMarkerKind::kUnknown;
 }
 
+[[nodiscard]] bool RuntimeContainsTile(
+    const RuntimeMap& runtime,
+    TileCoord tile)
+{
+    return runtime.info.IsValid()
+        && tile.x >= 0 && tile.y >= 0
+        && tile.x < runtime.info.width && tile.y < runtime.info.height;
+}
+
 void AddRuntimeObjectMarker(RuntimeMap& runtime, RuntimeObjectMarker marker)
 {
     if (!runtime.info.IsValid() || !runtime.height.Contains(marker.tile)) {
@@ -646,7 +655,85 @@ void AddRuntimeObjectMarker(RuntimeMap& runtime, RuntimeObjectMarker marker)
     runtime.object_markers.push_back(std::move(marker));
 }
 
-void ReadRuntimeObjectMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
+[[nodiscard]] std::optional<TileCoord> ParseTileCoordObject(
+    const std::string& text,
+    std::string_view key)
+{
+    const std::optional<std::string> object = ExtractObjectAfterKey(text, key);
+    if (!object.has_value()) {
+        return std::nullopt;
+    }
+    const std::optional<int> x = ExtractIntByKeys(*object, {"x"});
+    const std::optional<int> y = ExtractIntByKeys(*object, {"y"});
+    if (!x.has_value() || !y.has_value()) {
+        return std::nullopt;
+    }
+    return TileCoord{*x, *y};
+}
+
+[[nodiscard]] std::vector<TileCoord> ParseTileCoordArray(
+    const std::string& text,
+    std::string_view key)
+{
+    const std::optional<std::string> array = ExtractArrayAfterKey(text, key);
+    if (!array.has_value()) {
+        return {};
+    }
+
+    const std::vector<int> values = ExtractIntegers(*array);
+    if (values.size() % 2U != 0U) {
+        return {};
+    }
+
+    std::vector<TileCoord> tiles;
+    tiles.reserve(values.size() / 2U);
+    for (std::size_t index = 0; index < values.size(); index += 2U) {
+        tiles.push_back(TileCoord{values[index], values[index + 1U]});
+    }
+    return tiles;
+}
+
+[[nodiscard]] RuntimeTileBounds ParseInclusiveBounds(
+    const std::string& text,
+    std::string_view key)
+{
+    RuntimeTileBounds bounds;
+    const std::optional<std::string> object = ExtractObjectAfterKey(text, key);
+    if (!object.has_value()) {
+        return bounds;
+    }
+    bounds.min_x = ExtractIntByKeys(*object, {"min_x"}).value_or(0);
+    bounds.min_y = ExtractIntByKeys(*object, {"min_y"}).value_or(0);
+    bounds.max_x = ExtractIntByKeys(*object, {"max_x"}).value_or(-1);
+    bounds.max_y = ExtractIntByKeys(*object, {"max_y"}).value_or(-1);
+    return bounds;
+}
+
+[[nodiscard]] RuntimeTileBounds ParseVisualBounds(const std::string& text)
+{
+    RuntimeTileBounds bounds;
+    const std::optional<std::string> object = ExtractObjectAfterKey(text, "visual_bounds");
+    if (!object.has_value()) {
+        return bounds;
+    }
+
+    const std::optional<int> x = ExtractIntByKeys(*object, {"x"});
+    const std::optional<int> y = ExtractIntByKeys(*object, {"y"});
+    const std::optional<int> width = ExtractIntByKeys(*object, {"width"});
+    const std::optional<int> height = ExtractIntByKeys(*object, {"height"});
+    if (!x.has_value() || !y.has_value() || !width.has_value()
+        || !height.has_value() || *width <= 0 || *height <= 0) {
+        return bounds;
+    }
+
+    bounds.min_x = *x;
+    bounds.min_y = *y;
+    bounds.max_x = *x + *width - 1;
+    bounds.max_y = *y + *height - 1;
+    return bounds;
+}
+
+void ReadRuntimeObjects(RuntimeMap& runtime, const MapPackageInfo& package)
 {
     constexpr std::string_view kObjectsFile = "objects/runtime_objects.json";
     const std::filesystem::path objects_path = package.path / kObjectsFile;
@@ -654,39 +741,201 @@ void ReadRuntimeObjectMarkers(RuntimeMap& runtime, const MapPackageInfo& package
         return;
     }
 
-    const std::string text = ReadTextFileLimited(objects_path, kMaxRuntimeGridReadBytes, runtime.diagnostics);
+    const std::string text = ReadTextFileLimited(
+        objects_path,
+        kMaxRuntimeGridReadBytes,
+        runtime.diagnostics);
     if (text.empty()) {
         return;
     }
 
     const std::optional<std::string> items = ExtractArrayAfterKey(text, "items");
     if (!items.has_value()) {
-        runtime.diagnostics.AddWarning("runtime object markers missing items source=" + std::string(kObjectsFile));
+        runtime.diagnostics.AddWarning(
+            "runtime objects missing items source=" + std::string(kObjectsFile));
         return;
     }
 
     int skipped = 0;
-    for (const std::string& object : ExtractTopLevelObjectsFromArray(*items)) {
-        const std::optional<int> x = ExtractIntByKeys(object, {"x"});
-        const std::optional<int> y = ExtractIntByKeys(object, {"y"});
+    for (const std::string& object_text : ExtractTopLevelObjectsFromArray(*items)) {
+        const std::optional<int> x = ExtractIntByKeys(object_text, {"x"});
+        const std::optional<int> y = ExtractIntByKeys(object_text, {"y"});
         if (!x.has_value() || !y.has_value()) {
             ++skipped;
             continue;
         }
 
+        RuntimeMapObject object;
+        object.id = ExtractStringByKeys(object_text, {"id"}).value_or("object");
+        object.type = ExtractStringByKeys(object_text, {"type"}).value_or("object");
+        object.role = ExtractStringByKeys(object_text, {"role"}).value_or("");
+        object.anchor = TileCoord{*x, *y};
+        if (!RuntimeContainsTile(runtime, object.anchor)) {
+            ++skipped;
+            continue;
+        }
+        object.kind = ClassifyObjectMarker(object.type, object.role);
+        object.orientation = ExtractStringByKeys(object_text, {"orientation"}).value_or("");
+        object.footprint = ParseTileCoordArray(object_text, "footprint");
+        object.collision_footprint = ParseTileCoordArray(
+            object_text,
+            "collision_footprint");
+        object.visual_bounds = ParseVisualBounds(object_text);
+        object.elevation = ExtractIntByKeys(object_text, {"elevation"}).value_or(0);
+        object.height = std::max(0, ExtractIntByKeys(object_text, {"height"}).value_or(0));
+        object.blocks_movement = ExtractBoolByKeys(
+            object_text,
+            {"blocks_movement"}).value_or(false);
+        object.blocks_projectiles = ExtractBoolByKeys(
+            object_text,
+            {"blocks_projectiles"}).value_or(false);
+        object.blocks_vision = ExtractBoolByKeys(
+            object_text,
+            {"blocks_vision"}).value_or(false);
+        object.interactive = ExtractBoolByKeys(
+            object_text,
+            {"interactive"}).value_or(false);
         RuntimeObjectMarker marker;
-        marker.tile = TileCoord{*x, *y};
-        marker.type = ExtractStringByKeys(object, {"type"}).value_or("object");
-        marker.role = ExtractStringByKeys(object, {"role"}).value_or("");
-        marker.height = ExtractIntByKeys(object, {"height"}).value_or(1);
-        marker.blocks_movement = ExtractBoolByKeys(object, {"blocks_movement"}).value_or(false);
+        marker.tile = object.anchor;
+        marker.kind = object.kind;
+        marker.type = object.type;
+        marker.role = object.role;
+        marker.height = object.height;
+        marker.blocks_movement = object.blocks_movement;
         marker.visual_only = false;
-        marker.kind = ClassifyObjectMarker(marker.type, marker.role);
         AddRuntimeObjectMarker(runtime, std::move(marker));
+        runtime.runtime_objects.push_back(std::move(object));
     }
 
+    runtime.info.runtime_objects = static_cast<int>(runtime.runtime_objects.size());
+    runtime.info.runtime_objects_loaded = !runtime.runtime_objects.empty();
     if (skipped > 0) {
-        runtime.diagnostics.AddWarning("runtime object markers skipped invalid items count=" + std::to_string(skipped));
+        runtime.diagnostics.AddWarning(
+            "runtime objects skipped invalid items count=" + std::to_string(skipped));
+    }
+}
+
+void ReadPlaces(RuntimeMap& runtime, const MapPackageInfo& package)
+{
+    constexpr std::string_view kPlacesFile = "objects/places.json";
+    const std::filesystem::path places_path = package.path / kPlacesFile;
+    if (!Exists(places_path)) {
+        return;
+    }
+
+    const std::string text = ReadTextFileLimited(
+        places_path,
+        kMaxRuntimeGridReadBytes,
+        runtime.diagnostics);
+    if (text.empty()) {
+        return;
+    }
+
+    const std::optional<std::string> items = ExtractArrayAfterKey(text, "items");
+    if (!items.has_value()) {
+        runtime.diagnostics.AddWarning(
+            "runtime places missing items source=" + std::string(kPlacesFile));
+        return;
+    }
+
+    int skipped = 0;
+    for (const std::string& place_text : ExtractTopLevelObjectsFromArray(*items)) {
+        const std::optional<TileCoord> center = ParseTileCoordObject(
+            place_text,
+            "center");
+        if (!center.has_value() || !RuntimeContainsTile(runtime, *center)) {
+            ++skipped;
+            continue;
+        }
+
+        RuntimePlace place;
+        place.id = ExtractStringByKeys(place_text, {"id"}).value_or("place");
+        place.type = ExtractStringByKeys(place_text, {"type"}).value_or("place");
+        place.role = ExtractStringByKeys(place_text, {"role"}).value_or("");
+        place.center = *center;
+        place.radius = std::max(0, ExtractIntByKeys(place_text, {"radius"}).value_or(0));
+        place.bounds = ParseInclusiveBounds(place_text, "bounds");
+
+        const std::optional<std::string> entrances = ExtractArrayAfterKey(
+            place_text,
+            "entrances");
+        if (entrances.has_value()) {
+            for (const std::string& entrance_text
+                 : ExtractTopLevelObjectsFromArray(*entrances)) {
+                const std::optional<TileCoord> position = ParseTileCoordObject(
+                    entrance_text,
+                    "position");
+                if (!position.has_value() || !RuntimeContainsTile(runtime, *position)) {
+                    continue;
+                }
+                RuntimePlaceEntrance entrance;
+                entrance.id = ExtractStringByKeys(
+                    entrance_text,
+                    {"id"}).value_or("entrance");
+                entrance.side = ExtractStringByKeys(
+                    entrance_text,
+                    {"side"}).value_or("");
+                entrance.tile = *position;
+                place.entrances.push_back(std::move(entrance));
+            }
+        }
+        runtime.places.push_back(std::move(place));
+    }
+
+    runtime.info.places = static_cast<int>(runtime.places.size());
+    runtime.info.places_loaded = !runtime.places.empty();
+    if (skipped > 0) {
+        runtime.diagnostics.AddWarning(
+            "runtime places skipped invalid items count=" + std::to_string(skipped));
+    }
+}
+
+void ReadMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
+{
+    constexpr std::string_view kMarkersFile = "markers.json";
+    const std::filesystem::path markers_path = package.path / kMarkersFile;
+    if (!Exists(markers_path)) {
+        return;
+    }
+
+    const std::string text = ReadTextFileLimited(
+        markers_path,
+        kMaxRuntimeGridReadBytes,
+        runtime.diagnostics);
+    if (text.empty()) {
+        return;
+    }
+
+    const std::optional<std::string> items = ExtractArrayAfterKey(text, "items");
+    if (!items.has_value()) {
+        runtime.diagnostics.AddWarning(
+            "runtime markers missing items source=" + std::string(kMarkersFile));
+        return;
+    }
+
+    int skipped = 0;
+    for (const std::string& marker_text : ExtractTopLevelObjectsFromArray(*items)) {
+        const std::optional<TileCoord> position = ParseTileCoordObject(
+            marker_text,
+            "position");
+        if (!position.has_value() || !RuntimeContainsTile(runtime, *position)) {
+            ++skipped;
+            continue;
+        }
+
+        RuntimeMapMarker marker;
+        marker.id = ExtractStringByKeys(marker_text, {"id"}).value_or("marker");
+        marker.type = ExtractStringByKeys(marker_text, {"type"}).value_or("marker");
+        marker.source = ExtractStringByKeys(marker_text, {"source"}).value_or("");
+        marker.tile = *position;
+        runtime.markers.push_back(std::move(marker));
+    }
+
+    runtime.info.markers = static_cast<int>(runtime.markers.size());
+    runtime.info.markers_loaded = !runtime.markers.empty();
+    if (skipped > 0) {
+        runtime.diagnostics.AddWarning(
+            "runtime markers skipped invalid items count=" + std::to_string(skipped));
     }
 }
 
@@ -766,9 +1015,11 @@ void ReadVegetationVisualMarkers(RuntimeMap& runtime, const MapPackageInfo& pack
     }
 }
 
-void ReadObjectMarkers(RuntimeMap& runtime, const MapPackageInfo& package)
+void ReadWorldOverlayData(RuntimeMap& runtime, const MapPackageInfo& package)
 {
-    ReadRuntimeObjectMarkers(runtime, package);
+    ReadRuntimeObjects(runtime, package);
+    ReadPlaces(runtime, package);
+    ReadMarkers(runtime, package);
     ReadVegetationVisualMarkers(runtime, package);
     runtime.info.object_markers = static_cast<int>(runtime.object_markers.size());
     runtime.info.object_markers_loaded = runtime.info.object_markers > 0;
@@ -1059,6 +1310,17 @@ void BuildRuntimeTerrainOverview(RuntimeMap& runtime)
 
 }  // namespace
 
+bool RuntimeTileBounds::IsValid() const
+{
+    return min_x <= max_x && min_y <= max_y;
+}
+
+bool RuntimeTileBounds::Contains(TileCoord tile) const
+{
+    return IsValid() && tile.x >= min_x && tile.x <= max_x
+        && tile.y >= min_y && tile.y <= max_y;
+}
+
 bool RuntimeMapInfo::IsValid() const
 {
     return width > 0 && height > 0 && tile_size_px > 0;
@@ -1133,7 +1395,7 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     BuildRuntimeTerrainOverview(runtime);
     runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
     UpdateHeightRange(runtime);
-    ReadObjectMarkers(runtime, package);
+    ReadWorldOverlayData(runtime, package);
     ValidateRuntimeMap(runtime);
     return runtime;
 }
@@ -1162,6 +1424,9 @@ std::string ToLogString(const RuntimeMap& map)
     out << " start=" << FormatPoint(map.info.start);
     out << " goal=" << FormatPoint(map.info.goal);
     out << " object_markers=" << map.info.object_markers;
+    out << " runtime_objects=" << map.info.runtime_objects;
+    out << " places=" << map.info.places;
+    out << " markers=" << map.info.markers;
     if (map.info.runtime_binary_checked) {
         out << " runtime_binary=";
         if (map.info.runtime_binary_loaded) {
