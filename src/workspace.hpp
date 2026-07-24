@@ -42,6 +42,14 @@ enum class WorkspacePanelTab {
 };
 
 /**
+ * @brief Global workspace preview mode selected above the right-side menu.
+ */
+enum class WorkspaceViewMode {
+    kMap2D,
+    kWorld3D,
+};
+
+/**
  * @brief Semantic kind of a workspace tree row.
  */
 enum class WorkspacePanelItemKind {
@@ -103,15 +111,6 @@ enum class WorkspacePathPickMode {
  * @brief Clickable item shown inside an expanded workspace tree section.
  */
 enum class WorkspacePanelItem {
-    kMenuModeGroup,
-    kMode2DMap,
-    kMode3DWorld,
-
-    k2DNavigationGroup,
-    k2DFitView,
-    k2DResetView,
-    k2DZoomIn,
-    k2DZoomOut,
     k2DBaseLayerGroup,
     kLayerTerrain,
     kLayerElevation,
@@ -283,7 +282,7 @@ enum class WorkspacePanelItem {
  * @brief Runtime state for one workspace tree row.
  */
 struct WorkspacePanelItemState {
-    WorkspacePanelItem item = WorkspacePanelItem::kMode2DMap;
+    WorkspacePanelItem item = WorkspacePanelItem::k2DBaseLayerGroup;
     WorkspacePanelItemKind kind = WorkspacePanelItemKind::kAction;
     int depth = 1;
     bool enabled = false;
@@ -367,8 +366,6 @@ struct WorkspaceState {
     WorkspaceTool selected_tool = WorkspaceTool::kMode;
     bool selected_tool_expanded = true;
     std::vector<WorkspacePanelItem> collapsed_panel_groups{
-        WorkspacePanelItem::kMenuModeGroup,
-        WorkspacePanelItem::k2DNavigationGroup,
         WorkspacePanelItem::k2DBaseLayerGroup,
         WorkspacePanelItem::k2DOverlayGroup,
         WorkspacePanelItem::k3DRenderGroup,
@@ -497,6 +494,14 @@ struct WorkspaceState {
  * @return String representation.
  */
 [[nodiscard]] std::string_view ToString(WorkspacePanelTab tab);
+
+/**
+ * @brief Returns a stable lowercase name for a workspace preview mode.
+ *
+ * @param mode Workspace preview mode.
+ * @return Stable lowercase mode name.
+ */
+[[nodiscard]] std::string_view ToString(WorkspaceViewMode mode);
 
 /**
  * @brief Converts a workspace color mode identifier to a stable lowercase name.

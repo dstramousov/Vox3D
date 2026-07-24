@@ -72,6 +72,17 @@ std::string_view ToString(WorkspacePanelTab tab)
     return "unknown";
 }
 
+std::string_view ToString(WorkspaceViewMode mode)
+{
+    switch (mode) {
+        case WorkspaceViewMode::kMap2D:
+            return "2d";
+        case WorkspaceViewMode::kWorld3D:
+            return "3d";
+    }
+    return "unknown";
+}
+
 std::string_view ToString(WorkspaceColorMode mode)
 {
     switch (mode) {
@@ -164,22 +175,6 @@ double WorkspaceChunkSizeComparison::FaceDeltaRatio() const
 std::string_view ToString(WorkspacePanelItem item)
 {
     switch (item) {
-        case WorkspacePanelItem::kMenuModeGroup:
-            return "menu_mode";
-        case WorkspacePanelItem::kMode2DMap:
-            return "mode_2d_map";
-        case WorkspacePanelItem::kMode3DWorld:
-            return "mode_3d_world";
-        case WorkspacePanelItem::k2DNavigationGroup:
-            return "2d_navigation";
-        case WorkspacePanelItem::k2DFitView:
-            return "2d_fit_view";
-        case WorkspacePanelItem::k2DResetView:
-            return "2d_reset_view";
-        case WorkspacePanelItem::k2DZoomIn:
-            return "2d_zoom_in";
-        case WorkspacePanelItem::k2DZoomOut:
-            return "2d_zoom_out";
         case WorkspacePanelItem::k2DBaseLayerGroup:
             return "2d_base_layer";
         case WorkspacePanelItem::kLayerTerrain:
@@ -505,8 +500,6 @@ std::string_view ToString(WorkspacePanelItem item)
 bool IsCollapsibleWorkspacePanelGroup(WorkspacePanelItem item)
 {
     switch (item) {
-        case WorkspacePanelItem::kMenuModeGroup:
-        case WorkspacePanelItem::k2DNavigationGroup:
         case WorkspacePanelItem::k2DBaseLayerGroup:
         case WorkspacePanelItem::k2DOverlayGroup:
         case WorkspacePanelItem::k3DRenderGroup:
@@ -574,11 +567,6 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
         items.push_back(Group(item, depth, expanded));
         return expanded;
     };
-
-    if (AddGroup(Item::kMenuModeGroup)) {
-        items.push_back(Radio(Item::kMode2DMap, 1, true, !workspace.show_3d_preview));
-        items.push_back(Radio(Item::kMode3DWorld, 1, workspace.chunk_meshes.IsValid(), workspace.show_3d_preview));
-    }
 
     if (workspace.show_3d_preview) {
         if (AddGroup(Item::k3DRenderGroup)) {
@@ -802,14 +790,6 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 workspace.chunk_mesh_cache.IsValid() && workspace.mesh_mode != ChunkMeshBuildMode::kTerrainSurface));
         }
         return items;
-    }
-
-    if (AddGroup(Item::k2DNavigationGroup)) {
-        const bool navigation_enabled = workspace.runtime_map.IsValid();
-        items.push_back(Action(Item::k2DFitView, 1, navigation_enabled));
-        items.push_back(Action(Item::k2DResetView, 1, navigation_enabled));
-        items.push_back(Action(Item::k2DZoomIn, 1, navigation_enabled));
-        items.push_back(Action(Item::k2DZoomOut, 1, navigation_enabled));
     }
 
     if (AddGroup(Item::k2DBaseLayerGroup)) {

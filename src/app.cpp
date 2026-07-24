@@ -1429,23 +1429,17 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     map_2d_view_.Update(layout_cache_.workspace.map_overview, map_2d_mode);
-    bool panel_tab_hotkey_pressed = false;
-    if (!preview_camera_.IsCursorCaptured()) {
-        if (IsKeyPressed(KEY_V)) {
-            SetWorkspacePanelTab(WorkspacePanelTab::kMenu, "hotkey_v");
-            panel_tab_hotkey_pressed = true;
-        } else if (IsKeyPressed(KEY_S)) {
-            selection_info_overlay_open_ = false;
-            selection_info_overlay_scroll_rows_ = 0;
-            help_overlay_open_ = false;
-            help_overlay_scroll_rows_ = 0;
-            stats_overlay_open_ = true;
-            stats_overlay_scroll_rows_ = 0;
-            preview_camera_.ReleaseMouse();
-            panel_tab_hotkey_pressed = true;
-            logger_.Debug("stats", "overlay=opened mode="
-                + std::string(workspace_.show_3d_preview ? "3d" : "2d"));
-        }
+    if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_S)) {
+        selection_info_overlay_open_ = false;
+        selection_info_overlay_scroll_rows_ = 0;
+        help_overlay_open_ = false;
+        help_overlay_scroll_rows_ = 0;
+        stats_overlay_open_ = true;
+        stats_overlay_scroll_rows_ = 0;
+        preview_camera_.ReleaseMouse();
+        logger_.Debug("stats", "overlay=opened mode="
+            + std::string(workspace_.show_3d_preview ? "3d" : "2d"));
+        return;
     }
 
     if (layout_dirty_) {
@@ -1519,7 +1513,7 @@ void App::HandleWorkspaceInput(float dt)
         if (IsKeyPressed(KEY_M)) {
             ToggleMovementProbeOverlay("hotkey");
         }
-        if (IsKeyPressed(KEY_V) && !panel_tab_hotkey_pressed) {
+        if (IsKeyPressed(KEY_V)) {
             TogglePassabilityValidationOverlay("hotkey");
         }
         if (IsKeyPressed(KEY_P)) {
@@ -1586,21 +1580,19 @@ void App::HandleWorkspaceInput(float dt)
         preview_camera_.Update(dt, layout_cache_.workspace.map_overview, false);
     }
 
-    if (!panel_tab_hotkey_pressed) {
-        if (camera_mode) {
-            if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_LEFT)) {
-                SelectPreviousWorkspaceTool();
-            }
-            if (IsKeyPressedAny({KEY_DOWN, KEY_RIGHT, KEY_TAB})) {
-                SelectNextWorkspaceTool();
-            }
-        } else {
-            if (IsKeyPressedAny({KEY_UP, KEY_W, KEY_LEFT, KEY_A})) {
-                SelectPreviousWorkspaceTool();
-            }
-            if (IsKeyPressedAny({KEY_DOWN, KEY_S, KEY_RIGHT, KEY_D, KEY_TAB})) {
-                SelectNextWorkspaceTool();
-            }
+    if (camera_mode) {
+        if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_LEFT)) {
+            SelectPreviousWorkspaceTool();
+        }
+        if (IsKeyPressedAny({KEY_DOWN, KEY_RIGHT, KEY_TAB})) {
+            SelectNextWorkspaceTool();
+        }
+    } else {
+        if (IsKeyPressedAny({KEY_UP, KEY_W, KEY_LEFT, KEY_A})) {
+            SelectPreviousWorkspaceTool();
+        }
+        if (IsKeyPressedAny({KEY_DOWN, KEY_S, KEY_RIGHT, KEY_D, KEY_TAB})) {
+            SelectNextWorkspaceTool();
         }
     }
     if (IsKeyPressed(KEY_ENTER) && workspace_.selected_panel_tab != WorkspacePanelTab::kMenu) {
@@ -1612,14 +1604,14 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     const Vector2 mouse = GetMousePosition();
-    for (const auto& tab_bounds : layout_cache_.workspace.panel_tabs) {
-        if (!PointInRect(mouse, tab_bounds.bounds)) {
+    for (const WorkspaceModeButtonBounds& button : layout_cache_.workspace.mode_buttons) {
+        if (!PointInRect(mouse, button.bounds)) {
             continue;
         }
 
-        hovered_item_ = "workspace_tab_" + std::string(ToString(tab_bounds.tab));
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            SetWorkspacePanelTab(tab_bounds.tab, "mouse");
+        hovered_item_ = "workspace_mode_" + std::string(ToString(button.mode));
+        if (button.enabled && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            SetWorkspaceViewMode(button.mode, "mouse");
         }
         return;
     }
@@ -3027,6 +3019,40 @@ void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
         + " reason=" + std::string(reason));
 }
 
+void App::SetWorkspaceViewMode(WorkspaceViewMode mode, std::string_view reason)
+{
+    if (mode == WorkspaceViewMode::kMap2D) {
+        if (!workspace_.show_3d_preview) {
+            return;
+        }
+        workspace_.show_3d_preview = false;
+        preview_camera_.ReleaseMouse();
+        if (!map_2d_view_.Status().initialized) {
+            FitMap2DView("mode_switch");
+        }
+    } else {
+        if (workspace_.show_3d_preview) {
+            return;
+        }
+        if (!chunk_mesh_preview_.IsUploaded()) {
+            logger_.Debug("workspace", "preview mode=3d_unavailable reason="
+                + std::string(reason));
+            return;
+        }
+        workspace_.show_3d_preview = true;
+        if (!preview_camera_.IsInitialized()) {
+            FitPreviewCameraToViewport("mode_switch");
+        }
+    }
+
+    workspace_.menu_scroll_rows = 0;
+    layout_dirty_ = true;
+    logger_.Info(
+        "workspace",
+        "preview mode=" + std::string(ToString(mode))
+            + " reason=" + std::string(reason));
+}
+
 void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
 {
     const bool read_only_tree_panel = workspace_.selected_panel_tab == WorkspacePanelTab::kStats;
@@ -3063,18 +3089,6 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
     }
 
     switch (item) {
-        case WorkspacePanelItem::k2DFitView:
-            FitMap2DView("panel");
-            break;
-        case WorkspacePanelItem::k2DResetView:
-            ResetMap2DView("panel");
-            break;
-        case WorkspacePanelItem::k2DZoomIn:
-            AdjustMap2DZoom(1, "panel");
-            break;
-        case WorkspacePanelItem::k2DZoomOut:
-            AdjustMap2DZoom(-1, "panel");
-            break;
         case WorkspacePanelItem::kLayerTerrain:
             workspace_.map_2d_base_layer = Map2DBaseLayer::kTerrain;
             break;
@@ -3151,21 +3165,8 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
                 std::string("overlay=markers enabled=")
                     + (workspace_.show_2d_markers ? "yes" : "no"));
             break;
-        case WorkspacePanelItem::kMode2DMap:
-            workspace_.show_3d_preview = false;
-            preview_camera_.ReleaseMouse();
-            if (!map_2d_view_.Status().initialized) {
-                FitMap2DView("mode_switch");
-            }
-            logger_.Info("workspace", "preview mode=2d");
-            break;
-        case WorkspacePanelItem::kMode3DWorld:
         case WorkspacePanelItem::kRenderTerrainMesh:
-            workspace_.show_3d_preview = chunk_mesh_preview_.IsUploaded();
-            if (workspace_.show_3d_preview && !preview_camera_.IsInitialized()) {
-                FitPreviewCameraToViewport("panel");
-            }
-            logger_.Info("workspace", std::string("preview mode=") + (workspace_.show_3d_preview ? "3d" : "3d_unavailable"));
+            SetWorkspaceViewMode(WorkspaceViewMode::kWorld3D, "panel");
             break;
         case WorkspacePanelItem::kRenderChunkBounds:
             ToggleOverlayFlag(

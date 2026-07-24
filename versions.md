@@ -614,3 +614,10 @@
 - Aligned Help overlay actions to one fixed table column instead of spacing rows manually.
 - Highlighted the hotkey column in orange while keeping descriptions in the normal text color.
 - Preserved separate 2D and 3D control sections, modal sizing, and scrolling behavior.
+
+## v0.5.57 -> v0.5.58
+
+- Removed the duplicated 2D Navigation section from the side menu while keeping all navigation hotkeys documented in Help.
+- Replaced the collapsible Mode menu with a fixed full-width `2D Map` / `3D View` switch at the top of the side panel.
+- Removed the obsolete `View` header and centered both equal-width mode buttons within the side column.
+- Updated the 3D `V` hotkey documentation after removing the old View-panel shortcut.

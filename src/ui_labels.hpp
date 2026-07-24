@@ -31,7 +31,6 @@ struct UiLabels {
     std::string workspace_viewport_title = "MainRender";
     std::string workspace_tool_panel_title = "VoX3D";
     std::string workspace_tool_map = "Map";
-    std::string workspace_tool_view = "View";
     std::string workspace_tool_layers = "Layers";
     std::string workspace_tool_objects = "Objects";
     std::string workspace_tool_render = "Render";
@@ -62,9 +61,7 @@ struct UiLabels {
     std::string workspace_subitem_package = "Package";
     std::string workspace_subitem_validate = "Validate";
     std::string workspace_subitem_2d_map = "2D Map";
-    std::string workspace_subitem_3d_preview = "3D Preview";
-    std::string workspace_subitem_fit_view = "Fit View";
-    std::string workspace_subitem_reset_view = "Reset View";
+    std::string workspace_subitem_3d_preview = "3D View";
     std::string workspace_subitem_grid = "Grid";
     std::string workspace_subitem_chunk_bounds = "Chunk Bounds";
     std::string workspace_subitem_world_grid = "World Grid";

@@ -197,7 +197,6 @@ UiLabels DefaultUiLabels(std::string_view language)
         labels.workspace_viewport_title = "MainRender";
         labels.workspace_tool_panel_title = "VoX3D";
         labels.workspace_tool_map = "Мапа";
-        labels.workspace_tool_view = "Вид";
         labels.workspace_tool_layers = "Шари";
         labels.workspace_tool_objects = "Об’єкти";
         labels.workspace_tool_render = "Рендер";
@@ -229,8 +228,6 @@ UiLabels DefaultUiLabels(std::string_view language)
         labels.workspace_subitem_validate = "Перевірка";
         labels.workspace_subitem_2d_map = "2D мапа";
         labels.workspace_subitem_3d_preview = "3D перегляд";
-        labels.workspace_subitem_fit_view = "Вмістити";
-        labels.workspace_subitem_reset_view = "Скинути вид";
         labels.workspace_subitem_grid = "Сітка";
         labels.workspace_subitem_chunk_bounds = "Межі чанків";
         labels.workspace_subitem_world_grid = "Сітка світу";
@@ -302,7 +299,6 @@ bool LoadUiLabelsFromFile(
     AssignLabel(*values, "workspace.viewport_title", labels.workspace_viewport_title, diagnostics);
     AssignLabel(*values, "workspace.tool_panel_title", labels.workspace_tool_panel_title, diagnostics);
     AssignLabel(*values, "workspace.tool.map", labels.workspace_tool_map, diagnostics);
-    AssignLabel(*values, "workspace.tool.view", labels.workspace_tool_view, diagnostics);
     AssignLabel(*values, "workspace.tool.layers", labels.workspace_tool_layers, diagnostics);
     AssignLabel(*values, "workspace.tool.objects", labels.workspace_tool_objects, diagnostics);
     AssignLabel(*values, "workspace.tool.render", labels.workspace_tool_render, diagnostics);
@@ -334,8 +330,6 @@ bool LoadUiLabelsFromFile(
     AssignLabel(*values, "workspace.subitem.validate", labels.workspace_subitem_validate, diagnostics);
     AssignLabel(*values, "workspace.subitem.2d_map", labels.workspace_subitem_2d_map, diagnostics);
     AssignLabel(*values, "workspace.subitem.3d_preview", labels.workspace_subitem_3d_preview, diagnostics);
-    AssignLabel(*values, "workspace.subitem.fit_view", labels.workspace_subitem_fit_view, diagnostics);
-    AssignLabel(*values, "workspace.subitem.reset_view", labels.workspace_subitem_reset_view, diagnostics);
     AssignLabel(*values, "workspace.subitem.grid", labels.workspace_subitem_grid, diagnostics);
     AssignLabel(*values, "workspace.subitem.chunk_bounds", labels.workspace_subitem_chunk_bounds, diagnostics);
     AssignLabel(*values, "workspace.subitem.world_grid", labels.workspace_subitem_world_grid, diagnostics);

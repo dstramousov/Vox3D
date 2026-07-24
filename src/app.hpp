@@ -88,6 +88,7 @@ private:
     void SelectNextWorkspaceTool();
     void ToggleWorkspaceTool(WorkspaceTool tool);
     void ActivateWorkspacePanelItem(WorkspacePanelItem item);
+    void SetWorkspaceViewMode(WorkspaceViewMode mode, std::string_view reason);
     void ToggleTransitionOverlay(std::string_view reason);
     void ToggleMovementProbeOverlay(std::string_view reason);
     void SetPathProfile(PathProfile profile, std::string_view reason);

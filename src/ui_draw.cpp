@@ -1288,7 +1288,7 @@ struct HelpControlLine
         "  X                Clear path probe",
         "  T                Toggle transitions",
         "  M                Toggle movement probe",
-        "  V (captured)     Toggle passability issues",
+        "  V                Toggle passability issues",
         "  F4               Toggle chunk bounds",
         "  F5               Toggle world grid",
         "  F6               Toggle collision overlay",
@@ -1302,30 +1302,17 @@ struct HelpControlLine
     };
 }
 
-[[nodiscard]] std::string WorkspacePanelTabLabel(WorkspacePanelTab tab)
+[[nodiscard]] std::string WorkspaceViewModeLabel(
+    WorkspaceViewMode mode,
+    const UiLabels& labels)
 {
-    switch (tab) {
-        case WorkspacePanelTab::kMenu:
-            return "View";
-        case WorkspacePanelTab::kStats:
-            return "Stats";
-        case WorkspacePanelTab::kHelp:
-            return "Help";
+    switch (mode) {
+        case WorkspaceViewMode::kMap2D:
+            return labels.workspace_subitem_2d_map;
+        case WorkspaceViewMode::kWorld3D:
+            return labels.workspace_subitem_3d_preview;
     }
     return "Unknown";
-}
-
-[[nodiscard]] char WorkspacePanelTabHotkey(WorkspacePanelTab tab)
-{
-    switch (tab) {
-        case WorkspacePanelTab::kMenu:
-            return 'V';
-        case WorkspacePanelTab::kStats:
-            return 'S';
-        case WorkspacePanelTab::kHelp:
-            return 'H';
-    }
-    return '?';
 }
 
 [[nodiscard]] std::string MapStatusLabel(const MapPackageInfo& map, const UiLabels& labels)
@@ -1371,22 +1358,6 @@ struct HelpControlLine
 [[nodiscard]] std::string WorkspacePanelItemLabel(WorkspacePanelItem item, const WorkspaceState& workspace_state, const UiLabels& labels)
 {
     switch (item) {
-        case WorkspacePanelItem::kMenuModeGroup:
-            return "Mode";
-        case WorkspacePanelItem::kMode2DMap:
-            return labels.workspace_subitem_2d_map;
-        case WorkspacePanelItem::kMode3DWorld:
-            return labels.workspace_subitem_3d_preview;
-        case WorkspacePanelItem::k2DNavigationGroup:
-            return "Navigation";
-        case WorkspacePanelItem::k2DFitView:
-            return labels.workspace_subitem_fit_view;
-        case WorkspacePanelItem::k2DResetView:
-            return labels.workspace_subitem_reset_view;
-        case WorkspacePanelItem::k2DZoomIn:
-            return "Zoom In";
-        case WorkspacePanelItem::k2DZoomOut:
-            return "Zoom Out";
         case WorkspacePanelItem::k2DBaseLayerGroup:
             return "Base Layer";
         case WorkspacePanelItem::kLayerTerrain:
@@ -1872,10 +1843,10 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
     const UiMetrics& metrics,
     const WorkspaceState& workspace_state,
     FreeFlyCameraStatus /*camera_status*/,
-    const UiLabels& /*labels*/)
+    const UiLabels& labels)
 {
     WorkspaceLayout layout;
-    layout.panel_tabs.reserve(1);
+    layout.mode_buttons.reserve(2);
 
     const float status_height = metrics.workspace_status_height;
     const float panel_width = metrics.workspace_panel_width;
@@ -1925,41 +1896,39 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
         tab_height,
     };
 
-    constexpr std::array<WorkspacePanelTab, 1> tabs{
-        WorkspacePanelTab::kMenu,
+    constexpr std::array<WorkspaceViewMode, 2> modes{
+        WorkspaceViewMode::kMap2D,
+        WorkspaceViewMode::kWorld3D,
     };
-    const float tab_font_size = metrics.workspace_tab_font_size;
-    const float tab_spacing = Measure(
-        fonts.text,
-        "   ",
-        tab_font_size,
-        FontSpacing(tab_font_size))
-                                  .x;
-    float tabs_total_width = 0.0F;
-    std::array<Vector2, tabs.size()> tab_label_sizes{};
-    for (std::size_t index = 0; index < tabs.size(); ++index) {
-        const std::string tab_label = "[" + WorkspacePanelTabLabel(tabs[index]) + "]";
-        tab_label_sizes[index] = Measure(fonts.text, tab_label, tab_font_size, FontSpacing(tab_font_size));
-        tabs_total_width += tab_label_sizes[index].x;
-    }
-    tabs_total_width += tab_spacing * static_cast<float>(tabs.size() - 1U);
-
-    float tab_x = tool_x + std::max(0.0F, (tool_width - tabs_total_width) * 0.5F);
-    for (std::size_t index = 0; index < tabs.size(); ++index) {
-        const WorkspacePanelTab tab = tabs[index];
-        const Vector2 label_size = tab_label_sizes[index];
+    const float mode_font_size = metrics.workspace_tab_font_size;
+    const float mode_spacing = FontSpacing(mode_font_size);
+    const float mode_gap = std::max(2.0F, border);
+    const float mode_width = std::max(1.0F, (tool_width - mode_gap) * 0.5F);
+    for (std::size_t index = 0; index < modes.size(); ++index) {
+        const WorkspaceViewMode mode = modes[index];
         const Rectangle bounds{
-            tab_x,
+            tool_x + static_cast<float>(index) * (mode_width + mode_gap),
             layout.tool_header.y,
-            label_size.x,
+            mode_width,
             tab_height,
         };
-        layout.panel_tabs.push_back(WorkspacePanelTabBounds{
-            tab,
+        const std::string label = WorkspaceViewModeLabel(mode, labels);
+        const Vector2 label_size = Measure(
+            fonts.text,
+            label,
+            mode_font_size,
+            mode_spacing);
+        const bool is_3d = mode == WorkspaceViewMode::kWorld3D;
+        layout.mode_buttons.push_back(WorkspaceModeButtonBounds{
+            mode,
             bounds,
-            Vector2{bounds.x, bounds.y + (bounds.height - tab_font_size) * 0.5F},
+            Vector2{
+                bounds.x + (bounds.width - label_size.x) * 0.5F,
+                bounds.y + (bounds.height - label_size.y) * 0.5F,
+            },
+            !is_3d || workspace_state.chunk_meshes.IsValid(),
+            workspace_state.show_3d_preview == is_3d,
         });
-        tab_x += label_size.x + tab_spacing;
     }
 
     const float content_y = layout.tool_header.y + layout.tool_header.height + gap;
@@ -2250,37 +2219,31 @@ void DrawPlaceholderScreen(
 
 
 
-void DrawWorkspacePanelTab(
+void DrawWorkspaceModeButton(
     Font font,
-    WorkspacePanelTab tab,
-    bool selected,
-    Vector2 position,
+    const WorkspaceModeButtonBounds& button,
+    const UiLabels& labels,
     float font_size,
     float spacing)
 {
-    const std::string label = WorkspacePanelTabLabel(tab);
-    if (label.empty()) {
-        return;
-    }
+    const Color background = button.selected
+        ? Color{24, 58, 66, 255}
+        : Color{7, 103, 132, 255};
+    const Color border = button.selected ? kAccent : kEditorBorder;
+    const Color text = !button.enabled
+        ? Color{74, 138, 154, 255}
+        : (button.selected ? kAccent : kEditorPanelText);
 
-    const Color base_color = selected ? kAccent : kEditorViewportText;
-    const std::string prefix = "[";
-    const std::string hotkey(1, WorkspacePanelTabHotkey(tab));
-    const std::string suffix = label.substr(1) + "]";
-
-    const auto draw_segments = [&](Vector2 draw_position) {
-        float x = draw_position.x;
-        DrawTextEx(font, prefix.c_str(), Vector2{x, draw_position.y}, font_size, spacing, base_color);
-        x += Measure(font, prefix, font_size, spacing).x;
-        DrawTextEx(font, hotkey.c_str(), Vector2{x, draw_position.y}, font_size, spacing, kEditorHotkeyText);
-        x += Measure(font, hotkey, font_size, spacing).x;
-        DrawTextEx(font, suffix.c_str(), Vector2{x, draw_position.y}, font_size, spacing, base_color);
-    };
-
-    draw_segments(position);
-    if (selected) {
-        draw_segments(Vector2{position.x + 1.0F, position.y});
-    }
+    DrawRectangleRec(button.bounds, background);
+    DrawRectangleLinesEx(button.bounds, 1.0F, border);
+    const std::string label = WorkspaceViewModeLabel(button.mode, labels);
+    DrawTextEx(
+        font,
+        label.c_str(),
+        button.text_position,
+        font_size,
+        spacing,
+        text);
 }
 
 void DrawWorkspaceTooltip(
@@ -3055,16 +3018,14 @@ void DrawWorkspace(
     DrawRectangleLinesEx(workspace.status_bar, metrics.workspace_border_width, kEditorBorder);
 
     const float spacing = FontSpacing(metrics.workspace_tool_font_size);
-    const float tab_spacing = FontSpacing(metrics.workspace_tab_font_size);
-    for (const auto& tab_bounds : workspace.panel_tabs) {
-        const bool selected = workspace_state.selected_panel_tab == tab_bounds.tab;
-        DrawWorkspacePanelTab(
+    const float mode_spacing = FontSpacing(metrics.workspace_tab_font_size);
+    for (const WorkspaceModeButtonBounds& button : workspace.mode_buttons) {
+        DrawWorkspaceModeButton(
             fonts.text,
-            tab_bounds.tab,
-            selected,
-            tab_bounds.text_position,
+            button,
+            labels,
             metrics.workspace_tab_font_size,
-            tab_spacing);
+            mode_spacing);
     }
 
     if (workspace_state.selected_panel_tab == WorkspacePanelTab::kMenu) {

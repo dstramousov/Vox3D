@@ -121,19 +121,21 @@ struct WorkspaceToolBounds {
 };
 
 /**
- * @brief Hit box and text position for a workspace right-panel tab.
+ * @brief Hit box and centered label position for a global 2D/3D mode button.
  */
-struct WorkspacePanelTabBounds {
-    WorkspacePanelTab tab = WorkspacePanelTab::kMenu;
+struct WorkspaceModeButtonBounds {
+    WorkspaceViewMode mode = WorkspaceViewMode::kMap2D;
     Rectangle bounds{};
     Vector2 text_position{};
+    bool enabled = false;
+    bool selected = false;
 };
 
 /**
  * @brief Hit box and text position for a workspace accordion subitem.
  */
 struct WorkspacePanelItemBounds {
-    WorkspacePanelItem item = WorkspacePanelItem::kMode2DMap;
+    WorkspacePanelItem item = WorkspacePanelItem::k2DBaseLayerGroup;
     WorkspacePanelItemKind kind = WorkspacePanelItemKind::kAction;
     int depth = 1;
     Rectangle bounds{};
@@ -155,7 +157,7 @@ struct WorkspaceLayout {
     Rectangle map_summary{};
     Rectangle map_overview{};
     std::vector<WorkspaceToolBounds> tools;
-    std::vector<WorkspacePanelTabBounds> panel_tabs;
+    std::vector<WorkspaceModeButtonBounds> mode_buttons;
     std::vector<WorkspacePanelItemBounds> panel_items;
     int panel_total_rows = 0;
     int panel_first_visible_row = 0;
