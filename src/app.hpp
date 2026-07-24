@@ -84,6 +84,10 @@ private:
     void OpenHelpOverlay(std::string_view reason);
     void CloseHelpOverlay(std::string_view reason);
     void ScrollHelpOverlay(int delta_rows, std::string_view reason);
+    void OpenTileContextMenu(Vector2 anchor, std::string_view reason);
+    void CloseTileContextMenu(std::string_view reason);
+    [[nodiscard]] bool HandleTileContextMenuInput();
+    void GoToSelectedTileIn3D(std::string_view reason);
     void SelectPreviousWorkspaceTool();
     void SelectNextWorkspaceTool();
     void ToggleWorkspaceTool(WorkspaceTool tool);
@@ -171,6 +175,8 @@ private:
     int stats_overlay_scroll_rows_ = 0;
     bool help_overlay_open_ = false;
     int help_overlay_scroll_rows_ = 0;
+    bool tile_context_menu_open_ = false;
+    Vector2 tile_context_menu_anchor_{};
     ProcessMemoryInfo process_memory_{};
     float process_memory_sample_timer_ = 0.0F;
     Font title_font_{};

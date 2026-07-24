@@ -1253,7 +1253,7 @@ struct HelpControlLine
     return {
         "2D controls",
         "  LMB + drag       Pan map",
-        "  RMB              Select tile",
+        "  RMB              Select tile and open context menu",
         "  MMB              Select tile and open Info",
         "  Wheel            Zoom around cursor",
         "  + / -            Zoom in / out",
@@ -2052,6 +2052,116 @@ void DrawWorkspaceWirePlaceholder(const WorkspaceLayout& workspace, const UiMetr
 }
 
 }  // namespace
+
+TileContextMenuLayout BuildTileContextMenuLayout(
+    Vector2 anchor,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout)
+{
+    const UiMetrics& metrics = layout.metrics;
+    const Rectangle viewport = layout.workspace.map_overview;
+    const float font_size = metrics.workspace_tool_font_size;
+    const float spacing = FontSpacing(font_size);
+    const float padding_x = std::max(10.0F, metrics.workspace_tool_gap * 1.8F);
+    const float padding_y = std::max(7.0F, metrics.workspace_tool_gap * 1.2F);
+    const float row_height = std::max(34.0F * metrics.scale, font_size + padding_y * 2.0F);
+    const float label_width = std::max(
+        Measure(fonts.text, "Tile info", font_size, spacing).x,
+        Measure(fonts.text, "Go to 3D view", font_size, spacing).x);
+    const float width = std::max(190.0F * metrics.scale, label_width + padding_x * 2.0F);
+    const float height = row_height * 2.0F;
+    const float offset = std::max(8.0F, metrics.workspace_tool_gap * 1.5F);
+    const float viewport_margin = std::max(3.0F, metrics.workspace_border_width * 2.0F);
+
+    float x = anchor.x + offset;
+    float y = anchor.y + offset;
+    if (x + width > viewport.x + viewport.width - viewport_margin) {
+        x = anchor.x - width - offset;
+    }
+    if (y + height > viewport.y + viewport.height - viewport_margin) {
+        y = anchor.y - height - offset;
+    }
+    x = std::clamp(
+        x,
+        viewport.x + viewport_margin,
+        std::max(viewport.x + viewport_margin, viewport.x + viewport.width - width - viewport_margin));
+    y = std::clamp(
+        y,
+        viewport.y + viewport_margin,
+        std::max(viewport.y + viewport_margin, viewport.y + viewport.height - height - viewport_margin));
+
+    const Rectangle bounds{x, y, width, height};
+    return TileContextMenuLayout{
+        bounds,
+        Rectangle{x, y, width, row_height},
+        Rectangle{x, y + row_height, width, row_height},
+    };
+}
+
+std::optional<TileContextMenuAction> HitTestTileContextMenu(
+    const TileContextMenuLayout& menu,
+    Vector2 mouse)
+{
+    if (CheckCollisionPointRec(mouse, menu.tile_info_bounds)) {
+        return TileContextMenuAction::kTileInfo;
+    }
+    if (CheckCollisionPointRec(mouse, menu.go_to_3d_bounds)) {
+        return TileContextMenuAction::kGoTo3DView;
+    }
+    return std::nullopt;
+}
+
+void DrawTileContextMenu(
+    Vector2 anchor,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout)
+{
+    const TileContextMenuLayout menu = BuildTileContextMenuLayout(anchor, fonts, layout);
+    const UiMetrics& metrics = layout.metrics;
+    const float font_size = metrics.workspace_tool_font_size;
+    const float spacing = FontSpacing(font_size);
+    const float padding_x = std::max(10.0F, metrics.workspace_tool_gap * 1.8F);
+    const Vector2 mouse = GetMousePosition();
+    const std::optional<TileContextMenuAction> hovered = HitTestTileContextMenu(menu, mouse);
+
+    DrawRectangleRounded(menu.bounds, 0.06F, 6, kEditorTooltipBackground);
+    DrawRectangleRoundedLinesEx(
+        menu.bounds,
+        0.06F,
+        6,
+        std::max(1.0F, metrics.workspace_border_width),
+        kEditorTooltipBorder);
+
+    const std::array<std::pair<TileContextMenuAction, std::pair<Rectangle, std::string_view>>, 2> items{{
+        {TileContextMenuAction::kTileInfo, {menu.tile_info_bounds, "Tile info"}},
+        {TileContextMenuAction::kGoTo3DView, {menu.go_to_3d_bounds, "Go to 3D view"}},
+    }};
+    for (const auto& [action, item] : items) {
+        const Rectangle item_bounds = item.first;
+        const std::string_view label = item.second;
+        const bool is_hovered = hovered.has_value() && *hovered == action;
+        if (is_hovered) {
+            DrawRectangleRec(item_bounds, Color{66, 60, 42, 245});
+        }
+        const Vector2 text_size = Measure(fonts.text, std::string(label), font_size, spacing);
+        DrawTextEx(
+            fonts.text,
+            std::string(label).c_str(),
+            Vector2{
+                item_bounds.x + padding_x,
+                item_bounds.y + (item_bounds.height - text_size.y) * 0.5F,
+            },
+            font_size,
+            spacing,
+            is_hovered ? kAccent : kText);
+    }
+
+    DrawLineEx(
+        Vector2{menu.bounds.x, menu.go_to_3d_bounds.y},
+        Vector2{menu.bounds.x + menu.bounds.width, menu.go_to_3d_bounds.y},
+        1.0F,
+        Color{92, 98, 112, 220});
+}
 
 std::string_view ToString(PlaceholderAction action)
 {

@@ -621,3 +621,10 @@
 - Replaced the collapsible Mode menu with a fixed full-width `2D Map` / `3D View` switch at the top of the side panel.
 - Removed the obsolete `View` header and centered both equal-width mode buttons within the side column.
 - Updated the 3D `V` hotkey documentation after removing the old View-panel shortcut.
+
+## v0.5.58 -> v0.5.59
+
+- Added a compact right-click context menu for valid tiles in the 2D map with `Tile info` and `Go to 3D view` actions.
+- Added a contextual 2D-to-3D camera transfer that targets the selected tile and derives camera distance from the current 2D viewport scale.
+- Kept the normal global `3D View` switch behavior unchanged while preserving the current tile selection across the contextual transition.
+- Updated Help so the 2D right mouse action documents both tile selection and context-menu opening.

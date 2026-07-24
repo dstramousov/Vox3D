@@ -20,7 +20,9 @@ constexpr float kDefaultFitYaw = -kPi * 0.25F;
 constexpr float kDefaultFitPitch = -kPi / 3.0F;
 constexpr float kOverviewYaw = -0.78F;
 constexpr float kOverviewPitch = -0.29F;
+constexpr float kTileFocusPitch = -0.62F;
 constexpr float kMinimumFitDistance = 24.0F;
+constexpr float kMinimumTileFocusDistance = 12.0F;
 
 [[nodiscard]] float Length(Vector3 value)
 {
@@ -214,6 +216,23 @@ constexpr float kMinimumFitDistance = 24.0F;
     return TileToWorldPoint(center_x, center_y, build_result.info, map_center.y);
 }
 
+[[nodiscard]] float BuildTileAreaDistance(
+    float visible_width_tiles,
+    float visible_height_tiles,
+    Rectangle viewport,
+    const FreeFlyCameraConfig& config)
+{
+    const float width = std::max(1.0F, visible_width_tiles);
+    const float height = std::max(1.0F, visible_height_tiles);
+    const float radius = std::sqrt(width * width + height * height) * 0.5F;
+    const float vertical_fov = ToRadians(std::clamp(config.fovy_degrees, 15.0F, 120.0F));
+    const float aspect = SafeAspect(viewport);
+    const float horizontal_fov = 2.0F * std::atan(std::tan(vertical_fov * 0.5F) * aspect);
+    const float limiting_fov = std::clamp(std::min(vertical_fov, horizontal_fov), 0.10F, kPi - 0.10F);
+    const float distance = radius / std::max(0.10F, std::sin(limiting_fov * 0.5F));
+    return std::max(kMinimumTileFocusDistance, distance * 0.78F);
+}
+
 [[nodiscard]] Vector3 BuildTileWindowCornerPosition(
     const ChunkMeshBuildResult& build_result,
     Vector3 target,
@@ -335,6 +354,41 @@ void FreeFlyCameraController::SetTileWindowCornerView(
     velocity_ = Vector3{};
     wheel_velocity_ = 0.0F;
     StoreResetPose(position, target);
+    SetPose(position, target);
+}
+
+void FreeFlyCameraController::FocusTileArea(
+    const ChunkMeshBuildResult& build_result,
+    TileCoord tile,
+    int elevation,
+    float visible_width_tiles,
+    float visible_height_tiles,
+    Rectangle viewport)
+{
+    if (!build_result.info.IsValid()) {
+        return;
+    }
+
+    const float tile_x = static_cast<float>(tile.x) + 0.5F;
+    const float tile_y = static_cast<float>(tile.y) + 0.5F;
+    const Vector3 target = TileToWorldPoint(
+        tile_x,
+        tile_y,
+        build_result.info,
+        static_cast<float>(elevation + 1) + 0.35F);
+    const float focus_yaw = initialized_ ? yaw_ : kOverviewYaw;
+    const Vector3 forward = ForwardFromAngles(focus_yaw, kTileFocusPitch);
+    const float distance = BuildTileAreaDistance(
+        visible_width_tiles,
+        visible_height_tiles,
+        viewport,
+        config_);
+    const Vector3 position = Subtract(target, Scale(forward, distance));
+
+    fly_in_active_ = false;
+    velocity_ = Vector3{};
+    wheel_velocity_ = 0.0F;
+    current_speed_ = 0.0F;
     SetPose(position, target);
 }
 

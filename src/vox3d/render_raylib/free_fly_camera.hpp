@@ -113,6 +113,28 @@ public:
         std::string_view corner);
 
     /**
+     * @brief Focuses the active camera on one tile using the visible 2D area as scale.
+     *
+     * The current reset pose is preserved. The selected tile becomes the target,
+     * while the camera distance is derived from the number of tiles visible in
+     * the source 2D viewport.
+     *
+     * @param build_result Mesh build result used for map dimensions.
+     * @param tile Tile that should become the 3D focus point.
+     * @param elevation Tile elevation from the runtime map.
+     * @param visible_width_tiles Approximate horizontal 2D viewport span in tiles.
+     * @param visible_height_tiles Approximate vertical 2D viewport span in tiles.
+     * @param viewport Destination 3D viewport used to resolve the perspective fit.
+     */
+    void FocusTileArea(
+        const ChunkMeshBuildResult& build_result,
+        TileCoord tile,
+        int elevation,
+        float visible_width_tiles,
+        float visible_height_tiles,
+        Rectangle viewport);
+
+    /**
      * @brief Restores the last stored reset pose and clears camera velocity.
      */
     void ResetView();

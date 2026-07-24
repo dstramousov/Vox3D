@@ -15,10 +15,64 @@
 
 #include <raylib.h>
 
+#include <optional>
 #include <string>
 #include <string_view>
 
 namespace vox3d {
+
+/**
+ * @brief Actions exposed by the 2D tile context menu.
+ */
+enum class TileContextMenuAction {
+    kTileInfo,
+    kGoTo3DView,
+};
+
+/**
+ * @brief Fixed geometry for the 2D tile context menu.
+ */
+struct TileContextMenuLayout {
+    Rectangle bounds{};
+    Rectangle tile_info_bounds{};
+    Rectangle go_to_3d_bounds{};
+};
+
+/**
+ * @brief Builds a clamped context-menu layout near the requested screen anchor.
+ *
+ * @param anchor Requested popup origin near the mouse cursor.
+ * @param fonts Fonts used to measure menu labels.
+ * @param layout Current workspace layout and viewport bounds.
+ * @return Menu and item rectangles kept inside the 2D map viewport.
+ */
+[[nodiscard]] TileContextMenuLayout BuildTileContextMenuLayout(
+    Vector2 anchor,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout);
+
+/**
+ * @brief Returns the context-menu action under the supplied mouse position.
+ *
+ * @param menu Precomputed context-menu geometry.
+ * @param mouse Current screen-space mouse position.
+ * @return Matching action, or no value when the mouse is outside all items.
+ */
+[[nodiscard]] std::optional<TileContextMenuAction> HitTestTileContextMenu(
+    const TileContextMenuLayout& menu,
+    Vector2 mouse);
+
+/**
+ * @brief Draws the compact 2D tile context menu.
+ *
+ * @param anchor Requested popup origin near the mouse cursor.
+ * @param fonts Fonts used for menu text.
+ * @param layout Current workspace layout and viewport bounds.
+ */
+void DrawTileContextMenu(
+    Vector2 anchor,
+    const UiFontSet& fonts,
+    const UiLayoutCache& layout);
 
 /**
  * @brief Draws the main menu screen.

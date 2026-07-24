@@ -1339,6 +1339,10 @@ void App::HandleWorkspaceInput(float dt)
         return;
     }
 
+    if (tile_context_menu_open_ && HandleTileContextMenuInput()) {
+        return;
+    }
+
     if (IsKeyPressed(KEY_F1)) {
         preview_camera_.ReleaseMouse();
         OpenHelpOverlay("hotkey_f1");
@@ -1434,6 +1438,7 @@ void App::HandleWorkspaceInput(float dt)
         selection_info_overlay_scroll_rows_ = 0;
         help_overlay_open_ = false;
         help_overlay_scroll_rows_ = 0;
+        CloseTileContextMenu("stats_hotkey");
         stats_overlay_open_ = true;
         stats_overlay_scroll_rows_ = 0;
         preview_camera_.ReleaseMouse();
@@ -1563,7 +1568,14 @@ void App::HandleWorkspaceInput(float dt)
             pick_mouse,
             layout_cache_.workspace.map_overview);
         if (mouse_in_map && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-            SelectTileAtMouse(pick_mouse, "mouse_2d_right_select");
+            const std::optional<TileCoord> picked_tile = map_2d_view_.ScreenToTile(
+                pick_mouse,
+                layout_cache_.workspace.map_overview);
+            if (picked_tile.has_value()) {
+                SelectTileAtMouse(pick_mouse, "mouse_2d_context_select");
+                OpenTileContextMenu(pick_mouse, "mouse_2d_right_click");
+                return;
+            }
         }
         if (mouse_in_map && IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
             const std::optional<TileCoord> picked_tile = map_2d_view_.ScreenToTile(
@@ -1996,6 +2008,13 @@ void App::Draw()
         case AppScreen::kSettingsPlaceholder:
             DrawPlaceholderScreen(labels_.placeholder_settings_title, placeholder_selected_action_, UiFonts(), labels_, layout_cache_);
             break;
+    }
+
+    if (tile_context_menu_open_ && screen_ == AppScreen::kWorkspace) {
+        DrawTileContextMenu(
+            tile_context_menu_anchor_,
+            UiFonts(),
+            layout_cache_);
     }
 
     DrawFpsCounter(UiFonts(), labels_, layout_cache_, process_memory_, config_.version);
@@ -2599,6 +2618,7 @@ bool App::SetWorkspacePanelTab(WorkspacePanelTab tab, std::string_view reason)
 
 void App::OpenSelectionInfoOverlay(std::string_view reason)
 {
+    CloseTileContextMenu("selection_info_overlay");
     stats_overlay_open_ = false;
     stats_overlay_scroll_rows_ = 0;
     help_overlay_open_ = false;
@@ -2643,6 +2663,7 @@ void App::ScrollSelectionInfoOverlay(int delta_rows, std::string_view reason)
 
 void App::OpenHelpOverlay(std::string_view reason)
 {
+    CloseTileContextMenu("help_overlay");
     selection_info_overlay_open_ = false;
     selection_info_overlay_scroll_rows_ = 0;
     stats_overlay_open_ = false;
@@ -2683,6 +2704,186 @@ void App::ScrollHelpOverlay(int delta_rows, std::string_view reason)
         "help",
         "overlay_scroll=" + std::to_string(help_overlay_scroll_rows_)
             + " reason=" + std::string(reason));
+}
+
+void App::OpenTileContextMenu(Vector2 anchor, std::string_view reason)
+{
+    if (workspace_.show_3d_preview || !map_2d_view_.IsLoaded()
+        || !workspace_.selected_tile.IsValid()) {
+        return;
+    }
+
+    selection_info_overlay_open_ = false;
+    selection_info_overlay_scroll_rows_ = 0;
+    stats_overlay_open_ = false;
+    stats_overlay_scroll_rows_ = 0;
+    help_overlay_open_ = false;
+    help_overlay_scroll_rows_ = 0;
+    preview_camera_.ReleaseMouse();
+    tile_context_menu_anchor_ = anchor;
+    tile_context_menu_open_ = true;
+    logger_.Debug(
+        "map2d",
+        "context_menu=open tile="
+            + std::to_string(workspace_.selected_tile.tile.x) + ','
+            + std::to_string(workspace_.selected_tile.tile.y)
+            + " reason=" + std::string(reason));
+}
+
+void App::CloseTileContextMenu(std::string_view reason)
+{
+    if (!tile_context_menu_open_) {
+        return;
+    }
+
+    tile_context_menu_open_ = false;
+    logger_.Debug("map2d", "context_menu=closed reason=" + std::string(reason));
+}
+
+bool App::HandleTileContextMenuInput()
+{
+    if (!tile_context_menu_open_) {
+        return false;
+    }
+    if (workspace_.show_3d_preview || !map_2d_view_.IsLoaded()) {
+        CloseTileContextMenu("mode_unavailable");
+        return false;
+    }
+    if (layout_dirty_) {
+        RebuildLayout();
+    }
+
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        CloseTileContextMenu("escape");
+        suppress_window_close_request_this_frame_ = true;
+        return true;
+    }
+    if (IsKeyPressed(KEY_F1)) {
+        CloseTileContextMenu("hotkey_f1");
+        OpenHelpOverlay("context_menu_hotkey_f1");
+        return true;
+    }
+    if (IsKeyPressed(KEY_I)) {
+        CloseTileContextMenu("hotkey_i");
+        OpenSelectionInfoOverlay("context_menu_hotkey_i");
+        return true;
+    }
+
+    const Vector2 mouse = GetMousePosition();
+    const Rectangle map_viewport = layout_cache_.workspace.map_overview;
+    const TileContextMenuLayout menu = BuildTileContextMenuLayout(
+        tile_context_menu_anchor_,
+        UiFonts(),
+        layout_cache_);
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        if (PointInRect(mouse, menu.bounds)) {
+            return true;
+        }
+        const std::optional<TileCoord> picked_tile = map_2d_view_.ScreenToTile(
+            mouse,
+            map_viewport);
+        if (picked_tile.has_value()) {
+            SelectTileAtMouse(mouse, "mouse_2d_context_reselect");
+            tile_context_menu_anchor_ = mouse;
+            logger_.Debug(
+                "map2d",
+                "context_menu=moved tile="
+                    + std::to_string(picked_tile->x) + ','
+                    + std::to_string(picked_tile->y));
+        } else {
+            CloseTileContextMenu("right_click_outside_map");
+        }
+        return true;
+    }
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        const std::optional<TileContextMenuAction> action = HitTestTileContextMenu(menu, mouse);
+        if (action.has_value()) {
+            CloseTileContextMenu("item_activated");
+            switch (*action) {
+                case TileContextMenuAction::kTileInfo:
+                    OpenSelectionInfoOverlay("context_menu_tile_info");
+                    break;
+                case TileContextMenuAction::kGoTo3DView:
+                    GoToSelectedTileIn3D("context_menu_go_to_3d");
+                    break;
+            }
+            return true;
+        }
+
+        for (const WorkspaceModeButtonBounds& button : layout_cache_.workspace.mode_buttons) {
+            if (PointInRect(mouse, button.bounds)) {
+                CloseTileContextMenu("mode_button_click");
+                return false;
+            }
+        }
+        CloseTileContextMenu("left_click_outside");
+        return true;
+    }
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
+        CloseTileContextMenu("middle_click");
+        return false;
+    }
+
+    const float wheel = GetMouseWheelMove();
+    if (std::abs(wheel) > 0.0001F
+        || IsKeyPressed(KEY_F)
+        || IsKeyPressed(KEY_R)
+        || IsKeyPressed(KEY_EQUAL)
+        || IsKeyPressed(KEY_KP_ADD)
+        || IsKeyPressed(KEY_MINUS)
+        || IsKeyPressed(KEY_KP_SUBTRACT)
+        || IsKeyPressed(KEY_HOME)
+        || IsKeyPressed(KEY_END)
+        || IsKeyPressed(KEY_S)) {
+        CloseTileContextMenu("navigation_input");
+        return false;
+    }
+
+    return true;
+}
+
+void App::GoToSelectedTileIn3D(std::string_view reason)
+{
+    if (!workspace_.selected_tile.IsValid() || !chunk_mesh_preview_.IsUploaded()
+        || !workspace_.chunk_meshes.IsValid()) {
+        logger_.Debug("camera3d", "tile focus ignored reason=" + std::string(reason));
+        return;
+    }
+    if (layout_dirty_) {
+        RebuildLayout();
+    }
+
+    const Rectangle viewport = layout_cache_.workspace.map_overview;
+    const Map2DViewStatus map_status = map_2d_view_.Status();
+    const float pixels_per_tile = std::max(0.01F, map_status.pixels_per_tile);
+    const float visible_width_tiles = viewport.width / pixels_per_tile;
+    const float visible_height_tiles = viewport.height / pixels_per_tile;
+    const TileInspectResult selected = workspace_.selected_tile;
+
+    SetWorkspaceViewMode(WorkspaceViewMode::kWorld3D, reason);
+    if (!workspace_.show_3d_preview) {
+        return;
+    }
+
+    preview_camera_.FocusTileArea(
+        workspace_.chunk_meshes,
+        selected.tile,
+        selected.elevation,
+        visible_width_tiles,
+        visible_height_tiles,
+        viewport);
+    layout_dirty_ = true;
+    logger_.Info(
+        "camera3d",
+        "focus tile=" + std::to_string(selected.tile.x) + ','
+            + std::to_string(selected.tile.y)
+            + " visible_tiles=" + std::to_string(visible_width_tiles) + 'x'
+            + std::to_string(visible_height_tiles)
+            + " reason=" + std::string(reason) + ' '
+            + ToLogString(preview_camera_.Status()));
 }
 
 void App::SelectPreviousWorkspaceTool()
@@ -3021,6 +3222,7 @@ void App::ScrollWorkspaceMenu(int delta_rows, std::string_view reason)
 
 void App::SetWorkspaceViewMode(WorkspaceViewMode mode, std::string_view reason)
 {
+    CloseTileContextMenu("mode_switch");
     if (mode == WorkspaceViewMode::kMap2D) {
         if (!workspace_.show_3d_preview) {
             return;
