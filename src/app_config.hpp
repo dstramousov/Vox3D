@@ -7,7 +7,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.82-dev"
+#define VOX3D_VERSION "0.5.84-dev"
 #endif
 
 namespace vox3d {
@@ -26,6 +26,9 @@ struct AppConfig {
     bool vegetation_models_enabled = false;
     int vegetation_model_tree_limit = 0;
     std::filesystem::path vegetation_model_asset_directory = "assets/models/trees";
+    float vegetation_model_lod_near_distance = 70.0F;
+    float vegetation_model_lod_far_distance = 140.0F;
+    float vegetation_model_cull_distance = 220.0F;
 
     int base_width = 1280;
     int base_height = 720;

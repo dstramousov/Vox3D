@@ -284,6 +284,9 @@ struct RaylibExperimentalTreeOptions {
     bool enabled = false;
     int tree_limit = 0;
     std::filesystem::path asset_directory = "assets/models/trees";
+    float lod_near_distance = 70.0F;
+    float lod_far_distance = 140.0F;
+    float cull_distance = 220.0F;
 };
 
 /**
@@ -541,6 +544,8 @@ private:
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
     std::vector<Model> experimental_tree_models_;
+    std::array<Model, 2> experimental_tree_medium_lod_models_{};
+    std::array<Model, 2> experimental_tree_far_lod_models_{};
     Shader experimental_tree_instancing_shader_{};
     std::vector<RaylibExperimentalTreeInstance> experimental_tree_instances_;
     RaylibExperimentalTreeOptions experimental_tree_options_;

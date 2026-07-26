@@ -12,6 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+import copy
+import json
+import struct
 
 import numpy as np
 import trimesh
@@ -110,7 +113,80 @@ def transformed_scene(variant: Variant) -> trimesh.Scene:
         output.add_geometry(crown, node_name="SingleCrown", geom_name="SingleCrown")
 
     normalize_scene(output)
-    return output
+    return merge_scene_by_material(output)
+
+
+
+def merge_scene_by_material(scene: trimesh.Scene) -> trimesh.Scene:
+    """Collapse all parts sharing one material into one mesh.
+
+    Runtime trees are rendered with instancing, but raylib still submits one
+    instanced draw per mesh. Keeping Blender parts separate therefore creates
+    dozens of draw calls per tree type.
+    """
+    groups: dict[str, list[trimesh.Trimesh]] = {}
+    materials: dict[str, object] = {}
+    for node_name in scene.graph.nodes_geometry:
+        transform, geometry_name = scene.graph[node_name]
+        mesh = scene.geometry[geometry_name].copy()
+        mesh.apply_transform(transform)
+        material = getattr(mesh.visual, "material", None)
+        name = str(getattr(material, "name", "default"))
+        groups.setdefault(name, []).append(mesh)
+        if name not in materials and material is not None:
+            materials[name] = copy.deepcopy(material)
+
+    merged = trimesh.Scene()
+    for index, (name, meshes) in enumerate(sorted(groups.items())):
+        combined = trimesh.util.concatenate(meshes)
+        if name in materials:
+            combined.visual = trimesh.visual.TextureVisuals(material=materials[name])
+        combined.remove_unreferenced_vertices()
+        node_name = f"Merged_{index:02d}_{name}"
+        merged.add_geometry(combined, node_name=node_name, geom_name=node_name)
+    return merged
+
+
+def convert_glb_indices_to_u16(path: Path) -> None:
+    data = path.read_bytes()
+    magic, version, total = struct.unpack_from("<4sII", data, 0)
+    if magic != b"glTF" or version != 2:
+        raise RuntimeError(f"not a GLB 2.0 file: {path}")
+    offset = 12
+    json_len, json_type = struct.unpack_from("<II", data, offset); offset += 8
+    doc = json.loads(data[offset:offset + json_len].decode("utf-8").rstrip(" \0")); offset += json_len
+    bin_len, bin_type = struct.unpack_from("<II", data, offset); offset += 8
+    blob = bytearray(data[offset:offset + bin_len])
+
+    index_accessors = {p["indices"] for m in doc.get("meshes", []) for p in m.get("primitives", []) if "indices" in p}
+    for accessor_index in sorted(index_accessors):
+        accessor = doc["accessors"][accessor_index]
+        if accessor.get("componentType") != 5125:
+            continue
+        view = doc["bufferViews"][accessor["bufferView"]]
+        start = view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+        count = accessor["count"]
+        values = struct.unpack_from(f"<{count}I", blob, start)
+        if max(values, default=0) >= 65536:
+            continue
+        while len(blob) % 4:
+            blob.append(0)
+        new_offset = len(blob)
+        blob.extend(struct.pack(f"<{count}H", *values))
+        doc["bufferViews"].append({"buffer": 0, "byteOffset": new_offset, "byteLength": count * 2, "target": 34963})
+        accessor["bufferView"] = len(doc["bufferViews"]) - 1
+        accessor["byteOffset"] = 0
+        accessor["componentType"] = 5123
+    while len(blob) % 4:
+        blob.append(0)
+    doc["buffers"][0]["byteLength"] = len(blob)
+    json_bytes = json.dumps(doc, separators=(",", ":")).encode("utf-8")
+    while len(json_bytes) % 4:
+        json_bytes += b" "
+    out = bytearray(struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(json_bytes) + 8 + len(blob)))
+    out.extend(struct.pack("<II", len(json_bytes), 0x4E4F534A)); out.extend(json_bytes)
+    out.extend(struct.pack("<II", len(blob), 0x004E4942)); out.extend(blob)
+    path.write_bytes(out)
 
 
 def normalize_scene(scene: trimesh.Scene) -> None:
@@ -128,6 +204,7 @@ def export_variant(variant: Variant) -> None:
     scene = transformed_scene(variant)
     output_path = TREE_DIR / variant.filename
     output_path.write_bytes(scene.export(file_type="glb"))
+    convert_glb_indices_to_u16(output_path)
     size = scene.extents
     triangles = sum(len(mesh.faces) for mesh in scene.geometry.values())
     print(

@@ -951,6 +951,9 @@ bool App::Initialize()
         config_.vegetation_models_enabled,
         config_.vegetation_model_tree_limit,
         config_.vegetation_model_asset_directory,
+        config_.vegetation_model_lod_near_distance,
+        config_.vegetation_model_lod_far_distance,
+        config_.vegetation_model_cull_distance,
     };
     const bool tree_assets_ready = chunk_mesh_preview_.ConfigureExperimentalTrees(
         tree_options);
@@ -959,7 +962,10 @@ bool App::Initialize()
         "enabled=" + std::string(config_.vegetation_models_enabled ? "true" : "false")
             + " ready=" + std::string(tree_assets_ready ? "true" : "false")
             + " limit=" + std::to_string(config_.vegetation_model_tree_limit)
-            + " directory=\"" + config_.vegetation_model_asset_directory.string() + "\"");
+            + " directory=\"" + config_.vegetation_model_asset_directory.string() + "\""
+            + " lod_near=" + std::to_string(config_.vegetation_model_lod_near_distance)
+            + " lod_far=" + std::to_string(config_.vegetation_model_lod_far_distance)
+            + " cull=" + std::to_string(config_.vegetation_model_cull_distance));
     gpu_diagnostics_.Initialize();
     {
         const GpuDiagnosticsSnapshot& gpu = gpu_diagnostics_.Snapshot();

@@ -1273,9 +1273,13 @@ void DrawExperimentalTreeBatch(
 
 void DrawExperimentalTreeInstances(
     const std::vector<Model>& models,
+    const std::array<Model, 2>& medium_lod_models,
+    const std::array<Model, 2>& far_lod_models,
     const std::vector<RaylibExperimentalTreeInstance>& instances,
     const ChunkMeshBuildInfo& info,
     const ChunkVisibilityReport& visibility_report,
+    const Camera3D& camera,
+    const RaylibExperimentalTreeOptions& options,
     RaylibChunkMeshDebugOverlayOptions overlays,
     RaylibVegetationMeshStats& stats)
 {
@@ -1288,8 +1292,14 @@ void DrawExperimentalTreeInstances(
         info,
         visibility_report);
     const int chunks_x = std::max(1, info.chunks_x);
-    std::vector<std::vector<Matrix>> visible_batches(models.size());
-    std::vector<std::vector<Matrix>> fade_batches(models.size());
+    constexpr std::size_t kSpecies = 2U;
+    std::vector<std::vector<Matrix>> near_visible(models.size());
+    std::vector<std::vector<Matrix>> near_fade(models.size());
+    std::array<std::array<std::vector<Matrix>, kSpecies>, 2U> visible_lod_batches;
+    std::array<std::array<std::vector<Matrix>, kSpecies>, 2U> fade_lod_batches;
+    const float near_sq = options.lod_near_distance * options.lod_near_distance;
+    const float far_sq = options.lod_far_distance * options.lod_far_distance;
+    const float cull_sq = options.cull_distance * options.cull_distance;
 
     for (const RaylibExperimentalTreeInstance& instance : instances) {
         if (instance.coord.x < 0 || instance.coord.y < 0
@@ -1305,23 +1315,38 @@ void DrawExperimentalTreeInstances(
             continue;
         }
 
-        std::vector<Matrix>& batch = classes[chunk_index] == ChunkVisibilityClass::kFade
-            ? fade_batches[instance.model_index]
-            : visible_batches[instance.model_index];
-        batch.push_back(ExperimentalTreeTransform(instance));
+        const float dx = instance.position.x - camera.position.x;
+        const float dz = instance.position.z - camera.position.z;
+        const float distance_sq = dx * dx + dz * dz;
+        if (distance_sq > cull_sq) {
+            continue;
+        }
+        const std::size_t tier = distance_sq <= near_sq ? 0U : (distance_sq <= far_sq ? 1U : 2U);
+        const std::size_t species = (instance.model_index <= 5U || instance.model_index == 12U) ? 0U : 1U;
+        const Matrix transform = ExperimentalTreeTransform(instance);
+        const bool fade = classes[chunk_index] == ChunkVisibilityClass::kFade;
+        if (tier == 0U) {
+            (fade ? near_fade : near_visible)[instance.model_index].push_back(transform);
+        } else {
+            (fade ? fade_lod_batches : visible_lod_batches)[tier - 1U][species].push_back(transform);
+        }
     }
 
     for (std::size_t model_index = 0; model_index < models.size(); ++model_index) {
-        DrawExperimentalTreeBatch(
-            models[model_index],
-            visible_batches[model_index],
-            VisibilityTint(ChunkVisibilityClass::kVisible),
-            stats);
-        DrawExperimentalTreeBatch(
-            models[model_index],
-            fade_batches[model_index],
-            VisibilityTint(ChunkVisibilityClass::kFade),
-            stats);
+        DrawExperimentalTreeBatch(models[model_index], near_visible[model_index],
+            VisibilityTint(ChunkVisibilityClass::kVisible), stats);
+        DrawExperimentalTreeBatch(models[model_index], near_fade[model_index],
+            VisibilityTint(ChunkVisibilityClass::kFade), stats);
+    }
+    for (std::size_t species = 0; species < kSpecies; ++species) {
+        DrawExperimentalTreeBatch(medium_lod_models[species], visible_lod_batches[0][species],
+            VisibilityTint(ChunkVisibilityClass::kVisible), stats);
+        DrawExperimentalTreeBatch(medium_lod_models[species], fade_lod_batches[0][species],
+            VisibilityTint(ChunkVisibilityClass::kFade), stats);
+        DrawExperimentalTreeBatch(far_lod_models[species], visible_lod_batches[1][species],
+            VisibilityTint(ChunkVisibilityClass::kVisible), stats);
+        DrawExperimentalTreeBatch(far_lod_models[species], fade_lod_batches[1][species],
+            VisibilityTint(ChunkVisibilityClass::kFade), stats);
     }
 }
 
@@ -2226,7 +2251,40 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
             path_text.c_str(), model.meshCount);
         experimental_tree_models_.push_back(model);
     }
-    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size();
+    constexpr std::array<std::string_view, 2> kMediumLodNames{
+        "forest-lod-medium-deciduous.glb",
+        "forest-lod-medium-conifer.glb",
+    };
+    constexpr std::array<std::string_view, 2> kFarLodNames{
+        "forest-lod-far-deciduous.glb",
+        "forest-lod-far-conifer.glb",
+    };
+    const auto load_lod_models = [&](const auto& names, auto& destination) {
+        for (std::size_t index = 0; index < names.size(); ++index) {
+            const std::filesystem::path path = options.asset_directory / names[index];
+            const std::string path_text = path.string();
+            Model model = LoadModel(path_text.c_str());
+            if (model.meshCount <= 0 || model.meshes == nullptr) {
+                TraceLog(LOG_ERROR, "VOX3D: failed to load tree LOD model: %s", path_text.c_str());
+                if (model.meshCount > 0 || model.meshes != nullptr) {
+                    UnloadModel(model);
+                }
+                return false;
+            }
+            for (int material_index = 0; material_index < model.materialCount; ++material_index) {
+                model.materials[material_index].shader = experimental_tree_instancing_shader_;
+            }
+            destination[index] = model;
+        }
+        return true;
+    };
+    if (!load_lod_models(kMediumLodNames, experimental_tree_medium_lod_models_)
+        || !load_lod_models(kFarLodNames, experimental_tree_far_lod_models_)) {
+        UnloadExperimentalTreeAssets();
+        experimental_tree_options_.enabled = false;
+        return false;
+    }
+    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size() + 4ULL;
     return true;
 }
 
@@ -2431,7 +2489,7 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
             return should_remove(instance.coord);
         });
     vegetation_stats_ = RaylibVegetationMeshStats{};
-    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size();
+    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size() + 4ULL;
     vegetation_stats_.experimental_tree_instances = experimental_tree_instances_.size();
     for (const RaylibUploadedVegetationModel& vegetation : vegetation_models_) {
         ++vegetation_stats_.models;
@@ -2544,9 +2602,13 @@ void RaylibChunkMeshPreview::Draw(
         vegetation_stats_);
     DrawExperimentalTreeInstances(
         experimental_tree_models_,
+        experimental_tree_medium_lod_models_,
+        experimental_tree_far_lod_models_,
         experimental_tree_instances_,
         build_result.info,
         visibility_report,
+        camera,
+        experimental_tree_options_,
         overlays,
         vegetation_stats_);
     render_frame_stats_.model_draw_calls += vegetation_stats_.last_draw_calls;
@@ -2662,7 +2724,7 @@ void RaylibChunkMeshPreview::Unload()
     visibility_items_.clear();
     stats_ = RaylibChunkMeshPreviewStats{};
     vegetation_stats_ = RaylibVegetationMeshStats{};
-    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size();
+    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size() + 4ULL;
     render_frame_stats_ = RaylibRenderFrameStats{};
     gpu_streaming_stats_.unloaded_models_this_frame += unloaded_models;
     gpu_streaming_stats_.total_unloaded_models += unloaded_models;
@@ -2683,6 +2745,18 @@ void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
         }
     }
     experimental_tree_models_.clear();
+    for (Model& model : experimental_tree_medium_lod_models_) {
+        if (model.meshCount > 0 && model.meshes != nullptr) {
+            UnloadModel(model);
+        }
+        model = Model{};
+    }
+    for (Model& model : experimental_tree_far_lod_models_) {
+        if (model.meshCount > 0 && model.meshes != nullptr) {
+            UnloadModel(model);
+        }
+        model = Model{};
+    }
     if (experimental_tree_instancing_shader_.id != 0U) {
         UnloadShader(experimental_tree_instancing_shader_);
         experimental_tree_instancing_shader_ = Shader{};

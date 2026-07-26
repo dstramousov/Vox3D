@@ -510,6 +510,9 @@ bool LoadAppConfigFromFile(
     AssignBool(*root, {"vegetation_models", "enabled"}, config.vegetation_models_enabled, "vegetation_models.enabled", diagnostics);
     AssignNonNegativeInt(*root, {"vegetation_models", "tree_limit"}, config.vegetation_model_tree_limit, "vegetation_models.tree_limit", diagnostics);
     AssignPath(*root, {"vegetation_models", "asset_directory"}, config.vegetation_model_asset_directory, "vegetation_models.asset_directory", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "lod_near_distance"}, config.vegetation_model_lod_near_distance, "vegetation_models.lod_near_distance", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "lod_far_distance"}, config.vegetation_model_lod_far_distance, "vegetation_models.lod_far_distance", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "cull_distance"}, config.vegetation_model_cull_distance, "vegetation_models.cull_distance", diagnostics);
 
     AssignPositiveInt(*root, {"window", "base_width"}, config.base_width, "window.base_width", diagnostics);
     AssignPositiveInt(*root, {"window", "base_height"}, config.base_height, "window.base_height", diagnostics);

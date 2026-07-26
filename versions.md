@@ -789,3 +789,19 @@
 - Fixed invisible GLB trees after the instanced-rendering switch.
 - Added the required OpenGL 3.3 instancing shader and bound `instanceTransform` to the raylib model-matrix attribute slot.
 - Tree materials now use the shared instancing shader while preserving their diffuse colors.
+
+
+## v0.5.82 -> v0.5.83
+
+- Merged tree GLB parts by material so each tree variant uses only a few runtime meshes instead of dozens.
+- Reduced instanced tree submissions without changing the existing silhouettes or placement logic.
+- Re-encoded GLB index accessors as 16-bit where possible, removing raylib u32-to-u16 conversion warnings.
+- Updated the forest variant generator to reproduce the optimized runtime assets.
+
+
+## v0.5.83 -> v0.5.84
+
+- Added distance-based instanced tree LOD with configurable near, far, and cull ranges.
+- Added shared medium and far low-poly broadleaf/conifer proxy models.
+- Preserved all fourteen detailed silhouettes in the near range while batching distant trees by species.
+- Trees beyond the configured cull distance are no longer submitted.

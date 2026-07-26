@@ -12,7 +12,10 @@
   "vegetation_models": {
     "enabled": true,
     "tree_limit": 0,
-    "asset_directory": "assets/models/trees"
+    "asset_directory": "assets/models/trees",
+    "lod_near_distance": 70.0,
+    "lod_far_distance": 140.0,
+    "cull_distance": 220.0
   },
   "window": {
     "base_width": 1280,
