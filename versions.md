@@ -746,3 +746,10 @@
 - Reworked the custom spreading tree branches into shorter, thinner, upward-curving segments contained inside the crown.
 - Temporarily restricted experimental forests to the two original VoX3D tree models for clean visual evaluation.
 - Simplified deterministic forest patches to broadleaf, conifer, and mixed profiles using only the custom assets.
+
+
+## v0.5.76 -> v0.5.77
+
+- Replaced the two provisional generated tree assets with three normalized bases extracted from the Blender forest scene.
+- Added simple conifer, detailed conifer, and broadleaf models with embedded materials, ground-level pivots, and consistent runtime heights.
+- Updated deterministic forest profiles to distribute the three new bases across broadleaf, conifer, and mixed patches.

@@ -1079,11 +1079,14 @@ void AccumulateVegetationStats(
 
     switch (profile) {
     case 0U:  // Broadleaf forest.
-        return roll < 82U ? 1U : 0U;
+        return roll < 82U ? 2U : 1U;
     case 1U:  // Conifer forest.
-        return roll < 82U ? 0U : 1U;
+        return roll < 55U ? 0U : 1U;
     default:  // Mixed forest.
-        return roll < 50U ? 0U : 1U;
+        if (roll < 42U) {
+            return 2U;
+        }
+        return roll < 71U ? 0U : 1U;
     }
 }
 
@@ -1148,7 +1151,7 @@ void DrawExperimentalTreeInstances(
     RaylibVegetationMeshStats& stats)
 {
     stats.last_experimental_tree_draw_calls = 0;
-    if (!overlays.show_object_trees || models.size() < 2 || instances.empty()) {
+    if (!overlays.show_object_trees || models.size() < 3 || instances.empty()) {
         return;
     }
 
@@ -2033,9 +2036,10 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
         return true;
     }
 
-    constexpr std::array<std::string_view, 2> kModelNames{
-        "vox-tree-conifer.glb",
-        "vox-tree-spreading.glb",
+    constexpr std::array<std::string_view, 3> kModelNames{
+        "forest-tree-conifer-simple.glb",
+        "forest-tree-conifer-detailed.glb",
+        "forest-tree-deciduous.glb",
     };
     experimental_tree_models_.reserve(kModelNames.size());
     for (const std::string_view name : kModelNames) {
