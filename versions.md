@@ -753,3 +753,12 @@
 - Replaced the two provisional generated tree assets with three normalized bases extracted from the Blender forest scene.
 - Added simple conifer, detailed conifer, and broadleaf models with embedded materials, ground-level pivots, and consistent runtime heights.
 - Updated deterministic forest profiles to distribute the three new bases across broadleaf, conifer, and mixed patches.
+
+
+## v0.5.77 -> v0.5.78
+
+- Added six broadleaf and six conifer GLB silhouettes derived from the normalized Blender forest bases.
+- Added a broadleaf variant with one large unified low-poly crown, plus tall, wide, young, crooked, detailed, and sparse silhouettes.
+- Added two genuinely rare special trees: an ancient spreading broadleaf and a sparse dead conifer.
+- Added deterministic weighted selection across broadleaf, conifer, and mixed 12x12-tile forest patches.
+- Added `tools/generate_forest_tree_variants.py` to reproduce all fourteen runtime tree assets.

@@ -1070,23 +1070,51 @@ void AccumulateVegetationStats(
 
 [[nodiscard]] std::size_t SelectExperimentalTreeModel(int x, int y, std::uint32_t hash)
 {
+    // Model indices match ConfigureExperimentalTrees(). Common models occupy
+    // [0, 11], while [12, 13] are intentionally rare special silhouettes.
+    constexpr std::array<std::size_t, 6> kBroadleafModels{0U, 1U, 2U, 3U, 4U, 5U};
+    constexpr std::array<std::size_t, 6> kConiferModels{6U, 7U, 8U, 9U, 10U, 11U};
+    constexpr std::size_t kAncientBroadleaf = 12U;
+    constexpr std::size_t kDeadConifer = 13U;
     constexpr int kForestPatchSize = 12;
+
     const std::uint32_t patch_hash = TreePlacementHash(
         x / kForestPatchSize,
         y / kForestPatchSize);
     const std::uint32_t profile = patch_hash % 3U;
     const std::uint32_t roll = (hash >> 3U) % 100U;
+    const std::uint32_t variant_roll = (hash >> 11U) % 100U;
+
+    // Keep special trees genuinely uncommon: about two instances per hundred.
+    if (roll == 0U) {
+        return profile == 1U ? kDeadConifer : kAncientBroadleaf;
+    }
+    if (roll == 1U) {
+        return profile == 0U ? kAncientBroadleaf : kDeadConifer;
+    }
+
+    const auto select_weighted = [variant_roll](
+                                     const std::array<std::size_t, 6>& models) {
+        // Base and detailed silhouettes are common; young, crooked, sparse,
+        // tall, and wide variants appear often enough to break repetition.
+        constexpr std::array<std::uint32_t, 6> kUpperBounds{26U, 46U, 61U, 76U, 89U, 100U};
+        for (std::size_t index = 0; index < kUpperBounds.size(); ++index) {
+            if (variant_roll < kUpperBounds[index]) {
+                return models[index];
+            }
+        }
+        return models.back();
+    };
 
     switch (profile) {
     case 0U:  // Broadleaf forest.
-        return roll < 82U ? 2U : 1U;
+        return select_weighted(kBroadleafModels);
     case 1U:  // Conifer forest.
-        return roll < 55U ? 0U : 1U;
+        return select_weighted(kConiferModels);
     default:  // Mixed forest.
-        if (roll < 42U) {
-            return 2U;
-        }
-        return roll < 71U ? 0U : 1U;
+        return roll < 51U
+            ? select_weighted(kBroadleafModels)
+            : select_weighted(kConiferModels);
     }
 }
 
@@ -1151,7 +1179,7 @@ void DrawExperimentalTreeInstances(
     RaylibVegetationMeshStats& stats)
 {
     stats.last_experimental_tree_draw_calls = 0;
-    if (!overlays.show_object_trees || models.size() < 3 || instances.empty()) {
+    if (!overlays.show_object_trees || models.empty() || instances.empty()) {
         return;
     }
 
@@ -2036,10 +2064,21 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
         return true;
     }
 
-    constexpr std::array<std::string_view, 3> kModelNames{
-        "forest-tree-conifer-simple.glb",
-        "forest-tree-conifer-detailed.glb",
-        "forest-tree-deciduous.glb",
+    constexpr std::array<std::string_view, 14> kModelNames{
+        "forest-deciduous-clustered.glb",
+        "forest-deciduous-single-crown.glb",
+        "forest-deciduous-tall.glb",
+        "forest-deciduous-wide.glb",
+        "forest-deciduous-young.glb",
+        "forest-deciduous-crooked.glb",
+        "forest-conifer-simple.glb",
+        "forest-conifer-detailed.glb",
+        "forest-conifer-young.glb",
+        "forest-conifer-tall.glb",
+        "forest-conifer-wide.glb",
+        "forest-conifer-sparse.glb",
+        "forest-rare-ancient-deciduous.glb",
+        "forest-rare-dead-conifer.glb",
     };
     experimental_tree_models_.reserve(kModelNames.size());
     for (const std::string_view name : kModelNames) {
