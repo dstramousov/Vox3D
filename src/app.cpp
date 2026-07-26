@@ -3953,10 +3953,8 @@ void App::UnloadPreviewResources()
         map_2d_view_.Unload();
         logger_.Debug("map2d", "terrain texture unloaded");
     }
-    if (chunk_mesh_preview_.IsUploaded()) {
-        chunk_mesh_preview_.Unload();
-        logger_.Debug("render3d", "preview resources unloaded");
-    }
+    chunk_mesh_preview_.Shutdown();
+    logger_.Debug("render3d", "preview resources unloaded");
 }
 
 void App::RefreshProcessMemoryInfo()

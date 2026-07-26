@@ -3,7 +3,14 @@
 #include "vox3d/voxel/block.hpp"
 
 #include <raylib.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#endif
 #include <raymath.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <algorithm>
 #include <array>
@@ -1172,6 +1179,37 @@ void AppendExperimentalTreeInstances(
     const ChunkMeshBuildInfo& info,
     const ChunkVisibilityReport& report);
 
+
+constexpr const char* kExperimentalTreeInstancingVertexShader = R"glsl(
+#version 330
+in vec3 vertexPosition;
+in vec2 vertexTexCoord;
+in vec4 vertexColor;
+in mat4 instanceTransform;
+uniform mat4 mvp;
+out vec2 fragTexCoord;
+out vec4 fragColor;
+void main()
+{
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    gl_Position = mvp*instanceTransform*vec4(vertexPosition, 1.0);
+}
+)glsl";
+
+constexpr const char* kExperimentalTreeInstancingFragmentShader = R"glsl(
+#version 330
+in vec2 fragTexCoord;
+in vec4 fragColor;
+uniform sampler2D texture0;
+uniform vec4 colDiffuse;
+out vec4 finalColor;
+void main()
+{
+    finalColor = texture(texture0, fragTexCoord)*colDiffuse*fragColor;
+}
+)glsl";
+
 [[nodiscard]] Matrix ExperimentalTreeTransform(
     const RaylibExperimentalTreeInstance& instance)
 {
@@ -2125,8 +2163,7 @@ bool RaylibVegetationMeshStats::IsValid() const
 
 RaylibChunkMeshPreview::~RaylibChunkMeshPreview()
 {
-    Unload();
-    UnloadExperimentalTreeAssets();
+    Shutdown();
 }
 
 bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
@@ -2154,6 +2191,19 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
         "forest-rare-ancient-deciduous.glb",
         "forest-rare-dead-conifer.glb",
     };
+    experimental_tree_instancing_shader_ = LoadShaderFromMemory(
+        kExperimentalTreeInstancingVertexShader,
+        kExperimentalTreeInstancingFragmentShader);
+    if (experimental_tree_instancing_shader_.id == 0U) {
+        TraceLog(LOG_ERROR, "VOX3D: failed to create experimental tree instancing shader");
+        experimental_tree_options_.enabled = false;
+        return false;
+    }
+    experimental_tree_instancing_shader_.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(
+        experimental_tree_instancing_shader_, "mvp");
+    experimental_tree_instancing_shader_.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocationAttrib(
+        experimental_tree_instancing_shader_, "instanceTransform");
+
     experimental_tree_models_.reserve(kModelNames.size());
     for (const std::string_view name : kModelNames) {
         const std::filesystem::path path = options.asset_directory / name;
@@ -2168,6 +2218,9 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
             UnloadExperimentalTreeAssets();
             experimental_tree_options_.enabled = false;
             return false;
+        }
+        for (int material_index = 0; material_index < model.materialCount; ++material_index) {
+            model.materials[material_index].shader = experimental_tree_instancing_shader_;
         }
         TraceLog(LOG_INFO, "VOX3D: loaded experimental tree model: %s meshes=%d",
             path_text.c_str(), model.meshCount);
@@ -2616,6 +2669,12 @@ void RaylibChunkMeshPreview::Unload()
     RebuildGpuResourceStats();
 }
 
+void RaylibChunkMeshPreview::Shutdown()
+{
+    Unload();
+    UnloadExperimentalTreeAssets();
+}
+
 void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
 {
     for (Model& model : experimental_tree_models_) {
@@ -2624,6 +2683,10 @@ void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
         }
     }
     experimental_tree_models_.clear();
+    if (experimental_tree_instancing_shader_.id != 0U) {
+        UnloadShader(experimental_tree_instancing_shader_);
+        experimental_tree_instancing_shader_ = Shader{};
+    }
     experimental_tree_instances_.clear();
     vegetation_stats_.experimental_tree_assets = 0;
     vegetation_stats_.experimental_tree_instances = 0;

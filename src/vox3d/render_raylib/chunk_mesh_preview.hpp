@@ -491,6 +491,7 @@ public:
      * @brief Releases uploaded raylib Model resources.
      */
     void Unload();
+    void Shutdown();
 
     /**
      * @brief Returns true when preview resources are available.
@@ -540,6 +541,7 @@ private:
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
     std::vector<Model> experimental_tree_models_;
+    Shader experimental_tree_instancing_shader_{};
     std::vector<RaylibExperimentalTreeInstance> experimental_tree_instances_;
     RaylibExperimentalTreeOptions experimental_tree_options_;
     std::vector<ChunkVisibilityItem> visibility_items_;

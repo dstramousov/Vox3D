@@ -1,3 +1,10 @@
+## v0.5.82
+
+- Fixed a shutdown crash introduced by the experimental tree instancing shader.
+- All tree models and the shared instancing shader are now released before `CloseWindow()` destroys the OpenGL context.
+- Added an idempotent `RaylibChunkMeshPreview::Shutdown()` path used by both application shutdown and the destructor.
+- Suppressed noisy `-Wmissing-field-initializers` diagnostics originating from the third-party `raymath.h` header.
+
 # Versions
  
 
@@ -776,3 +783,9 @@
 - Tree transforms are grouped by model and visibility class, then submitted with `DrawMeshInstanced()`.
 - Preserved chunk/frustum culling and fade tinting.
 - Tree draw-call statistics now report actual instanced mesh submissions instead of tree count.
+
+## v0.5.81
+
+- Fixed invisible GLB trees after the instanced-rendering switch.
+- Added the required OpenGL 3.3 instancing shader and bound `instanceTransform` to the raylib model-matrix attribute slot.
+- Tree materials now use the shared instancing shader while preserving their diffuse colors.
