@@ -947,6 +947,19 @@ bool App::Initialize()
     }
 
     window_initialized_ = true;
+    const RaylibExperimentalTreeOptions tree_options{
+        config_.vegetation_models_enabled,
+        config_.vegetation_model_tree_limit,
+        config_.vegetation_model_asset_directory,
+    };
+    const bool tree_assets_ready = chunk_mesh_preview_.ConfigureExperimentalTrees(
+        tree_options);
+    logger_.Info(
+        "vegetation_models",
+        "enabled=" + std::string(config_.vegetation_models_enabled ? "true" : "false")
+            + " ready=" + std::string(tree_assets_ready ? "true" : "false")
+            + " limit=" + std::to_string(config_.vegetation_model_tree_limit)
+            + " directory=\"" + config_.vegetation_model_asset_directory.string() + "\"");
     gpu_diagnostics_.Initialize();
     {
         const GpuDiagnosticsSnapshot& gpu = gpu_diagnostics_.Snapshot();
@@ -1305,7 +1318,7 @@ void App::HandleWorkspaceInput(float dt)
             OpenHelpOverlay("stats_hotkey_f1");
             return;
         }
-        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_S)) {
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_F2)) {
             stats_overlay_open_ = false;
             stats_overlay_scroll_rows_ = 0;
             suppress_window_close_request_this_frame_ = true;
@@ -1389,8 +1402,21 @@ void App::HandleWorkspaceInput(float dt)
         return;
     }
 
+    if (IsKeyPressed(KEY_F2)) {
+        selection_info_overlay_open_ = false;
+        selection_info_overlay_scroll_rows_ = 0;
+        help_overlay_open_ = false;
+        help_overlay_scroll_rows_ = 0;
+        CloseTileContextMenu("stats_hotkey");
+        stats_overlay_open_ = true;
+        stats_overlay_scroll_rows_ = 0;
+        preview_camera_.ReleaseMouse();
+        logger_.Debug("stats", "overlay=opened mode="
+            + std::string(workspace_.show_3d_preview ? "3d" : "2d"));
+        return;
+    }
+
     const bool release_capture_by_escape = IsKeyPressed(KEY_ESCAPE);
-    const bool release_capture_by_hotkey = IsKeyPressed(KEY_F2);
     const bool release_capture_by_right_mouse = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
     const bool path_pick_active_before_input = workspace_.path_pick_mode != WorkspacePathPickMode::kSelect;
     if (path_pick_active_before_input && (release_capture_by_escape || release_capture_by_right_mouse)) {
@@ -1404,18 +1430,15 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     if (workspace_.show_3d_preview && preview_camera_.IsCursorCaptured()
-        && (release_capture_by_escape || release_capture_by_hotkey || release_capture_by_right_mouse)) {
+        && (release_capture_by_escape || release_capture_by_right_mouse)) {
         preview_camera_.ReleaseMouse();
         if (release_capture_by_escape) {
             suppress_window_close_request_this_frame_ = true;
         }
 
-        std::string release_reason = "f2";
-        if (release_capture_by_escape) {
-            release_reason = "escape";
-        } else if (release_capture_by_right_mouse) {
-            release_reason = "right_mouse";
-        }
+        const std::string release_reason = release_capture_by_escape
+            ? "escape"
+            : "right_mouse";
         logger_.Debug("camera3d", "mouse capture released by " + release_reason);
         return;
     }
@@ -1467,19 +1490,6 @@ void App::HandleWorkspaceInput(float dt)
     }
 
     map_2d_view_.Update(layout_cache_.workspace.map_overview, map_2d_mode);
-    if (!preview_camera_.IsCursorCaptured() && IsKeyPressed(KEY_S)) {
-        selection_info_overlay_open_ = false;
-        selection_info_overlay_scroll_rows_ = 0;
-        help_overlay_open_ = false;
-        help_overlay_scroll_rows_ = 0;
-        CloseTileContextMenu("stats_hotkey");
-        stats_overlay_open_ = true;
-        stats_overlay_scroll_rows_ = 0;
-        preview_camera_.ReleaseMouse();
-        logger_.Debug("stats", "overlay=opened mode="
-            + std::string(workspace_.show_3d_preview ? "3d" : "2d"));
-        return;
-    }
 
     if (layout_dirty_) {
         RebuildLayout();

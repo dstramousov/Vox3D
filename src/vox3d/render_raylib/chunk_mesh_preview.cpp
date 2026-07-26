@@ -885,7 +885,8 @@ void AppendVegetationPillar(
 [[nodiscard]] VegetationMeshBuffers BuildVegetationMeshBuffers(
     const RuntimeMap& map,
     const ChunkMeshData& chunk,
-    RuntimeObjectMarkerKind kind)
+    RuntimeObjectMarkerKind kind,
+    bool skip_trees)
 {
     VegetationMeshBuffers mesh;
     if (!UsesStaticVegetationMesh(map) || !chunk.bounds.IsValid()) {
@@ -900,6 +901,9 @@ void AppendVegetationPillar(
     mesh.indices.reserve(tile_capacity * 5ULL * 6ULL);
 
     const Color color = StaticVegetationColor(kind);
+    if (skip_trees && kind == RuntimeObjectMarkerKind::kTree) {
+        return mesh;
+    }
     for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
         for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
             const auto index = static_cast<std::size_t>(y) * static_cast<std::size_t>(map.info.width)
@@ -1013,7 +1017,8 @@ void AccumulateVegetationStats(
     const RuntimeMap& map,
     const ChunkMeshData& chunk,
     std::vector<RaylibUploadedVegetationModel>& models,
-    RaylibVegetationMeshStats& stats)
+    RaylibVegetationMeshStats& stats,
+    bool skip_trees)
 {
     float max_top = -std::numeric_limits<float>::infinity();
     if (!UsesStaticVegetationMesh(map)) {
@@ -1023,7 +1028,11 @@ void AccumulateVegetationStats(
              RuntimeObjectMarkerKind::kTree,
              RuntimeObjectMarkerKind::kBush,
              RuntimeObjectMarkerKind::kReed}) {
-        VegetationMeshBuffers mesh = BuildVegetationMeshBuffers(map, chunk, kind);
+        VegetationMeshBuffers mesh = BuildVegetationMeshBuffers(
+            map,
+            chunk,
+            kind,
+            skip_trees);
         if (mesh.pillars == 0 || mesh.faces == 0) {
             continue;
         }
@@ -1047,6 +1056,111 @@ void AccumulateVegetationStats(
         max_top = std::max(max_top, mesh.max_top);
     }
     return max_top;
+}
+
+[[nodiscard]] std::uint32_t TreePlacementHash(int x, int y)
+{
+    std::uint32_t value = static_cast<std::uint32_t>(x) * 0x9E3779B1U;
+    value ^= static_cast<std::uint32_t>(y) * 0x85EBCA77U;
+    value ^= value >> 16U;
+    value *= 0x7FEB352DU;
+    value ^= value >> 15U;
+    return value;
+}
+
+void AppendExperimentalTreeInstances(
+    const RuntimeMap& map,
+    const ChunkMeshData& chunk,
+    int tree_limit,
+    std::vector<RaylibExperimentalTreeInstance>& instances)
+{
+    if (!UsesStaticVegetationMesh(map) || !chunk.bounds.IsValid()
+        || tree_limit <= 0 || instances.size() >= static_cast<std::size_t>(tree_limit)) {
+        return;
+    }
+
+    for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
+        for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
+            if (instances.size() >= static_cast<std::size_t>(tree_limit)) {
+                return;
+            }
+            const auto index = static_cast<std::size_t>(y)
+                * static_cast<std::size_t>(map.info.width)
+                + static_cast<std::size_t>(x);
+            if (index >= map.vegetation_type.cells.size()
+                || static_cast<RuntimeVegetationType>(map.vegetation_type.cells[index])
+                    != RuntimeVegetationType::kTree) {
+                continue;
+            }
+
+            const std::uint32_t hash = TreePlacementHash(x, y);
+            const float offset_x = (static_cast<float>((hash >> 8U) & 0xFFU) / 255.0F - 0.5F) * 0.34F;
+            const float offset_z = (static_cast<float>((hash >> 16U) & 0xFFU) / 255.0F - 0.5F) * 0.34F;
+            const float scale = 1.45F + static_cast<float>((hash >> 24U) & 0xFFU) / 255.0F * 0.45F;
+            Vector3 position = TileCenterWorld(
+                x,
+                y,
+                TerrainTopLevel(map, TileCoord{x, y}),
+                map.info.width,
+                map.info.height);
+            position.x += offset_x;
+            position.z += offset_z;
+            instances.push_back(RaylibExperimentalTreeInstance{
+                chunk.coord,
+                position,
+                static_cast<float>(hash % 360U),
+                scale,
+                static_cast<std::size_t>((hash >> 4U) % 3U),
+            });
+        }
+    }
+}
+
+[[nodiscard]] std::vector<ChunkVisibilityClass> BuildChunkVisibilityClassMap(
+    const ChunkMeshBuildInfo& info,
+    const ChunkVisibilityReport& report);
+
+void DrawExperimentalTreeInstances(
+    const std::vector<Model>& models,
+    const std::vector<RaylibExperimentalTreeInstance>& instances,
+    const ChunkMeshBuildInfo& info,
+    const ChunkVisibilityReport& visibility_report,
+    RaylibChunkMeshDebugOverlayOptions overlays,
+    RaylibVegetationMeshStats& stats)
+{
+    stats.last_experimental_tree_draw_calls = 0;
+    if (!overlays.show_object_trees || models.size() < 3 || instances.empty()) {
+        return;
+    }
+
+    const std::vector<ChunkVisibilityClass> classes = BuildChunkVisibilityClassMap(
+        info,
+        visibility_report);
+    const int chunks_x = std::max(1, info.chunks_x);
+    constexpr Vector3 kAxis{0.0F, 1.0F, 0.0F};
+    for (const RaylibExperimentalTreeInstance& instance : instances) {
+        if (instance.coord.x < 0 || instance.coord.y < 0
+            || instance.coord.x >= info.chunks_x || instance.coord.y >= info.chunks_y) {
+            continue;
+        }
+        const auto chunk_index = static_cast<std::size_t>(instance.coord.y)
+            * static_cast<std::size_t>(chunks_x)
+            + static_cast<std::size_t>(instance.coord.x);
+        if (chunk_index >= classes.size()
+            || classes[chunk_index] == ChunkVisibilityClass::kHidden
+            || instance.model_index >= models.size()) {
+            continue;
+        }
+        const Vector3 scale{instance.scale, instance.scale, instance.scale};
+        DrawModelEx(
+            models[instance.model_index],
+            instance.position,
+            kAxis,
+            instance.rotation_degrees,
+            scale,
+            VisibilityTint(classes[chunk_index]));
+        ++stats.last_experimental_tree_draw_calls;
+    }
 }
 
 [[nodiscard]] std::vector<ChunkVisibilityClass> BuildChunkVisibilityClassMap(
@@ -1888,6 +2002,44 @@ bool RaylibVegetationMeshStats::IsValid() const
 RaylibChunkMeshPreview::~RaylibChunkMeshPreview()
 {
     Unload();
+    UnloadExperimentalTreeAssets();
+}
+
+bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
+    const RaylibExperimentalTreeOptions& options)
+{
+    UnloadExperimentalTreeAssets();
+    experimental_tree_options_ = options;
+    if (!options.enabled) {
+        return true;
+    }
+
+    constexpr std::array<std::string_view, 3> kModelNames{
+        "tree.glb",
+        "tree-high.glb",
+        "tree-crooked.glb",
+    };
+    experimental_tree_models_.reserve(kModelNames.size());
+    for (const std::string_view name : kModelNames) {
+        const std::filesystem::path path = options.asset_directory / name;
+        const std::string path_text = path.string();
+        Model model = LoadModel(path_text.c_str());
+        if (model.meshCount <= 0 || model.meshes == nullptr) {
+            TraceLog(LOG_ERROR, "VOX3D: failed to load experimental tree model: %s",
+                path_text.c_str());
+            if (model.meshCount > 0 || model.meshes != nullptr) {
+                UnloadModel(model);
+            }
+            UnloadExperimentalTreeAssets();
+            experimental_tree_options_.enabled = false;
+            return false;
+        }
+        TraceLog(LOG_INFO, "VOX3D: loaded experimental tree model: %s meshes=%d",
+            path_text.c_str(), model.meshCount);
+        experimental_tree_models_.push_back(model);
+    }
+    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size();
+    return true;
 }
 
 bool RaylibChunkMeshPreview::Upload(
@@ -1930,7 +2082,17 @@ bool RaylibChunkMeshPreview::UploadAdditional(
                 *runtime_map,
                 chunk,
                 vegetation_models_,
-                vegetation_stats_);
+                vegetation_stats_,
+                experimental_tree_options_.enabled);
+            if (experimental_tree_options_.enabled) {
+                AppendExperimentalTreeInstances(
+                    *runtime_map,
+                    chunk,
+                    experimental_tree_options_.tree_limit,
+                    experimental_tree_instances_);
+                vegetation_stats_.experimental_tree_instances =
+                    experimental_tree_instances_.size();
+            }
             if (std::isfinite(vegetation_top)) {
                 world_bounds.max.y = std::max(world_bounds.max.y, vegetation_top);
             }
@@ -2075,7 +2237,14 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
         ++removed_models;
     }
     vegetation_models_ = std::move(kept_vegetation);
+    std::erase_if(
+        experimental_tree_instances_,
+        [&](const RaylibExperimentalTreeInstance& instance) {
+            return should_remove(instance.coord);
+        });
     vegetation_stats_ = RaylibVegetationMeshStats{};
+    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size();
+    vegetation_stats_.experimental_tree_instances = experimental_tree_instances_.size();
     for (const RaylibUploadedVegetationModel& vegetation : vegetation_models_) {
         ++vegetation_stats_.models;
         vegetation_stats_.pillars += vegetation.pillars;
@@ -2185,6 +2354,13 @@ void RaylibChunkMeshPreview::Draw(
         visibility_report,
         overlays,
         vegetation_stats_);
+    DrawExperimentalTreeInstances(
+        experimental_tree_models_,
+        experimental_tree_instances_,
+        build_result.info,
+        visibility_report,
+        overlays,
+        vegetation_stats_);
     render_frame_stats_.model_draw_calls += vegetation_stats_.last_draw_calls;
     render_frame_stats_.models_drawn += vegetation_stats_.last_draw_calls;
     render_frame_stats_.models_skipped += vegetation_models_.size() >= vegetation_stats_.last_draw_calls
@@ -2192,6 +2368,8 @@ void RaylibChunkMeshPreview::Draw(
         : 0ULL;
     render_frame_stats_.vertices_submitted += vegetation_stats_.last_drawn_pillars * 20ULL;
     render_frame_stats_.triangles_submitted += vegetation_stats_.last_drawn_pillars * 10ULL;
+    render_frame_stats_.model_draw_calls += vegetation_stats_.last_experimental_tree_draw_calls;
+    render_frame_stats_.models_drawn += vegetation_stats_.last_experimental_tree_draw_calls;
 
     DrawHiddenChunkBounds(chunks_, build_result, visibility_report, visibility.show_hidden_bounds);
     if (transition_features != nullptr) {
@@ -2292,13 +2470,29 @@ void RaylibChunkMeshPreview::Unload()
         }
     }
     vegetation_models_.clear();
+    experimental_tree_instances_.clear();
     visibility_items_.clear();
     stats_ = RaylibChunkMeshPreviewStats{};
     vegetation_stats_ = RaylibVegetationMeshStats{};
+    vegetation_stats_.experimental_tree_assets = experimental_tree_models_.size();
     render_frame_stats_ = RaylibRenderFrameStats{};
     gpu_streaming_stats_.unloaded_models_this_frame += unloaded_models;
     gpu_streaming_stats_.total_unloaded_models += unloaded_models;
     RebuildGpuResourceStats();
+}
+
+void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
+{
+    for (Model& model : experimental_tree_models_) {
+        if (model.meshCount > 0 && model.meshes != nullptr) {
+            UnloadModel(model);
+        }
+    }
+    experimental_tree_models_.clear();
+    experimental_tree_instances_.clear();
+    vegetation_stats_.experimental_tree_assets = 0;
+    vegetation_stats_.experimental_tree_instances = 0;
+    vegetation_stats_.last_experimental_tree_draw_calls = 0;
 }
 
 bool RaylibChunkMeshPreview::IsUploaded() const
@@ -2400,6 +2594,9 @@ std::string ToLogString(const RaylibVegetationMeshStats& stats)
     out << " visible_chunks=" << stats.last_visible_chunks;
     out << " draw_calls=" << stats.last_draw_calls;
     out << " drawn_pillars=" << stats.last_drawn_pillars;
+    out << " glb_assets=" << stats.experimental_tree_assets;
+    out << " glb_instances=" << stats.experimental_tree_instances;
+    out << " glb_draw_calls=" << stats.last_experimental_tree_draw_calls;
     return out.str();
 }
 

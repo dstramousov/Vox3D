@@ -695,3 +695,35 @@
 - Added GPU device, tracked mesh memory, driver VRAM, render workload, and streaming/upload sections to Stats - 3D.
 - Added a compact GPU frame-time value to the lower-right status bar and highlighted version, FPS, GPU, and memory values in orange.
 - Added logical GPU buffer accounting for terrain, ruins, trees, bushes, and reeds with current and peak usage.
+
+## v0.5.68 -> v0.5.69
+
+- Moved the Stats overlay hotkey from `S` to `F2`, restoring `S` exclusively to backward 3D camera movement.
+- Removed the obsolete `F2` mouse-release shortcut while keeping right mouse and Escape release controls.
+- Changed lower-right status values from orange to a high-contrast burgundy color.
+- Ellipsized long Stats values to keep GPU renderer and other diagnostic strings inside their assigned column.
+
+## v0.5.69 -> v0.5.70
+
+- Added an experimental GLB tree renderer using three bundled low-poly tree models.
+- Replaced procedural tree pillars with deterministic GLB instances when the experiment is enabled, while preserving bush and reed chunk meshes.
+- Added stable per-tile model choice, rotation, scale, and small placement offsets with a configurable instance limit.
+- Added configuration fields and Stats diagnostics for GLB asset, instance, and draw-call counts.
+
+
+## v0.5.70 -> v0.5.71
+
+- Fixed the experimental GLB tree renderer build by declaring the chunk visibility map helper before its first use.
+
+
+## v0.5.71 -> v0.5.72
+
+- Bundled the three experimental GLB tree assets in `assets/models/trees` so the runtime renderer can load them from the configured directory.
+- Added explicit raylib log messages with full asset paths for successful and failed experimental tree model loads.
+- Preserved the procedural tree fallback when any required GLB asset cannot be loaded.
+
+
+## v0.5.72 -> v0.5.73
+
+- Bundled the external `Textures/colormap.png` palette referenced by the experimental GLB tree models.
+- Restored the authored tree materials instead of raylib's white missing-texture fallback.

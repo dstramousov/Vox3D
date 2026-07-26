@@ -12,6 +12,7 @@
 #include <raylib.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -264,6 +265,9 @@ struct RaylibVegetationMeshStats {
     std::uint64_t last_visible_chunks = 0;
     std::uint64_t last_draw_calls = 0;
     std::uint64_t last_drawn_pillars = 0;
+    std::uint64_t experimental_tree_assets = 0;
+    std::uint64_t experimental_tree_instances = 0;
+    std::uint64_t last_experimental_tree_draw_calls = 0;
 
     /**
      * @brief Returns true when at least one vegetation model is uploaded.
@@ -271,6 +275,26 @@ struct RaylibVegetationMeshStats {
      * @return True if static vegetation GPU resources are available.
      */
     [[nodiscard]] bool IsValid() const;
+};
+
+/**
+ * @brief Runtime options for the experimental GLB tree renderer.
+ */
+struct RaylibExperimentalTreeOptions {
+    bool enabled = false;
+    int tree_limit = 300;
+    std::filesystem::path asset_directory = "assets/models/trees";
+};
+
+/**
+ * @brief One deterministic GLB tree placement associated with a resident chunk.
+ */
+struct RaylibExperimentalTreeInstance {
+    ChunkCoord coord{};
+    Vector3 position{};
+    float rotation_degrees = 0.0F;
+    float scale = 1.0F;
+    std::size_t model_index = 0;
 };
 
 /**
@@ -324,6 +348,19 @@ public:
     RaylibChunkMeshPreview& operator=(const RaylibChunkMeshPreview&) = delete;
     RaylibChunkMeshPreview(RaylibChunkMeshPreview&&) = delete;
     RaylibChunkMeshPreview& operator=(RaylibChunkMeshPreview&&) = delete;
+
+    /**
+     * @brief Configures and loads the experimental GLB tree asset set.
+     *
+     * This method must be called after raylib window initialization. Missing or
+     * invalid model files disable the experimental renderer without affecting
+     * the existing static vegetation path.
+     *
+     * @param options Experimental tree renderer options.
+     * @return True if the requested renderer is disabled or all assets loaded.
+     */
+    [[nodiscard]] bool ConfigureExperimentalTrees(
+        const RaylibExperimentalTreeOptions& options);
 
     /**
      * @brief Uploads chunk mesh data into raylib Model resources.
@@ -498,9 +535,13 @@ public:
 
 private:
     void RebuildGpuResourceStats();
+    void UnloadExperimentalTreeAssets();
 
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
+    std::vector<Model> experimental_tree_models_;
+    std::vector<RaylibExperimentalTreeInstance> experimental_tree_instances_;
+    RaylibExperimentalTreeOptions experimental_tree_options_;
     std::vector<ChunkVisibilityItem> visibility_items_;
     RaylibChunkMeshPreviewStats stats_;
     mutable RaylibVegetationMeshStats vegetation_stats_;

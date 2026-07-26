@@ -486,6 +486,9 @@ bool LoadAppConfigFromFile(
     AssignPath(*root, {"language", "directory"}, config.language_dir, "language.directory", diagnostics);
     AssignPath(*root, {"map", "path"}, config.map_package_path, "map.path", diagnostics);
     AssignPath(*root, {"map", "package_path"}, config.map_package_path, "map.package_path", diagnostics);
+    AssignBool(*root, {"vegetation_models", "enabled"}, config.vegetation_models_enabled, "vegetation_models.enabled", diagnostics);
+    AssignPositiveInt(*root, {"vegetation_models", "tree_limit"}, config.vegetation_model_tree_limit, "vegetation_models.tree_limit", diagnostics);
+    AssignPath(*root, {"vegetation_models", "asset_directory"}, config.vegetation_model_asset_directory, "vegetation_models.asset_directory", diagnostics);
 
     AssignPositiveInt(*root, {"window", "base_width"}, config.base_width, "window.base_width", diagnostics);
     AssignPositiveInt(*root, {"window", "base_height"}, config.base_height, "window.base_height", diagnostics);

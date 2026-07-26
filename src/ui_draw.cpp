@@ -25,6 +25,7 @@ constexpr Color kMutedText{144, 150, 164, 255};
 constexpr Color kModalDim{0, 0, 0, 150};
 constexpr Color kAccent{255, 205, 96, 255};
 constexpr Color kHelpHotkey{255, 170, 72, 255};
+constexpr Color kStatusValue{122, 24, 52, 255};
 
 constexpr Color kEditorBackground{7, 118, 151, 255};
 constexpr Color kEditorViewport{152, 152, 149, 255};
@@ -63,6 +64,38 @@ constexpr float kBaseWorkspaceStatusFontSize = 16.0F;
 [[nodiscard]] Vector2 Measure(Font font, const std::string& text, float font_size, float spacing)
 {
     return MeasureTextEx(font, text.c_str(), font_size, spacing);
+}
+
+[[nodiscard]] std::string EllipsizeToWidth(
+    Font font,
+    std::string_view text,
+    float font_size,
+    float spacing,
+    float max_width)
+{
+    std::string result(text);
+    if (Measure(font, result, font_size, spacing).x <= max_width) {
+        return result;
+    }
+
+    constexpr std::string_view suffix = "...";
+    const std::string suffix_text(suffix);
+    if (Measure(font, suffix_text, font_size, spacing).x > max_width) {
+        return {};
+    }
+
+    while (!result.empty()) {
+        result.pop_back();
+        while (!result.empty()
+            && (static_cast<unsigned char>(result.back()) & 0xC0U) == 0x80U) {
+            result.pop_back();
+        }
+        const std::string candidate = result + suffix_text;
+        if (Measure(font, candidate, font_size, spacing).x <= max_width) {
+            return candidate;
+        }
+    }
+    return suffix_text;
 }
 
 void DrawTextCentered(Font font, const std::string& text, float y, float font_size, float spacing, Color color, int window_width)
@@ -1357,7 +1390,7 @@ struct HelpControlLine
         "  Home             Focus Start",
         "  End              Focus Goal",
         "  I                Selection Info",
-        "  S                Statistics",
+        "  F2               Statistics",
         "  F1               Help",
         "  Esc              Close overlay / exit",
         "  Wheel over menu  Scroll side panel",
@@ -1371,11 +1404,11 @@ struct HelpControlLine
         "  Q / E            Move down / up",
         "  Shift / Ctrl     Fast / slow movement",
         "  Wheel            Dolly forward / backward",
-        "  RMB / F2 / Esc   Release captured mouse",
+        "  RMB / Esc        Release captured mouse",
         "  F                Fit map in viewport",
         "  R                Reset camera",
         "  I                Selection Info",
-        "  S (mouse free)   Statistics",
+        "  F2               Statistics",
         "  F1               Help",
         "  F3 / P           Start path pick",
         "  LMB in path pick  Select Start, then Goal",
@@ -2680,6 +2713,9 @@ struct StatsOverlaySection {
         {"Visible chunks", std::to_string(vegetation_stats.last_visible_chunks)},
         {"Draw calls", std::to_string(vegetation_stats.last_draw_calls)},
         {"Drawn pillars", std::to_string(vegetation_stats.last_drawn_pillars)},
+        {"GLB assets / instances", std::to_string(vegetation_stats.experimental_tree_assets)
+            + " / " + std::to_string(vegetation_stats.experimental_tree_instances)},
+        {"GLB draw calls", std::to_string(vegetation_stats.last_experimental_tree_draw_calls)},
     });
     add("Mesh Comparison", {
         {"Simple", std::to_string(workspace.mesh_stats.simple_faces)},
@@ -2902,21 +2938,31 @@ void DrawStatsOverlay(
                 kAccent);
             row_y += geometry.line_height;
 
+            const float body_spacing = FontSpacing(geometry.body_font_size);
             const float value_x = x + column_width * 0.56F;
+            const float value_max_width = std::max(
+                0.0F,
+                x + column_width - value_x - body_spacing);
             for (const auto& [key, value] : section.rows) {
                 DrawTextEx(
                     fonts.text,
                     key.c_str(),
                     Vector2{x, row_y},
                     geometry.body_font_size,
-                    FontSpacing(geometry.body_font_size),
+                    body_spacing,
                     kMutedText);
+                const std::string displayed_value = EllipsizeToWidth(
+                    fonts.text,
+                    value,
+                    geometry.body_font_size,
+                    body_spacing,
+                    value_max_width);
                 DrawTextEx(
                     fonts.text,
-                    value.c_str(),
+                    displayed_value.c_str(),
                     Vector2{value_x, row_y},
                     geometry.body_font_size,
-                    FontSpacing(geometry.body_font_size),
+                    body_spacing,
                     kText);
                 row_y += geometry.line_height;
             }
@@ -2927,7 +2973,7 @@ void DrawStatsOverlay(
 
     const float footer_y = geometry.panel.y + geometry.panel.height
         - geometry.padding - geometry.footer_font_size;
-    const std::string close_hint = "Esc / S  Close";
+    const std::string close_hint = "Esc / F2  Close";
     DrawTextEx(
         fonts.text,
         close_hint.c_str(),
@@ -3742,7 +3788,7 @@ void DrawFpsCounter(
             Vector2{x, y},
             metrics.fps_font_size,
             spacing,
-            segment.highlighted ? kHelpHotkey : normal_color);
+            segment.highlighted ? kStatusValue : normal_color);
         x += Measure(font, segment.text, metrics.fps_font_size, spacing).x;
     }
 }

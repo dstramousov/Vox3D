@@ -9,6 +9,11 @@
   "map": {
     "path": "../TopDownMapGen/output/map_package"
   },
+  "vegetation_models": {
+    "enabled": true,
+    "tree_limit": 300,
+    "asset_directory": "assets/models/trees"
+  },
   "window": {
     "base_width": 1280,
     "base_height": 720,

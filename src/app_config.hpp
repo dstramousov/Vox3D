@@ -7,7 +7,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.68-dev"
+#define VOX3D_VERSION "0.5.73-dev"
 #endif
 
 namespace vox3d {
@@ -22,6 +22,10 @@ struct AppConfig {
     std::string language = "en";
     std::filesystem::path language_dir = "res/lang";
     std::filesystem::path map_package_path;
+
+    bool vegetation_models_enabled = false;
+    int vegetation_model_tree_limit = 300;
+    std::filesystem::path vegetation_model_asset_directory = "assets/models/trees";
 
     int base_width = 1280;
     int base_height = 720;
