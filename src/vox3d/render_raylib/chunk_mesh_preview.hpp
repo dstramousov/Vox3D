@@ -282,7 +282,7 @@ struct RaylibVegetationMeshStats {
  */
 struct RaylibExperimentalTreeOptions {
     bool enabled = false;
-    int tree_limit = 300;
+    int tree_limit = 0;
     std::filesystem::path asset_directory = "assets/models/trees";
 };
 

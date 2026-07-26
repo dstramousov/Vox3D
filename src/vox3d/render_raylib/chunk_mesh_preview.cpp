@@ -1124,14 +1124,15 @@ void AppendExperimentalTreeInstances(
     int tree_limit,
     std::vector<RaylibExperimentalTreeInstance>& instances)
 {
+    const bool has_limit = tree_limit > 0;
     if (!UsesStaticVegetationMesh(map) || !chunk.bounds.IsValid()
-        || tree_limit <= 0 || instances.size() >= static_cast<std::size_t>(tree_limit)) {
+        || (has_limit && instances.size() >= static_cast<std::size_t>(tree_limit))) {
         return;
     }
 
     for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
         for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
-            if (instances.size() >= static_cast<std::size_t>(tree_limit)) {
+            if (has_limit && instances.size() >= static_cast<std::size_t>(tree_limit)) {
                 return;
             }
             const auto index = static_cast<std::size_t>(y)

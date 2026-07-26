@@ -11,7 +11,7 @@
   },
   "vegetation_models": {
     "enabled": true,
-    "tree_limit": 300,
+    "tree_limit": 0,
     "asset_directory": "assets/models/trees"
   },
   "window": {

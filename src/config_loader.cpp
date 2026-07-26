@@ -348,6 +348,27 @@ void AssignPath(
     diagnostics.push_back("config: ignored non-string field " + std::string(name));
 }
 
+void AssignNonNegativeInt(
+    const JsonValue& root,
+    std::initializer_list<std::string_view> path,
+    int& target,
+    std::string_view name,
+    std::vector<std::string>& diagnostics)
+{
+    const auto value = ReadNumber(root, path);
+    if (!value.has_value()) {
+        if (FindMember(root, path) != nullptr) {
+            diagnostics.push_back("config: ignored non-number field " + std::string(name));
+        }
+        return;
+    }
+    if (*value < 0.0) {
+        diagnostics.push_back("config: ignored negative field " + std::string(name));
+        return;
+    }
+    target = static_cast<int>(*value);
+}
+
 void AssignPositiveInt(
     const JsonValue& root,
     std::initializer_list<std::string_view> path,
@@ -487,7 +508,7 @@ bool LoadAppConfigFromFile(
     AssignPath(*root, {"map", "path"}, config.map_package_path, "map.path", diagnostics);
     AssignPath(*root, {"map", "package_path"}, config.map_package_path, "map.package_path", diagnostics);
     AssignBool(*root, {"vegetation_models", "enabled"}, config.vegetation_models_enabled, "vegetation_models.enabled", diagnostics);
-    AssignPositiveInt(*root, {"vegetation_models", "tree_limit"}, config.vegetation_model_tree_limit, "vegetation_models.tree_limit", diagnostics);
+    AssignNonNegativeInt(*root, {"vegetation_models", "tree_limit"}, config.vegetation_model_tree_limit, "vegetation_models.tree_limit", diagnostics);
     AssignPath(*root, {"vegetation_models", "asset_directory"}, config.vegetation_model_asset_directory, "vegetation_models.asset_directory", diagnostics);
 
     AssignPositiveInt(*root, {"window", "base_width"}, config.base_width, "window.base_width", diagnostics);

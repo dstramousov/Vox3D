@@ -762,3 +762,10 @@
 - Added two genuinely rare special trees: an ancient spreading broadleaf and a sparse dead conifer.
 - Added deterministic weighted selection across broadleaf, conifer, and mixed 12x12-tile forest patches.
 - Added `tools/generate_forest_tree_variants.py` to reproduce all fourteen runtime tree assets.
+
+
+## v0.5.78 -> v0.5.79
+
+- Removed the default 300-instance cap from the GLB tree renderer so every tree record in resident map chunks receives a model instance.
+- Defined `vegetation_models.tree_limit = 0` as unlimited while retaining positive values as an optional diagnostic cap.
+- Preserved existing chunk residency and frustum culling, so only trees in currently drawn chunks are submitted each frame.
