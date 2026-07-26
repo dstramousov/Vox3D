@@ -3,6 +3,7 @@
 #include "vox3d/voxel/block.hpp"
 
 #include <raylib.h>
+#include <raymath.h>
 
 #include <algorithm>
 #include <array>
@@ -1171,6 +1172,67 @@ void AppendExperimentalTreeInstances(
     const ChunkMeshBuildInfo& info,
     const ChunkVisibilityReport& report);
 
+[[nodiscard]] Matrix ExperimentalTreeTransform(
+    const RaylibExperimentalTreeInstance& instance)
+{
+    const Matrix scale = MatrixScale(instance.scale, instance.scale, instance.scale);
+    const Matrix rotation = MatrixRotateY(instance.rotation_degrees * DEG2RAD);
+    const Matrix translation = MatrixTranslate(
+        instance.position.x,
+        instance.position.y,
+        instance.position.z);
+    return MatrixMultiply(MatrixMultiply(scale, rotation), translation);
+}
+
+[[nodiscard]] Color MultiplyColor(Color base, Color tint)
+{
+    return Color{
+        static_cast<unsigned char>(
+            static_cast<unsigned int>(base.r) * static_cast<unsigned int>(tint.r) / 255U),
+        static_cast<unsigned char>(
+            static_cast<unsigned int>(base.g) * static_cast<unsigned int>(tint.g) / 255U),
+        static_cast<unsigned char>(
+            static_cast<unsigned int>(base.b) * static_cast<unsigned int>(tint.b) / 255U),
+        static_cast<unsigned char>(
+            static_cast<unsigned int>(base.a) * static_cast<unsigned int>(tint.a) / 255U),
+    };
+}
+
+void DrawExperimentalTreeBatch(
+    const Model& model,
+    const std::vector<Matrix>& transforms,
+    Color tint,
+    RaylibVegetationMeshStats& stats)
+{
+    if (transforms.empty()) {
+        return;
+    }
+
+    for (int mesh_index = 0; mesh_index < model.meshCount; ++mesh_index) {
+        int material_index = 0;
+        if (model.meshMaterial != nullptr) {
+            material_index = model.meshMaterial[mesh_index];
+        }
+        if (material_index < 0 || material_index >= model.materialCount) {
+            material_index = 0;
+        }
+        if (model.materialCount <= 0 || model.materials == nullptr) {
+            continue;
+        }
+
+        Material material = model.materials[material_index];
+        material.maps[MATERIAL_MAP_DIFFUSE].color = MultiplyColor(
+            material.maps[MATERIAL_MAP_DIFFUSE].color,
+            tint);
+        DrawMeshInstanced(
+            model.meshes[mesh_index],
+            material,
+            transforms.data(),
+            static_cast<int>(transforms.size()));
+        ++stats.last_experimental_tree_draw_calls;
+    }
+}
+
 void DrawExperimentalTreeInstances(
     const std::vector<Model>& models,
     const std::vector<RaylibExperimentalTreeInstance>& instances,
@@ -1188,7 +1250,9 @@ void DrawExperimentalTreeInstances(
         info,
         visibility_report);
     const int chunks_x = std::max(1, info.chunks_x);
-    constexpr Vector3 kAxis{0.0F, 1.0F, 0.0F};
+    std::vector<std::vector<Matrix>> visible_batches(models.size());
+    std::vector<std::vector<Matrix>> fade_batches(models.size());
+
     for (const RaylibExperimentalTreeInstance& instance : instances) {
         if (instance.coord.x < 0 || instance.coord.y < 0
             || instance.coord.x >= info.chunks_x || instance.coord.y >= info.chunks_y) {
@@ -1202,15 +1266,24 @@ void DrawExperimentalTreeInstances(
             || instance.model_index >= models.size()) {
             continue;
         }
-        const Vector3 scale{instance.scale, instance.scale, instance.scale};
-        DrawModelEx(
-            models[instance.model_index],
-            instance.position,
-            kAxis,
-            instance.rotation_degrees,
-            scale,
-            VisibilityTint(classes[chunk_index]));
-        ++stats.last_experimental_tree_draw_calls;
+
+        std::vector<Matrix>& batch = classes[chunk_index] == ChunkVisibilityClass::kFade
+            ? fade_batches[instance.model_index]
+            : visible_batches[instance.model_index];
+        batch.push_back(ExperimentalTreeTransform(instance));
+    }
+
+    for (std::size_t model_index = 0; model_index < models.size(); ++model_index) {
+        DrawExperimentalTreeBatch(
+            models[model_index],
+            visible_batches[model_index],
+            VisibilityTint(ChunkVisibilityClass::kVisible),
+            stats);
+        DrawExperimentalTreeBatch(
+            models[model_index],
+            fade_batches[model_index],
+            VisibilityTint(ChunkVisibilityClass::kFade),
+            stats);
     }
 }
 

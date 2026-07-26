@@ -769,3 +769,10 @@
 - Removed the default 300-instance cap from the GLB tree renderer so every tree record in resident map chunks receives a model instance.
 - Defined `vegetation_models.tree_limit = 0` as unlimited while retaining positive values as an optional diagnostic cap.
 - Preserved existing chunk residency and frustum culling, so only trees in currently drawn chunks are submitted each frame.
+
+## v0.5.79 -> v0.5.80
+
+- Replaced one `DrawModelEx()` call per visible GLB tree with instanced batches.
+- Tree transforms are grouped by model and visibility class, then submitted with `DrawMeshInstanced()`.
+- Preserved chunk/frustum culling and fade tinting.
+- Tree draw-call statistics now report actual instanced mesh submissions instead of tree count.
