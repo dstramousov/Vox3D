@@ -1068,6 +1068,25 @@ void AccumulateVegetationStats(
     return value;
 }
 
+[[nodiscard]] std::size_t SelectExperimentalTreeModel(int x, int y, std::uint32_t hash)
+{
+    constexpr int kForestPatchSize = 12;
+    const std::uint32_t patch_hash = TreePlacementHash(
+        x / kForestPatchSize,
+        y / kForestPatchSize);
+    const std::uint32_t profile = patch_hash % 3U;
+    const std::uint32_t roll = (hash >> 3U) % 100U;
+
+    switch (profile) {
+    case 0U:  // Broadleaf forest.
+        return roll < 82U ? 1U : 0U;
+    case 1U:  // Conifer forest.
+        return roll < 82U ? 0U : 1U;
+    default:  // Mixed forest.
+        return roll < 50U ? 0U : 1U;
+    }
+}
+
 void AppendExperimentalTreeInstances(
     const RuntimeMap& map,
     const ChunkMeshData& chunk,
@@ -1110,7 +1129,7 @@ void AppendExperimentalTreeInstances(
                 position,
                 static_cast<float>(hash % 360U),
                 scale,
-                static_cast<std::size_t>((hash >> 4U) % 3U),
+                SelectExperimentalTreeModel(x, y, hash),
             });
         }
     }
@@ -1129,7 +1148,7 @@ void DrawExperimentalTreeInstances(
     RaylibVegetationMeshStats& stats)
 {
     stats.last_experimental_tree_draw_calls = 0;
-    if (!overlays.show_object_trees || models.size() < 3 || instances.empty()) {
+    if (!overlays.show_object_trees || models.size() < 2 || instances.empty()) {
         return;
     }
 
@@ -2014,10 +2033,9 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
         return true;
     }
 
-    constexpr std::array<std::string_view, 3> kModelNames{
-        "tree.glb",
-        "tree-high.glb",
-        "tree-crooked.glb",
+    constexpr std::array<std::string_view, 2> kModelNames{
+        "vox-tree-conifer.glb",
+        "vox-tree-spreading.glb",
     };
     experimental_tree_models_.reserve(kModelNames.size());
     for (const std::string_view name : kModelNames) {

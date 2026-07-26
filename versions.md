@@ -727,3 +727,22 @@
 
 - Bundled the external `Textures/colormap.png` palette referenced by the experimental GLB tree models.
 - Restored the authored tree materials instead of raylib's white missing-texture fallback.
+
+## v0.5.73 -> v0.5.74
+
+- Expanded the experimental forest renderer from three to eight bundled low-poly tree models.
+- Added deterministic 12x12-tile forest profiles for broadleaf, conifer, mixed, young-growth, and irregular old forest patches.
+- Added weighted per-tile model selection while preserving stable rotation, scale, and placement across runs and chunk reloads.
+
+
+## v0.5.74 -> v0.5.75
+
+- Added two original deterministic low-poly GLB tree assets generated specifically for VoX3D: a layered conifer and a broad spreading tree.
+- Added the reproducible `tools/generate_vox3d_trees.py` asset generator with embedded PBR colors and ground-level pivots.
+- Integrated the custom trees into weighted forest profiles while retaining the existing models as secondary variants.
+
+## v0.5.75 -> v0.5.76
+
+- Reworked the custom spreading tree branches into shorter, thinner, upward-curving segments contained inside the crown.
+- Temporarily restricted experimental forests to the two original VoX3D tree models for clean visual evaluation.
+- Simplified deterministic forest patches to broadleaf, conifer, and mixed profiles using only the custom assets.
