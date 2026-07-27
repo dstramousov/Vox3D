@@ -1082,7 +1082,13 @@ struct TreeAltitudeSample {
     float dead = 0.02F;
     float density = 1.0F;
     float scale = 1.0F;
-    std::uint8_t palette = 0U;
+    float palette_blend = 0.0F;
+    float deciduous_olive = 0.06F;
+    float deciduous_ochre = 0.01F;
+    float conifer_cool = 0.10F;
+    float conifer_brown = 0.0F;
+    std::uint8_t lower_palette = 0U;
+    std::uint8_t upper_palette = 0U;
 };
 
 [[nodiscard]] float LerpFloat(float a, float b, float t)
@@ -1118,8 +1124,69 @@ struct TreeAltitudeSample {
     sample.dead = LerpFloat(options.altitude_dead[lower], options.altitude_dead[upper], t);
     sample.density = LerpFloat(options.altitude_density[lower], options.altitude_density[upper], t);
     sample.scale = LerpFloat(options.altitude_scale[lower], options.altitude_scale[upper], t);
-    sample.palette = static_cast<std::uint8_t>(std::min<std::size_t>(lower, 4U));
+    sample.palette_blend = t;
+    sample.lower_palette = static_cast<std::uint8_t>(std::min<std::size_t>(lower, 4U));
+    sample.upper_palette = static_cast<std::uint8_t>(std::min<std::size_t>(upper, 4U));
+    if (options.foliage_color_zoning_enabled) {
+        sample.deciduous_olive = LerpFloat(
+            options.deciduous_olive[lower], options.deciduous_olive[upper], t);
+        sample.deciduous_ochre = LerpFloat(
+            options.deciduous_ochre[lower], options.deciduous_ochre[upper], t);
+        sample.conifer_cool = LerpFloat(
+            options.conifer_cool[lower], options.conifer_cool[upper], t);
+        sample.conifer_brown = LerpFloat(
+            options.conifer_brown[lower], options.conifer_brown[upper], t);
+    }
     return sample;
+}
+
+[[nodiscard]] std::uint8_t SelectFoliagePalette(
+    std::uint32_t hash,
+    const TreeAltitudeSample& altitude)
+{
+    const float roll = static_cast<float>((hash >> 10U) & 0xFFFFU) / 65535.0F;
+    return roll < altitude.palette_blend
+        ? altitude.upper_palette
+        : altitude.lower_palette;
+}
+
+[[nodiscard]] std::uint8_t SelectFoliageTint(
+    std::uint32_t hash,
+    std::size_t model_index,
+    const TreeAltitudeSample& altitude,
+    bool color_zoning_enabled)
+{
+    if (!color_zoning_enabled) {
+        return static_cast<std::uint8_t>((hash >> 4U) & 0x03U);
+    }
+
+    const float roll = static_cast<float>((hash >> 2U) & 0xFFFFU) / 65535.0F;
+    const bool deciduous = model_index <= 5U || model_index == 12U;
+    if (deciduous) {
+        const float ochre = std::clamp(altitude.deciduous_ochre, 0.0F, 1.0F);
+        const float olive = std::clamp(altitude.deciduous_olive, 0.0F, 1.0F - ochre);
+        if (roll < ochre) {
+            return 3U;
+        }
+        if (roll < ochre + olive) {
+            return 2U;
+        }
+        const float green_roll = (roll - ochre - olive)
+            / std::max(0.0001F, 1.0F - ochre - olive);
+        return green_roll < 0.78F ? 0U : 1U;
+    }
+
+    const float brown = std::clamp(altitude.conifer_brown, 0.0F, 1.0F);
+    const float cool = std::clamp(altitude.conifer_cool, 0.0F, 1.0F - brown);
+    if (roll < brown) {
+        return 3U;
+    }
+    if (roll < brown + cool) {
+        return 1U;
+    }
+    const float green_roll = (roll - brown - cool)
+        / std::max(0.0001F, 1.0F - brown - cool);
+    return green_roll < 0.70F ? 0U : 2U;
 }
 
 [[nodiscard]] std::size_t SelectExperimentalTreeModel(
@@ -1214,14 +1281,17 @@ void AppendExperimentalTreeInstances(
                 x, y, TerrainTopLevel(map, TileCoord{x, y}), map.info.width, map.info.height);
             position.x += offset_x;
             position.z += offset_z;
+            const std::size_t model_index = SelectExperimentalTreeModel(
+                x, y, hash, altitude);
             instances.push_back(RaylibExperimentalTreeInstance{
                 chunk.coord,
                 position,
                 static_cast<float>(hash % 360U),
                 base_scale * altitude.scale,
-                SelectExperimentalTreeModel(x, y, hash, altitude),
-                static_cast<std::uint8_t>((hash >> 4U) & 0x03U),
-                altitude.palette,
+                model_index,
+                SelectFoliageTint(
+                    hash, model_index, altitude, options.foliage_color_zoning_enabled),
+                SelectFoliagePalette(hash, altitude),
             });
         }
     }
@@ -1335,6 +1405,21 @@ void main()
     };
 }
 
+[[nodiscard]] Color BlendFoliageColor(Color base, Color target)
+{
+    const unsigned int weight = target.a;
+    const unsigned int inverse = 255U - weight;
+    return Color{
+        static_cast<unsigned char>((static_cast<unsigned int>(base.r) * inverse
+            + static_cast<unsigned int>(target.r) * weight) / 255U),
+        static_cast<unsigned char>((static_cast<unsigned int>(base.g) * inverse
+            + static_cast<unsigned int>(target.g) * weight) / 255U),
+        static_cast<unsigned char>((static_cast<unsigned int>(base.b) * inverse
+            + static_cast<unsigned int>(target.b) * weight) / 255U),
+        base.a,
+    };
+}
+
 [[nodiscard]] bool IsTreeFoliageColor(Color color)
 {
     return static_cast<unsigned int>(color.g) * 100U
@@ -1344,11 +1429,11 @@ void main()
 }
 
 constexpr std::array<std::array<Color, 4>, 5> kTreeFoliagePalettes{{
-    std::array<Color, 4>{Color{255, 255, 255, 255}, Color{230, 245, 224, 255}, Color{255, 250, 218, 255}, Color{224, 247, 236, 255}},
-    std::array<Color, 4>{Color{244, 250, 238, 255}, Color{218, 236, 214, 255}, Color{246, 240, 205, 255}, Color{210, 238, 232, 255}},
-    std::array<Color, 4>{Color{220, 235, 224, 255}, Color{195, 218, 202, 255}, Color{224, 225, 188, 255}, Color{190, 221, 226, 255}},
-    std::array<Color, 4>{Color{198, 214, 198, 255}, Color{178, 198, 180, 255}, Color{207, 202, 166, 255}, Color{177, 204, 205, 255}},
-    std::array<Color, 4>{Color{181, 194, 177, 255}, Color{165, 181, 160, 255}, Color{199, 184, 146, 255}, Color{173, 190, 185, 255}},
+    std::array<Color, 4>{Color{76, 151, 69, 34}, Color{116, 170, 101, 44}, Color{135, 145, 66, 52}, Color{181, 145, 55, 62}},
+    std::array<Color, 4>{Color{70, 139, 65, 38}, Color{103, 153, 112, 48}, Color{139, 143, 67, 58}, Color{190, 145, 54, 72}},
+    std::array<Color, 4>{Color{62, 122, 67, 44}, Color{87, 132, 117, 56}, Color{140, 139, 68, 66}, Color{194, 139, 49, 82}},
+    std::array<Color, 4>{Color{56, 106, 65, 50}, Color{79, 113, 105, 64}, Color{137, 128, 66, 76}, Color{184, 126, 50, 94}},
+    std::array<Color, 4>{Color{52, 91, 61, 58}, Color{76, 99, 91, 72}, Color{128, 116, 64, 86}, Color{170, 111, 48, 108}},
 }};
 
 void DrawExperimentalTreeBatch(
@@ -1383,7 +1468,7 @@ void DrawExperimentalTreeBatch(
         const Color original_color = diffuse_map.color;
         Color draw_color = original_color;
         if (IsTreeFoliageColor(draw_color)) {
-            draw_color = MultiplyColor(draw_color, foliage_tint);
+            draw_color = BlendFoliageColor(draw_color, foliage_tint);
         }
         diffuse_map.color = MultiplyColor(draw_color, visibility_tint);
         DrawMeshInstanced(

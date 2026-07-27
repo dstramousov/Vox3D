@@ -855,3 +855,11 @@
 - Reworked the rounded deciduous near model into an asymmetric four-lobe canopy.
 - Replaced rounded medium and far deciduous LOD silhouettes with angular asymmetric canopies.
 - Reduced the single-crown selection weight while keeping the existing tree model set unchanged.
+
+## v0.5.91 -> v0.5.92
+
+- Added deterministic altitude-dependent foliage color zoning for deciduous and conifer trees.
+- Replaced equal tint selection with configurable olive, ochre, cool, and brown probabilities.
+- Blended adjacent altitude palettes spatially to remove visible horizontal color bands.
+- Changed foliage tinting from channel multiplication to controlled target-color blending so yellow and ochre tones remain visible.
+- Preserved the existing model set, LOD distances, instancing batches, flat shading, and tree density zoning.

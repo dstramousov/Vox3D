@@ -67,16 +67,55 @@
         "scale": 0.45
       }
     },
+    "foliage_color_zoning": {
+      "enabled": true,
+      "lowland": {
+        "deciduous_olive": 0.06,
+        "deciduous_ochre": 0.01,
+        "conifer_cool": 0.1,
+        "conifer_brown": 0.0
+      },
+      "hills": {
+        "deciduous_olive": 0.18,
+        "deciduous_ochre": 0.09,
+        "conifer_cool": 0.17,
+        "conifer_brown": 0.03
+      },
+      "mountain": {
+        "deciduous_olive": 0.32,
+        "deciduous_ochre": 0.23,
+        "conifer_cool": 0.3,
+        "conifer_brown": 0.07
+      },
+      "upper": {
+        "deciduous_olive": 0.35,
+        "deciduous_ochre": 0.45,
+        "conifer_cool": 0.38,
+        "conifer_brown": 0.17
+      },
+      "treeline": {
+        "deciduous_olive": 0.3,
+        "deciduous_ochre": 0.65,
+        "conifer_cool": 0.35,
+        "conifer_brown": 0.35
+      },
+      "summit": {
+        "deciduous_olive": 0.25,
+        "deciduous_ochre": 0.7,
+        "conifer_cool": 0.3,
+        "conifer_brown": 0.45
+      }
+    },
     "lighting": {
       "enabled": true,
       "direction_x": -0.45,
       "direction_y": -1.0,
       "direction_z": -0.35,
-      "ambient": 0.30,
-      "diffuse": 0.90,
-      "hemisphere": 0.10,
+      "ambient": 0.3,
+      "diffuse": 0.9,
+      "hemisphere": 0.1,
       "crown_bottom_shading": 0.18,
-      "flat_foliage_shading": 0.90
+      "flat_foliage_shading": 0.9
     }
   },
   "window": {

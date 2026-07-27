@@ -8,7 +8,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.91-dev"
+#define VOX3D_VERSION "0.5.92-dev"
 #endif
 
 namespace vox3d {
@@ -37,6 +37,11 @@ struct AppConfig {
     std::array<float, 6> vegetation_altitude_dead{0.02F, 0.05F, 0.12F, 0.35F, 0.60F, 1.00F};
     std::array<float, 6> vegetation_altitude_density{1.00F, 1.00F, 0.85F, 0.55F, 0.15F, 0.02F};
     std::array<float, 6> vegetation_altitude_scale{1.00F, 0.98F, 0.90F, 0.72F, 0.55F, 0.45F};
+    bool vegetation_foliage_color_zoning_enabled = true;
+    std::array<float, 6> vegetation_deciduous_olive{0.06F, 0.18F, 0.32F, 0.35F, 0.30F, 0.25F};
+    std::array<float, 6> vegetation_deciduous_ochre{0.01F, 0.09F, 0.23F, 0.45F, 0.65F, 0.70F};
+    std::array<float, 6> vegetation_conifer_cool{0.10F, 0.17F, 0.30F, 0.38F, 0.35F, 0.30F};
+    std::array<float, 6> vegetation_conifer_brown{0.00F, 0.03F, 0.07F, 0.17F, 0.35F, 0.45F};
     bool vegetation_lighting_enabled = true;
     float vegetation_light_direction_x = -0.45F;
     float vegetation_light_direction_y = -1.0F;

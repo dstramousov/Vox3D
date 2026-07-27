@@ -585,6 +585,15 @@ bool LoadAppConfigFromFile(
         AssignNonNegativeFloat(*root, {"vegetation_models", "altitude_zoning", kZoneNames[zone], "scale"}, config.vegetation_altitude_scale[zone], prefix + ".scale", diagnostics);
     }
 
+    AssignBool(*root, {"vegetation_models", "foliage_color_zoning", "enabled"}, config.vegetation_foliage_color_zoning_enabled, "vegetation_models.foliage_color_zoning.enabled", diagnostics);
+    for (std::size_t zone = 0; zone < kZoneNames.size(); ++zone) {
+        const std::string prefix = "vegetation_models.foliage_color_zoning." + std::string(kZoneNames[zone]);
+        AssignUnitFloat(*root, {"vegetation_models", "foliage_color_zoning", kZoneNames[zone], "deciduous_olive"}, config.vegetation_deciduous_olive[zone], prefix + ".deciduous_olive", diagnostics);
+        AssignUnitFloat(*root, {"vegetation_models", "foliage_color_zoning", kZoneNames[zone], "deciduous_ochre"}, config.vegetation_deciduous_ochre[zone], prefix + ".deciduous_ochre", diagnostics);
+        AssignUnitFloat(*root, {"vegetation_models", "foliage_color_zoning", kZoneNames[zone], "conifer_cool"}, config.vegetation_conifer_cool[zone], prefix + ".conifer_cool", diagnostics);
+        AssignUnitFloat(*root, {"vegetation_models", "foliage_color_zoning", kZoneNames[zone], "conifer_brown"}, config.vegetation_conifer_brown[zone], prefix + ".conifer_brown", diagnostics);
+    }
+
     AssignBool(*root, {"vegetation_models", "lighting", "enabled"}, config.vegetation_lighting_enabled, "vegetation_models.lighting.enabled", diagnostics);
     AssignFloat(*root, {"vegetation_models", "lighting", "direction_x"}, config.vegetation_light_direction_x, "vegetation_models.lighting.direction_x", diagnostics);
     AssignFloat(*root, {"vegetation_models", "lighting", "direction_y"}, config.vegetation_light_direction_y, "vegetation_models.lighting.direction_y", diagnostics);
