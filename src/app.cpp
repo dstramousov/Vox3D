@@ -954,6 +954,20 @@ bool App::Initialize()
         config_.vegetation_model_lod_near_distance,
         config_.vegetation_model_lod_far_distance,
         config_.vegetation_model_cull_distance,
+        config_.vegetation_altitude_zoning_enabled,
+        config_.vegetation_altitude_elevations,
+        config_.vegetation_altitude_deciduous,
+        config_.vegetation_altitude_conifer,
+        config_.vegetation_altitude_dead,
+        config_.vegetation_altitude_density,
+        config_.vegetation_altitude_scale,
+        config_.vegetation_lighting_enabled,
+        Vector3{config_.vegetation_light_direction_x, config_.vegetation_light_direction_y, config_.vegetation_light_direction_z},
+        config_.vegetation_light_ambient,
+        config_.vegetation_light_diffuse,
+        config_.vegetation_light_hemisphere,
+        config_.vegetation_crown_bottom_shading,
+        config_.vegetation_flat_foliage_shading,
     };
     const bool tree_assets_ready = chunk_mesh_preview_.ConfigureExperimentalTrees(
         tree_options);

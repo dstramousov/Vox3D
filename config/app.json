@@ -15,7 +15,69 @@
     "asset_directory": "assets/models/trees",
     "lod_near_distance": 70.0,
     "lod_far_distance": 140.0,
-    "cull_distance": 220.0
+    "cull_distance": 220.0,
+    "altitude_zoning": {
+      "enabled": true,
+      "lowland": {
+        "elevation": -1.0,
+        "deciduous": 0.7,
+        "conifer": 0.28,
+        "dead": 0.02,
+        "density": 1.0,
+        "scale": 1.0
+      },
+      "hills": {
+        "elevation": 5.0,
+        "deciduous": 0.5,
+        "conifer": 0.45,
+        "dead": 0.05,
+        "density": 1.0,
+        "scale": 0.98
+      },
+      "mountain": {
+        "elevation": 10.0,
+        "deciduous": 0.2,
+        "conifer": 0.68,
+        "dead": 0.12,
+        "density": 0.85,
+        "scale": 0.9
+      },
+      "upper": {
+        "elevation": 15.0,
+        "deciduous": 0.05,
+        "conifer": 0.6,
+        "dead": 0.35,
+        "density": 0.55,
+        "scale": 0.72
+      },
+      "treeline": {
+        "elevation": 18.0,
+        "deciduous": 0.0,
+        "conifer": 0.4,
+        "dead": 0.6,
+        "density": 0.15,
+        "scale": 0.55
+      },
+      "summit": {
+        "elevation": 20.0,
+        "deciduous": 0.0,
+        "conifer": 0.0,
+        "dead": 1.0,
+        "density": 0.02,
+        "scale": 0.45
+      }
+    },
+    "lighting": {
+      "enabled": true,
+      "direction_x": -0.45,
+      "direction_y": -1.0,
+      "direction_z": -0.35,
+      "ambient": 0.30,
+      "diffuse": 0.90,
+      "hemisphere": 0.10,
+      "crown_bottom_shading": 0.18,
+      "flat_foliage_shading": 0.90
+    }
   },
   "window": {
     "base_width": 1280,

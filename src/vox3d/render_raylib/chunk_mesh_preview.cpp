@@ -1076,75 +1076,119 @@ void AccumulateVegetationStats(
     return value;
 }
 
-[[nodiscard]] std::size_t SelectExperimentalTreeModel(int x, int y, std::uint32_t hash)
+struct TreeAltitudeSample {
+    float deciduous = 0.70F;
+    float conifer = 0.28F;
+    float dead = 0.02F;
+    float density = 1.0F;
+    float scale = 1.0F;
+    std::uint8_t palette = 0U;
+};
+
+[[nodiscard]] float LerpFloat(float a, float b, float t)
 {
-    // Model indices match ConfigureExperimentalTrees(). Common models occupy
-    // [0, 11], while [12, 13] are intentionally rare special silhouettes.
+    return a + (b - a) * t;
+}
+
+[[nodiscard]] TreeAltitudeSample SampleTreeAltitude(
+    float elevation,
+    const RaylibExperimentalTreeOptions& options)
+{
+    if (!options.altitude_zoning_enabled) {
+        return TreeAltitudeSample{};
+    }
+
+    std::size_t upper = 0U;
+    while (upper + 1U < options.altitude_elevations.size()
+        && elevation > options.altitude_elevations[upper + 1U]) {
+        ++upper;
+    }
+    const std::size_t lower = upper;
+    upper = std::min(upper + 1U, options.altitude_elevations.size() - 1U);
+    const float low_elevation = options.altitude_elevations[lower];
+    const float high_elevation = options.altitude_elevations[upper];
+    const float span = high_elevation - low_elevation;
+    const float t = span > 0.0F
+        ? std::clamp((elevation - low_elevation) / span, 0.0F, 1.0F)
+        : 0.0F;
+
+    TreeAltitudeSample sample;
+    sample.deciduous = LerpFloat(options.altitude_deciduous[lower], options.altitude_deciduous[upper], t);
+    sample.conifer = LerpFloat(options.altitude_conifer[lower], options.altitude_conifer[upper], t);
+    sample.dead = LerpFloat(options.altitude_dead[lower], options.altitude_dead[upper], t);
+    sample.density = LerpFloat(options.altitude_density[lower], options.altitude_density[upper], t);
+    sample.scale = LerpFloat(options.altitude_scale[lower], options.altitude_scale[upper], t);
+    sample.palette = static_cast<std::uint8_t>(std::min<std::size_t>(lower, 4U));
+    return sample;
+}
+
+[[nodiscard]] std::size_t SelectExperimentalTreeModel(
+    int x,
+    int y,
+    std::uint32_t hash,
+    const TreeAltitudeSample& altitude)
+{
     constexpr std::array<std::size_t, 6> kBroadleafModels{0U, 1U, 2U, 3U, 4U, 5U};
     constexpr std::array<std::size_t, 6> kConiferModels{6U, 7U, 8U, 9U, 10U, 11U};
-    constexpr std::size_t kAncientBroadleaf = 12U;
+    constexpr std::array<std::size_t, 3> kMountainBroadleafModels{2U, 4U, 5U};
+    constexpr std::array<std::size_t, 3> kUpperConiferModels{8U, 9U, 11U};
     constexpr std::size_t kDeadConifer = 13U;
     constexpr int kForestPatchSize = 12;
 
-    const std::uint32_t patch_hash = TreePlacementHash(
-        x / kForestPatchSize,
-        y / kForestPatchSize);
+    const std::uint32_t patch_hash = TreePlacementHash(x / kForestPatchSize, y / kForestPatchSize);
     const std::uint32_t profile = patch_hash % 3U;
-    const std::uint32_t roll = (hash >> 3U) % 100U;
-    const std::uint32_t variant_roll = (hash >> 11U) % 100U;
-
-    // Keep special trees genuinely uncommon: about two instances per hundred.
-    if (roll == 0U) {
-        return profile == 1U ? kDeadConifer : kAncientBroadleaf;
+    float deciduous_weight = altitude.deciduous;
+    float conifer_weight = altitude.conifer;
+    if (profile == 0U) {
+        deciduous_weight *= 1.35F;
+        conifer_weight *= 0.75F;
+    } else if (profile == 1U) {
+        deciduous_weight *= 0.70F;
+        conifer_weight *= 1.35F;
     }
-    if (roll == 1U) {
-        return profile == 0U ? kAncientBroadleaf : kDeadConifer;
+    const float total = std::max(0.0001F, deciduous_weight + conifer_weight + altitude.dead);
+    const float species_roll = static_cast<float>((hash >> 3U) % 10000U) / 10000.0F * total;
+    const std::uint32_t variant_roll = (hash >> 17U) % 100U;
+
+    if (species_roll >= deciduous_weight + conifer_weight) {
+        return kDeadConifer;
     }
 
-    const auto select_weighted = [variant_roll](
-                                     const std::array<std::size_t, 6>& models) {
-        // Base and detailed silhouettes are common; young, crooked, sparse,
-        // tall, and wide variants appear often enough to break repetition.
-        constexpr std::array<std::uint32_t, 6> kUpperBounds{26U, 46U, 61U, 76U, 89U, 100U};
-        for (std::size_t index = 0; index < kUpperBounds.size(); ++index) {
-            if (variant_roll < kUpperBounds[index]) {
-                return models[index];
-            }
-        }
-        return models.back();
+    const auto select_weighted = [variant_roll](const auto& models) {
+        const std::size_t index = std::min<std::size_t>(
+            static_cast<std::size_t>(variant_roll) * models.size() / 100U,
+            models.size() - 1U);
+        return models[index];
     };
 
-    switch (profile) {
-    case 0U:  // Broadleaf forest.
-        return select_weighted(kBroadleafModels);
-    case 1U:  // Conifer forest.
-        return select_weighted(kConiferModels);
-    default:  // Mixed forest.
-        return roll < 51U
-            ? select_weighted(kBroadleafModels)
-            : select_weighted(kConiferModels);
+    if (species_roll < deciduous_weight) {
+        return altitude.scale < 0.90F
+            ? select_weighted(kMountainBroadleafModels)
+            : select_weighted(kBroadleafModels);
     }
+    return altitude.scale < 0.82F
+        ? select_weighted(kUpperConiferModels)
+        : select_weighted(kConiferModels);
 }
 
 void AppendExperimentalTreeInstances(
     const RuntimeMap& map,
     const ChunkMeshData& chunk,
-    int tree_limit,
+    const RaylibExperimentalTreeOptions& options,
     std::vector<RaylibExperimentalTreeInstance>& instances)
 {
-    const bool has_limit = tree_limit > 0;
+    const bool has_limit = options.tree_limit > 0;
     if (!UsesStaticVegetationMesh(map) || !chunk.bounds.IsValid()
-        || (has_limit && instances.size() >= static_cast<std::size_t>(tree_limit))) {
+        || (has_limit && instances.size() >= static_cast<std::size_t>(options.tree_limit))) {
         return;
     }
 
     for (int y = chunk.bounds.min_y; y < chunk.bounds.max_y; ++y) {
         for (int x = chunk.bounds.min_x; x < chunk.bounds.max_x; ++x) {
-            if (has_limit && instances.size() >= static_cast<std::size_t>(tree_limit)) {
+            if (has_limit && instances.size() >= static_cast<std::size_t>(options.tree_limit)) {
                 return;
             }
-            const auto index = static_cast<std::size_t>(y)
-                * static_cast<std::size_t>(map.info.width)
+            const auto index = static_cast<std::size_t>(y) * static_cast<std::size_t>(map.info.width)
                 + static_cast<std::size_t>(x);
             if (index >= map.vegetation_type.cells.size()
                 || static_cast<RuntimeVegetationType>(map.vegetation_type.cells[index])
@@ -1152,25 +1196,31 @@ void AppendExperimentalTreeInstances(
                 continue;
             }
 
+            const float elevation = index < map.height.cells.size()
+                ? static_cast<float>(map.height.cells[index])
+                : 0.0F;
+            const TreeAltitudeSample altitude = SampleTreeAltitude(elevation, options);
             const std::uint32_t hash = TreePlacementHash(x, y);
+            const float density_roll = static_cast<float>((hash >> 1U) & 0xFFFFU) / 65535.0F;
+            if (density_roll > altitude.density) {
+                continue;
+            }
+
             const float offset_x = (static_cast<float>((hash >> 8U) & 0xFFU) / 255.0F - 0.5F) * 0.34F;
             const float offset_z = (static_cast<float>((hash >> 16U) & 0xFFU) / 255.0F - 0.5F) * 0.34F;
-            const float scale = 1.45F + static_cast<float>((hash >> 24U) & 0xFFU) / 255.0F * 0.45F;
+            const float base_scale = 1.45F + static_cast<float>((hash >> 24U) & 0xFFU) / 255.0F * 0.45F;
             Vector3 position = TileCenterWorld(
-                x,
-                y,
-                TerrainTopLevel(map, TileCoord{x, y}),
-                map.info.width,
-                map.info.height);
+                x, y, TerrainTopLevel(map, TileCoord{x, y}), map.info.width, map.info.height);
             position.x += offset_x;
             position.z += offset_z;
             instances.push_back(RaylibExperimentalTreeInstance{
                 chunk.coord,
                 position,
                 static_cast<float>(hash % 360U),
-                scale,
-                SelectExperimentalTreeModel(x, y, hash),
+                base_scale * altitude.scale,
+                SelectExperimentalTreeModel(x, y, hash, altitude),
                 static_cast<std::uint8_t>((hash >> 4U) & 0x03U),
+                altitude.palette,
             });
         }
     }
@@ -1184,17 +1234,25 @@ void AppendExperimentalTreeInstances(
 constexpr const char* kExperimentalTreeInstancingVertexShader = R"glsl(
 #version 330
 in vec3 vertexPosition;
+in vec3 vertexNormal;
 in vec2 vertexTexCoord;
 in vec4 vertexColor;
 in mat4 instanceTransform;
 uniform mat4 mvp;
 out vec2 fragTexCoord;
 out vec4 fragColor;
+out vec3 fragWorldNormal;
+out vec3 fragWorldPosition;
+out float fragLocalHeight;
 void main()
 {
     fragTexCoord = vertexTexCoord;
     fragColor = vertexColor;
-    gl_Position = mvp*instanceTransform*vec4(vertexPosition, 1.0);
+    vec4 worldPosition = instanceTransform * vec4(vertexPosition, 1.0);
+    fragWorldNormal = normalize(mat3(instanceTransform) * vertexNormal);
+    fragWorldPosition = worldPosition.xyz;
+    fragLocalHeight = vertexPosition.y;
+    gl_Position = mvp * worldPosition;
 }
 )glsl";
 
@@ -1202,12 +1260,51 @@ constexpr const char* kExperimentalTreeInstancingFragmentShader = R"glsl(
 #version 330
 in vec2 fragTexCoord;
 in vec4 fragColor;
+in vec3 fragWorldNormal;
+in vec3 fragWorldPosition;
+in float fragLocalHeight;
 uniform sampler2D texture0;
 uniform vec4 colDiffuse;
+uniform vec3 lightDirection;
+uniform float lightAmbient;
+uniform float lightDiffuse;
+uniform float lightHemisphere;
+uniform float crownBottomShading;
+uniform float flatFoliageShading;
+uniform float lightingEnabled;
 out vec4 finalColor;
 void main()
 {
-    finalColor = texture(texture0, fragTexCoord)*colDiffuse*fragColor;
+    vec4 baseColor = texture(texture0, fragTexCoord) * colDiffuse * fragColor;
+    if (lightingEnabled < 0.5) {
+        finalColor = baseColor;
+        return;
+    }
+
+    vec3 normal = normalize(fragWorldNormal);
+    float foliageMaterial = step(colDiffuse.r * 1.15, colDiffuse.g)
+        * step(colDiffuse.b * 1.15, colDiffuse.g);
+    if (foliageMaterial > 0.5 && flatFoliageShading > 0.0) {
+        vec3 faceNormal = normalize(cross(dFdx(fragWorldPosition), dFdy(fragWorldPosition)));
+        if (dot(faceNormal, normal) < 0.0) {
+            faceNormal = -faceNormal;
+        }
+        normal = normalize(mix(normal, faceNormal, clamp(flatFoliageShading, 0.0, 1.0)));
+    }
+
+    vec3 toLight = normalize(-lightDirection);
+    float lambert = max(dot(normal, toLight), 0.0);
+    float skyFactor = normal.y * 0.5 + 0.5;
+    float illumination = lightAmbient + lightDiffuse * lambert
+        + lightHemisphere * skyFactor;
+
+    if (foliageMaterial > 0.5) {
+        float crownHeight = smoothstep(0.15, 1.75, fragLocalHeight);
+        illumination *= 1.0 - crownBottomShading * (1.0 - crownHeight);
+    }
+
+    illumination = clamp(illumination, 0.18, 1.35);
+    finalColor = vec4(baseColor.rgb * illumination, baseColor.a);
 }
 )glsl";
 
@@ -1245,11 +1342,12 @@ void main()
             > static_cast<unsigned int>(color.b) * 115U;
 }
 
-constexpr std::array<Color, 4> kTreeFoliageTints{{
-    Color{255, 255, 255, 255},  // Neutral.
-    Color{224, 238, 220, 255},  // Slightly darker.
-    Color{246, 255, 220, 255},  // Slightly warmer.
-    Color{220, 246, 255, 255},  // Slightly cooler.
+constexpr std::array<std::array<Color, 4>, 5> kTreeFoliagePalettes{{
+    std::array<Color, 4>{Color{255, 255, 255, 255}, Color{230, 245, 224, 255}, Color{255, 250, 218, 255}, Color{224, 247, 236, 255}},
+    std::array<Color, 4>{Color{244, 250, 238, 255}, Color{218, 236, 214, 255}, Color{246, 240, 205, 255}, Color{210, 238, 232, 255}},
+    std::array<Color, 4>{Color{220, 235, 224, 255}, Color{195, 218, 202, 255}, Color{224, 225, 188, 255}, Color{190, 221, 226, 255}},
+    std::array<Color, 4>{Color{198, 214, 198, 255}, Color{178, 198, 180, 255}, Color{207, 202, 166, 255}, Color{177, 204, 205, 255}},
+    std::array<Color, 4>{Color{181, 194, 177, 255}, Color{165, 181, 160, 255}, Color{199, 184, 146, 255}, Color{173, 190, 185, 255}},
 }};
 
 void DrawExperimentalTreeBatch(
@@ -1319,8 +1417,10 @@ void DrawExperimentalTreeInstances(
         visibility_report);
     const int chunks_x = std::max(1, info.chunks_x);
     constexpr std::size_t kSpecies = 2U;
-    constexpr std::size_t kTintCount = kTreeFoliageTints.size();
-    using TintBatches = std::array<std::vector<Matrix>, kTintCount>;
+    constexpr std::size_t kPaletteCount = kTreeFoliagePalettes.size();
+    constexpr std::size_t kTintCount = kTreeFoliagePalettes[0].size();
+    constexpr std::size_t kColorBatchCount = kPaletteCount * kTintCount;
+    using TintBatches = std::array<std::vector<Matrix>, kColorBatchCount>;
     std::vector<TintBatches> near_visible(models.size());
     std::vector<TintBatches> near_fade(models.size());
     std::array<std::array<TintBatches, kSpecies>, 2U> visible_lod_batches;
@@ -1353,8 +1453,11 @@ void DrawExperimentalTreeInstances(
         const std::size_t species = (instance.model_index <= 5U || instance.model_index == 12U) ? 0U : 1U;
         const Matrix transform = ExperimentalTreeTransform(instance);
         const bool fade = classes[chunk_index] == ChunkVisibilityClass::kFade;
-        const std::size_t tint_index = static_cast<std::size_t>(instance.foliage_tint_index)
+        const std::size_t palette_index = static_cast<std::size_t>(instance.foliage_palette_index)
+            % kPaletteCount;
+        const std::size_t local_tint_index = static_cast<std::size_t>(instance.foliage_tint_index)
             % kTintCount;
+        const std::size_t tint_index = palette_index * kTintCount + local_tint_index;
         if (tier == 0U) {
             (fade ? near_fade : near_visible)[instance.model_index][tint_index].push_back(transform);
         } else {
@@ -1364,33 +1467,33 @@ void DrawExperimentalTreeInstances(
     }
 
     for (std::size_t model_index = 0; model_index < models.size(); ++model_index) {
-        for (std::size_t tint_index = 0; tint_index < kTintCount; ++tint_index) {
+        for (std::size_t tint_index = 0; tint_index < kColorBatchCount; ++tint_index) {
+            const Color foliage_tint = kTreeFoliagePalettes[tint_index / kTintCount][tint_index % kTintCount];
             DrawExperimentalTreeBatch(models[model_index], near_visible[model_index][tint_index],
-                VisibilityTint(ChunkVisibilityClass::kVisible),
-                kTreeFoliageTints[tint_index], stats);
+                VisibilityTint(ChunkVisibilityClass::kVisible), foliage_tint, stats);
             DrawExperimentalTreeBatch(models[model_index], near_fade[model_index][tint_index],
-                VisibilityTint(ChunkVisibilityClass::kFade),
-                kTreeFoliageTints[tint_index], stats);
+                VisibilityTint(ChunkVisibilityClass::kFade), foliage_tint, stats);
         }
     }
     for (std::size_t species = 0; species < kSpecies; ++species) {
-        for (std::size_t tint_index = 0; tint_index < kTintCount; ++tint_index) {
+        for (std::size_t tint_index = 0; tint_index < kColorBatchCount; ++tint_index) {
+            const Color foliage_tint = kTreeFoliagePalettes[tint_index / kTintCount][tint_index % kTintCount];
             DrawExperimentalTreeBatch(
                 medium_lod_models[species], visible_lod_batches[0][species][tint_index],
                 VisibilityTint(ChunkVisibilityClass::kVisible),
-                kTreeFoliageTints[tint_index], stats);
+                foliage_tint, stats);
             DrawExperimentalTreeBatch(
                 medium_lod_models[species], fade_lod_batches[0][species][tint_index],
                 VisibilityTint(ChunkVisibilityClass::kFade),
-                kTreeFoliageTints[tint_index], stats);
+                foliage_tint, stats);
             DrawExperimentalTreeBatch(
                 far_lod_models[species], visible_lod_batches[1][species][tint_index],
                 VisibilityTint(ChunkVisibilityClass::kVisible),
-                kTreeFoliageTints[tint_index], stats);
+                foliage_tint, stats);
             DrawExperimentalTreeBatch(
                 far_lod_models[species], fade_lod_batches[1][species][tint_index],
                 VisibilityTint(ChunkVisibilityClass::kFade),
-                kTreeFoliageTints[tint_index], stats);
+                foliage_tint, stats);
         }
     }
 }
@@ -2273,6 +2376,35 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
         experimental_tree_instancing_shader_, "mvp");
     experimental_tree_instancing_shader_.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocationAttrib(
         experimental_tree_instancing_shader_, "instanceTransform");
+    experimental_tree_instancing_shader_.locs[SHADER_LOC_VERTEX_NORMAL] = GetShaderLocationAttrib(
+        experimental_tree_instancing_shader_, "vertexNormal");
+
+    Vector3 light_direction = options.light_direction;
+    const float light_length = Vector3Length(light_direction);
+    if (light_length > 0.0001F) {
+        light_direction = Vector3Scale(light_direction, 1.0F / light_length);
+    } else {
+        light_direction = Vector3{-0.45F, -1.0F, -0.35F};
+    }
+    const float lighting_enabled = options.lighting_enabled ? 1.0F : 0.0F;
+    const auto set_float_uniform = [&](const char* name, float value) {
+        const int location = GetShaderLocation(experimental_tree_instancing_shader_, name);
+        if (location >= 0) {
+            SetShaderValue(experimental_tree_instancing_shader_, location, &value, SHADER_UNIFORM_FLOAT);
+        }
+    };
+    const int direction_location = GetShaderLocation(
+        experimental_tree_instancing_shader_, "lightDirection");
+    if (direction_location >= 0) {
+        SetShaderValue(experimental_tree_instancing_shader_, direction_location,
+            &light_direction, SHADER_UNIFORM_VEC3);
+    }
+    set_float_uniform("lightingEnabled", lighting_enabled);
+    set_float_uniform("lightAmbient", options.light_ambient);
+    set_float_uniform("lightDiffuse", options.light_diffuse);
+    set_float_uniform("lightHemisphere", options.light_hemisphere);
+    set_float_uniform("crownBottomShading", options.crown_bottom_shading);
+    set_float_uniform("flatFoliageShading", options.flat_foliage_shading);
 
     experimental_tree_models_.reserve(kModelNames.size());
     for (const std::string_view name : kModelNames) {
@@ -2379,7 +2511,7 @@ bool RaylibChunkMeshPreview::UploadAdditional(
                 AppendExperimentalTreeInstances(
                     *runtime_map,
                     chunk,
-                    experimental_tree_options_.tree_limit,
+                    experimental_tree_options_,
                     experimental_tree_instances_);
                 vegetation_stats_.experimental_tree_instances =
                     experimental_tree_instances_.size();

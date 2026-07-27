@@ -287,6 +287,20 @@ struct RaylibExperimentalTreeOptions {
     float lod_near_distance = 70.0F;
     float lod_far_distance = 140.0F;
     float cull_distance = 220.0F;
+    bool altitude_zoning_enabled = true;
+    std::array<float, 6> altitude_elevations{-1.0F, 5.0F, 10.0F, 15.0F, 18.0F, 20.0F};
+    std::array<float, 6> altitude_deciduous{0.70F, 0.50F, 0.20F, 0.05F, 0.00F, 0.00F};
+    std::array<float, 6> altitude_conifer{0.28F, 0.45F, 0.68F, 0.60F, 0.40F, 0.00F};
+    std::array<float, 6> altitude_dead{0.02F, 0.05F, 0.12F, 0.35F, 0.60F, 1.00F};
+    std::array<float, 6> altitude_density{1.00F, 1.00F, 0.85F, 0.55F, 0.15F, 0.02F};
+    std::array<float, 6> altitude_scale{1.00F, 0.98F, 0.90F, 0.72F, 0.55F, 0.45F};
+    bool lighting_enabled = true;
+    Vector3 light_direction{-0.45F, -1.0F, -0.35F};
+    float light_ambient = 0.58F;
+    float light_diffuse = 0.62F;
+    float light_hemisphere = 0.18F;
+    float crown_bottom_shading = 0.14F;
+    float flat_foliage_shading = 0.90F;
 };
 
 /**
@@ -299,6 +313,7 @@ struct RaylibExperimentalTreeInstance {
     float scale = 1.0F;
     std::size_t model_index = 0;
     std::uint8_t foliage_tint_index = 0;
+    std::uint8_t foliage_palette_index = 0;
 };
 
 /**

@@ -826,3 +826,26 @@
 - Fixed the raylib 5.x build failure caused by the unavailable `MAX_MATERIAL_MAPS` macro.
 - Tree tinting now temporarily changes only the diffuse map color for the draw call and restores the original color immediately afterward.
 - Preserved deterministic foliage variants, visibility fading, LOD selection, and instanced batching without persistent material mutation.
+
+## v0.5.87 -> v0.5.88
+
+- Added deterministic altitude zoning for GLB trees.
+- Tree species, density, scale, and foliage palette now change smoothly with elevation.
+- High elevations favor smaller conifers and dead trees; summit trees are nearly eliminated.
+- Added configurable altitude-zone control points under `vegetation_models.altitude_zoning`.
+
+## v0.5.88 -> v0.5.89
+
+- Added configurable directional Lambert lighting for instanced tree models.
+- Added ambient and hemispheric terms so shaded tree faces remain readable.
+- Added mild lower-crown darkening for foliage materials only.
+- Preserved existing tree tinting, altitude zoning, LOD selection, and instancing.
+- Added `vegetation_models.lighting` settings to `config/app.json`.
+
+## v0.5.89 -> v0.5.90
+
+- Added configurable flat-shading for foliage in the instanced tree shader.
+- Reconstructed per-fragment face normals from world-position derivatives so low-poly crown facets remain visible even when source normals are smoothed.
+- Kept trunk and branch shading on the original model normals.
+- Added `vegetation_models.lighting.flat_foliage_shading` to `config/app.json`; `0.0` keeps smooth shading and `1.0` uses fully flat foliage facets.
+- Preserved altitude zoning, foliage palettes, LOD selection, instancing, and tree culling.

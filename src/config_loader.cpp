@@ -1,5 +1,6 @@
 #include "config_loader.hpp"
 
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <fstream>
@@ -390,6 +391,65 @@ void AssignPositiveInt(
     target = static_cast<int>(*value);
 }
 
+void AssignFloat(
+    const JsonValue& root,
+    std::initializer_list<std::string_view> path,
+    float& target,
+    std::string_view name,
+    std::vector<std::string>& diagnostics)
+{
+    const auto value = ReadNumber(root, path);
+    if (!value.has_value()) {
+        if (FindMember(root, path) != nullptr) {
+            diagnostics.push_back("config: ignored non-number field " + std::string(name));
+        }
+        return;
+    }
+    target = static_cast<float>(*value);
+}
+
+void AssignNonNegativeFloat(
+    const JsonValue& root,
+    std::initializer_list<std::string_view> path,
+    float& target,
+    std::string_view name,
+    std::vector<std::string>& diagnostics)
+{
+    const auto value = ReadNumber(root, path);
+    if (!value.has_value()) {
+        if (FindMember(root, path) != nullptr) {
+            diagnostics.push_back("config: ignored non-number field " + std::string(name));
+        }
+        return;
+    }
+    if (*value < 0.0) {
+        diagnostics.push_back("config: ignored negative field " + std::string(name));
+        return;
+    }
+    target = static_cast<float>(*value);
+}
+
+void AssignUnitFloat(
+    const JsonValue& root,
+    std::initializer_list<std::string_view> path,
+    float& target,
+    std::string_view name,
+    std::vector<std::string>& diagnostics)
+{
+    const auto value = ReadNumber(root, path);
+    if (!value.has_value()) {
+        if (FindMember(root, path) != nullptr) {
+            diagnostics.push_back("config: ignored non-number field " + std::string(name));
+        }
+        return;
+    }
+    if (*value < 0.0 || *value > 1.0) {
+        diagnostics.push_back("config: ignored field outside [0, 1] " + std::string(name));
+        return;
+    }
+    target = static_cast<float>(*value);
+}
+
 void AssignPositiveFloat(
     const JsonValue& root,
     std::initializer_list<std::string_view> path,
@@ -513,6 +573,27 @@ bool LoadAppConfigFromFile(
     AssignPositiveFloat(*root, {"vegetation_models", "lod_near_distance"}, config.vegetation_model_lod_near_distance, "vegetation_models.lod_near_distance", diagnostics);
     AssignPositiveFloat(*root, {"vegetation_models", "lod_far_distance"}, config.vegetation_model_lod_far_distance, "vegetation_models.lod_far_distance", diagnostics);
     AssignPositiveFloat(*root, {"vegetation_models", "cull_distance"}, config.vegetation_model_cull_distance, "vegetation_models.cull_distance", diagnostics);
+    AssignBool(*root, {"vegetation_models", "altitude_zoning", "enabled"}, config.vegetation_altitude_zoning_enabled, "vegetation_models.altitude_zoning.enabled", diagnostics);
+    constexpr std::array<std::string_view, 6> kZoneNames{"lowland", "hills", "mountain", "upper", "treeline", "summit"};
+    for (std::size_t zone = 0; zone < kZoneNames.size(); ++zone) {
+        const std::string prefix = "vegetation_models.altitude_zoning." + std::string(kZoneNames[zone]);
+        AssignFloat(*root, {"vegetation_models", "altitude_zoning", kZoneNames[zone], "elevation"}, config.vegetation_altitude_elevations[zone], prefix + ".elevation", diagnostics);
+        AssignNonNegativeFloat(*root, {"vegetation_models", "altitude_zoning", kZoneNames[zone], "deciduous"}, config.vegetation_altitude_deciduous[zone], prefix + ".deciduous", diagnostics);
+        AssignNonNegativeFloat(*root, {"vegetation_models", "altitude_zoning", kZoneNames[zone], "conifer"}, config.vegetation_altitude_conifer[zone], prefix + ".conifer", diagnostics);
+        AssignNonNegativeFloat(*root, {"vegetation_models", "altitude_zoning", kZoneNames[zone], "dead"}, config.vegetation_altitude_dead[zone], prefix + ".dead", diagnostics);
+        AssignNonNegativeFloat(*root, {"vegetation_models", "altitude_zoning", kZoneNames[zone], "density"}, config.vegetation_altitude_density[zone], prefix + ".density", diagnostics);
+        AssignNonNegativeFloat(*root, {"vegetation_models", "altitude_zoning", kZoneNames[zone], "scale"}, config.vegetation_altitude_scale[zone], prefix + ".scale", diagnostics);
+    }
+
+    AssignBool(*root, {"vegetation_models", "lighting", "enabled"}, config.vegetation_lighting_enabled, "vegetation_models.lighting.enabled", diagnostics);
+    AssignFloat(*root, {"vegetation_models", "lighting", "direction_x"}, config.vegetation_light_direction_x, "vegetation_models.lighting.direction_x", diagnostics);
+    AssignFloat(*root, {"vegetation_models", "lighting", "direction_y"}, config.vegetation_light_direction_y, "vegetation_models.lighting.direction_y", diagnostics);
+    AssignFloat(*root, {"vegetation_models", "lighting", "direction_z"}, config.vegetation_light_direction_z, "vegetation_models.lighting.direction_z", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "ambient"}, config.vegetation_light_ambient, "vegetation_models.lighting.ambient", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "diffuse"}, config.vegetation_light_diffuse, "vegetation_models.lighting.diffuse", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "hemisphere"}, config.vegetation_light_hemisphere, "vegetation_models.lighting.hemisphere", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "crown_bottom_shading"}, config.vegetation_crown_bottom_shading, "vegetation_models.lighting.crown_bottom_shading", diagnostics);
+    AssignUnitFloat(*root, {"vegetation_models", "lighting", "flat_foliage_shading"}, config.vegetation_flat_foliage_shading, "vegetation_models.lighting.flat_foliage_shading", diagnostics);
 
     AssignPositiveInt(*root, {"window", "base_width"}, config.base_width, "window.base_width", diagnostics);
     AssignPositiveInt(*root, {"window", "base_height"}, config.base_height, "window.base_height", diagnostics);
