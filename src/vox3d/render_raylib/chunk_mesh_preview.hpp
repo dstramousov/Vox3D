@@ -298,6 +298,7 @@ struct RaylibExperimentalTreeInstance {
     float rotation_degrees = 0.0F;
     float scale = 1.0F;
     std::size_t model_index = 0;
+    std::uint8_t foliage_tint_index = 0;
 };
 
 /**

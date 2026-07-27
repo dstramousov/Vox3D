@@ -805,3 +805,11 @@
 - Added shared medium and far low-poly broadleaf/conifer proxy models.
 - Preserved all fourteen detailed silhouettes in the near range while batching distant trees by species.
 - Trees beyond the configured cull distance are no longer submitted.
+
+## v0.5.84 -> v0.5.85
+
+- Removed thirteen obsolete tree GLB assets that were no longer loaded by the runtime.
+- Removed the two obsolete tree generators that recreated deleted experimental assets.
+- Normalized the embedded colors of all eighteen runtime tree and LOD models so bark and foliage no longer collapse to near-black values.
+- Added a deterministic four-variant foliage tint system while leaving trunks and dead materials unchanged.
+- Added `tools/normalize_runtime_tree_palette.py` to reproduce and validate the runtime tree palette without regenerating geometry.

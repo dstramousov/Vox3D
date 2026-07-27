@@ -1170,6 +1170,7 @@ void AppendExperimentalTreeInstances(
                 static_cast<float>(hash % 360U),
                 scale,
                 SelectExperimentalTreeModel(x, y, hash),
+                static_cast<std::uint8_t>((hash >> 4U) & 0x03U),
             });
         }
     }
@@ -1236,10 +1237,26 @@ void main()
     };
 }
 
+[[nodiscard]] bool IsTreeFoliageColor(Color color)
+{
+    return static_cast<unsigned int>(color.g) * 100U
+            > static_cast<unsigned int>(color.r) * 115U
+        && static_cast<unsigned int>(color.g) * 100U
+            > static_cast<unsigned int>(color.b) * 115U;
+}
+
+constexpr std::array<Color, 4> kTreeFoliageTints{{
+    Color{255, 255, 255, 255},  // Neutral.
+    Color{224, 238, 220, 255},  // Slightly darker.
+    Color{246, 255, 220, 255},  // Slightly warmer.
+    Color{220, 246, 255, 255},  // Slightly cooler.
+}};
+
 void DrawExperimentalTreeBatch(
     const Model& model,
     const std::vector<Matrix>& transforms,
-    Color tint,
+    Color visibility_tint,
+    Color foliage_tint,
     RaylibVegetationMeshStats& stats)
 {
     if (transforms.empty()) {
@@ -1259,9 +1276,13 @@ void DrawExperimentalTreeBatch(
         }
 
         Material material = model.materials[material_index];
+        Color material_color = material.maps[MATERIAL_MAP_DIFFUSE].color;
+        if (IsTreeFoliageColor(material_color)) {
+            material_color = MultiplyColor(material_color, foliage_tint);
+        }
         material.maps[MATERIAL_MAP_DIFFUSE].color = MultiplyColor(
-            material.maps[MATERIAL_MAP_DIFFUSE].color,
-            tint);
+            material_color,
+            visibility_tint);
         DrawMeshInstanced(
             model.meshes[mesh_index],
             material,
@@ -1293,10 +1314,12 @@ void DrawExperimentalTreeInstances(
         visibility_report);
     const int chunks_x = std::max(1, info.chunks_x);
     constexpr std::size_t kSpecies = 2U;
-    std::vector<std::vector<Matrix>> near_visible(models.size());
-    std::vector<std::vector<Matrix>> near_fade(models.size());
-    std::array<std::array<std::vector<Matrix>, kSpecies>, 2U> visible_lod_batches;
-    std::array<std::array<std::vector<Matrix>, kSpecies>, 2U> fade_lod_batches;
+    constexpr std::size_t kTintCount = kTreeFoliageTints.size();
+    using TintBatches = std::array<std::vector<Matrix>, kTintCount>;
+    std::vector<TintBatches> near_visible(models.size());
+    std::vector<TintBatches> near_fade(models.size());
+    std::array<std::array<TintBatches, kSpecies>, 2U> visible_lod_batches;
+    std::array<std::array<TintBatches, kSpecies>, 2U> fade_lod_batches;
     const float near_sq = options.lod_near_distance * options.lod_near_distance;
     const float far_sq = options.lod_far_distance * options.lod_far_distance;
     const float cull_sq = options.cull_distance * options.cull_distance;
@@ -1325,28 +1348,45 @@ void DrawExperimentalTreeInstances(
         const std::size_t species = (instance.model_index <= 5U || instance.model_index == 12U) ? 0U : 1U;
         const Matrix transform = ExperimentalTreeTransform(instance);
         const bool fade = classes[chunk_index] == ChunkVisibilityClass::kFade;
+        const std::size_t tint_index = static_cast<std::size_t>(instance.foliage_tint_index)
+            % kTintCount;
         if (tier == 0U) {
-            (fade ? near_fade : near_visible)[instance.model_index].push_back(transform);
+            (fade ? near_fade : near_visible)[instance.model_index][tint_index].push_back(transform);
         } else {
-            (fade ? fade_lod_batches : visible_lod_batches)[tier - 1U][species].push_back(transform);
+            (fade ? fade_lod_batches : visible_lod_batches)[tier - 1U][species][tint_index]
+                .push_back(transform);
         }
     }
 
     for (std::size_t model_index = 0; model_index < models.size(); ++model_index) {
-        DrawExperimentalTreeBatch(models[model_index], near_visible[model_index],
-            VisibilityTint(ChunkVisibilityClass::kVisible), stats);
-        DrawExperimentalTreeBatch(models[model_index], near_fade[model_index],
-            VisibilityTint(ChunkVisibilityClass::kFade), stats);
+        for (std::size_t tint_index = 0; tint_index < kTintCount; ++tint_index) {
+            DrawExperimentalTreeBatch(models[model_index], near_visible[model_index][tint_index],
+                VisibilityTint(ChunkVisibilityClass::kVisible),
+                kTreeFoliageTints[tint_index], stats);
+            DrawExperimentalTreeBatch(models[model_index], near_fade[model_index][tint_index],
+                VisibilityTint(ChunkVisibilityClass::kFade),
+                kTreeFoliageTints[tint_index], stats);
+        }
     }
     for (std::size_t species = 0; species < kSpecies; ++species) {
-        DrawExperimentalTreeBatch(medium_lod_models[species], visible_lod_batches[0][species],
-            VisibilityTint(ChunkVisibilityClass::kVisible), stats);
-        DrawExperimentalTreeBatch(medium_lod_models[species], fade_lod_batches[0][species],
-            VisibilityTint(ChunkVisibilityClass::kFade), stats);
-        DrawExperimentalTreeBatch(far_lod_models[species], visible_lod_batches[1][species],
-            VisibilityTint(ChunkVisibilityClass::kVisible), stats);
-        DrawExperimentalTreeBatch(far_lod_models[species], fade_lod_batches[1][species],
-            VisibilityTint(ChunkVisibilityClass::kFade), stats);
+        for (std::size_t tint_index = 0; tint_index < kTintCount; ++tint_index) {
+            DrawExperimentalTreeBatch(
+                medium_lod_models[species], visible_lod_batches[0][species][tint_index],
+                VisibilityTint(ChunkVisibilityClass::kVisible),
+                kTreeFoliageTints[tint_index], stats);
+            DrawExperimentalTreeBatch(
+                medium_lod_models[species], fade_lod_batches[0][species][tint_index],
+                VisibilityTint(ChunkVisibilityClass::kFade),
+                kTreeFoliageTints[tint_index], stats);
+            DrawExperimentalTreeBatch(
+                far_lod_models[species], visible_lod_batches[1][species][tint_index],
+                VisibilityTint(ChunkVisibilityClass::kVisible),
+                kTreeFoliageTints[tint_index], stats);
+            DrawExperimentalTreeBatch(
+                far_lod_models[species], fade_lod_batches[1][species][tint_index],
+                VisibilityTint(ChunkVisibilityClass::kFade),
+                kTreeFoliageTints[tint_index], stats);
+        }
     }
 }
 
