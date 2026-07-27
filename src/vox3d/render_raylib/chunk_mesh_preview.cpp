@@ -1128,7 +1128,8 @@ struct TreeAltitudeSample {
     std::uint32_t hash,
     const TreeAltitudeSample& altitude)
 {
-    constexpr std::array<std::size_t, 6> kBroadleafModels{0U, 1U, 2U, 3U, 4U, 5U};
+    constexpr std::array<std::size_t, 12> kBroadleafModels{
+        0U, 0U, 0U, 1U, 2U, 2U, 3U, 3U, 4U, 4U, 5U, 5U};
     constexpr std::array<std::size_t, 6> kConiferModels{6U, 7U, 8U, 9U, 10U, 11U};
     constexpr std::array<std::size_t, 3> kMountainBroadleafModels{2U, 4U, 5U};
     constexpr std::array<std::size_t, 3> kUpperConiferModels{8U, 9U, 11U};

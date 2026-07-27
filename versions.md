@@ -849,3 +849,9 @@
 - Kept trunk and branch shading on the original model normals.
 - Added `vegetation_models.lighting.flat_foliage_shading` to `config/app.json`; `0.0` keeps smooth shading and `1.0` uses fully flat foliage facets.
 - Preserved altitude zoning, foliage palettes, LOD selection, instancing, and tree culling.
+
+## v0.5.90 -> v0.5.91
+
+- Reworked the rounded deciduous near model into an asymmetric four-lobe canopy.
+- Replaced rounded medium and far deciduous LOD silhouettes with angular asymmetric canopies.
+- Reduced the single-crown selection weight while keeping the existing tree model set unchanged.
