@@ -813,3 +813,16 @@
 - Normalized the embedded colors of all eighteen runtime tree and LOD models so bark and foliage no longer collapse to near-black values.
 - Added a deterministic four-variant foliage tint system while leaving trunks and dead materials unchanged.
 - Added `tools/normalize_runtime_tree_palette.py` to reproduce and validate the runtime tree palette without regenerating geometry.
+
+## v0.5.85 -> v0.5.86
+
+- Fixed progressive darkening of instanced tree materials across frames.
+- Tree tinting now uses a per-draw deep copy of the material-map array instead of mutating the model's shared material maps.
+- Preserved deterministic foliage color variants, visibility fading, existing LOD selection, and tree batching.
+
+
+## v0.5.86 -> v0.5.87
+
+- Fixed the raylib 5.x build failure caused by the unavailable `MAX_MATERIAL_MAPS` macro.
+- Tree tinting now temporarily changes only the diffuse map color for the draw call and restores the original color immediately afterward.
+- Preserved deterministic foliage variants, visibility fading, LOD selection, and instanced batching without persistent material mutation.

@@ -1276,18 +1276,23 @@ void DrawExperimentalTreeBatch(
         }
 
         Material material = model.materials[material_index];
-        Color material_color = material.maps[MATERIAL_MAP_DIFFUSE].color;
-        if (IsTreeFoliageColor(material_color)) {
-            material_color = MultiplyColor(material_color, foliage_tint);
+        if (material.maps == nullptr) {
+            continue;
         }
-        material.maps[MATERIAL_MAP_DIFFUSE].color = MultiplyColor(
-            material_color,
-            visibility_tint);
+
+        MaterialMap& diffuse_map = material.maps[MATERIAL_MAP_DIFFUSE];
+        const Color original_color = diffuse_map.color;
+        Color draw_color = original_color;
+        if (IsTreeFoliageColor(draw_color)) {
+            draw_color = MultiplyColor(draw_color, foliage_tint);
+        }
+        diffuse_map.color = MultiplyColor(draw_color, visibility_tint);
         DrawMeshInstanced(
             model.meshes[mesh_index],
             material,
             transforms.data(),
             static_cast<int>(transforms.size()));
+        diffuse_map.color = original_color;
         ++stats.last_experimental_tree_draw_calls;
     }
 }
