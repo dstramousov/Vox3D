@@ -863,3 +863,10 @@
 - Blended adjacent altitude palettes spatially to remove visible horizontal color bands.
 - Changed foliage tinting from channel multiplication to controlled target-color blending so yellow and ochre tones remain visible.
 - Preserved the existing model set, LOD distances, instancing batches, flat shading, and tree density zoning.
+
+## v0.5.92 -> v0.5.93
+
+- Expanded JSON and VXMAP `structure_height` support from the legacy `0..3` range to the map-contract `0..255` range.
+- Replaced height-1/2/3-only diagnostics with generic structure tile, block, minimum, maximum, and average statistics.
+- Updated the 2D structure-height layer to visualize legal tall structures instead of marking values above 3 as errors.
+- Preserved dynamic world-height, voxel, mesh, collision, and binary-versus-JSON behavior for existing maps.

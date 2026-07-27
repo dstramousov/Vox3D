@@ -52,8 +52,9 @@ constexpr std::array<ElevationColorStop, 8> kElevationPalette{{
 
 constexpr Color kStructureHeight0{28, 31, 33, 255};
 constexpr Color kStructureHeight1{105, 100, 94, 255};
-constexpr Color kStructureHeight2{158, 137, 109, 255};
-constexpr Color kStructureHeight3{214, 177, 112, 255};
+constexpr Color kStructureHeight4{150, 126, 101, 255};
+constexpr Color kStructureHeight8{190, 151, 105, 255};
+constexpr Color kStructureHeight16{232, 190, 118, 255};
 constexpr Color kCollisionFree{62, 145, 86, 255};
 constexpr Color kCollisionBlocked{178, 58, 52, 255};
 constexpr Color kMovementBlocked{38, 40, 44, 255};
@@ -91,11 +92,12 @@ constexpr std::array<Map2DLegendEntry, 8> kElevationLegend{{
     Map2DLegendEntry{kElevationPalette[7].color, "20 peak"},
 }};
 
-constexpr std::array<Map2DLegendEntry, 4> kStructureHeightLegend{{
+constexpr std::array<Map2DLegendEntry, 5> kStructureHeightLegend{{
     Map2DLegendEntry{kStructureHeight0, "No structure"},
     Map2DLegendEntry{kStructureHeight1, "Height 1"},
-    Map2DLegendEntry{kStructureHeight2, "Height 2"},
-    Map2DLegendEntry{kStructureHeight3, "Height 3"},
+    Map2DLegendEntry{kStructureHeight4, "Height 4"},
+    Map2DLegendEntry{kStructureHeight8, "Height 8"},
+    Map2DLegendEntry{kStructureHeight16, "Height 16+"},
 }};
 
 constexpr std::array<Map2DLegendEntry, 2> kCollisionLegend{{
@@ -207,18 +209,28 @@ constexpr std::array<Map2DLegendEntry, 3> kConcealmentLegend{{
 
 [[nodiscard]] Color StructureHeightColor(std::uint8_t height)
 {
-    switch (height) {
-        case 0U:
-            return kStructureHeight0;
-        case 1U:
-            return kStructureHeight1;
-        case 2U:
-            return kStructureHeight2;
-        case 3U:
-            return kStructureHeight3;
-        default:
-            return Color{220, 60, 80, 255};
+    if (height == 0U) {
+        return kStructureHeight0;
     }
+    if (height <= 4U) {
+        return InterpolateColor(
+            kStructureHeight1,
+            kStructureHeight4,
+            static_cast<float>(height - 1U) / 3.0F);
+    }
+    if (height <= 8U) {
+        return InterpolateColor(
+            kStructureHeight4,
+            kStructureHeight8,
+            static_cast<float>(height - 4U) / 4.0F);
+    }
+    if (height <= 16U) {
+        return InterpolateColor(
+            kStructureHeight8,
+            kStructureHeight16,
+            static_cast<float>(height - 8U) / 8.0F);
+    }
+    return kStructureHeight16;
 }
 
 [[nodiscard]] Color CollisionColor(std::uint8_t collision)

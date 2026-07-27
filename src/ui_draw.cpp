@@ -2583,12 +2583,18 @@ struct StatsOverlaySection {
         {"Markers", std::to_string(workspace.runtime_map.markers.size())},
     });
 
-    add("Ruin Height", {
-        {"Source", workspace.runtime_map.info.structure_height_loaded ? "map" : "legacy zero"},
-        {"Wall tiles", std::to_string(workspace.runtime_map.info.structure_tiles)},
-        {"Height 1", std::to_string(workspace.runtime_map.info.structure_height_1)},
-        {"Height 2", std::to_string(workspace.runtime_map.info.structure_height_2)},
-        {"Height 3", std::to_string(workspace.runtime_map.info.structure_height_3)},
+    const auto& structure_info = workspace.runtime_map.info;
+    const double average_structure_height = structure_info.structure_tiles > 0
+        ? static_cast<double>(structure_info.structure_blocks)
+            / static_cast<double>(structure_info.structure_tiles)
+        : 0.0;
+    add("Structure Height", {
+        {"Source", structure_info.structure_height_loaded ? "map" : "legacy zero"},
+        {"Tiles", std::to_string(structure_info.structure_tiles)},
+        {"Blocks", std::to_string(structure_info.structure_blocks)},
+        {"Range", std::to_string(structure_info.structure_min_height)
+            + " .. " + std::to_string(structure_info.structure_max_height)},
+        {"Average", CompactFloat(static_cast<float>(average_structure_height))},
     });
 
     add("Vegetation", {

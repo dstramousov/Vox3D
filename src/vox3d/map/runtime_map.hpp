@@ -240,9 +240,9 @@ struct RuntimeMapInfo {
     int runtime_binary_json_compare_ms = 0;
     int blocked_cells = 0;
     int structure_tiles = 0;
-    int structure_height_1 = 0;
-    int structure_height_2 = 0;
-    int structure_height_3 = 0;
+    std::uint64_t structure_blocks = 0;
+    int structure_min_height = 0;
+    int structure_max_height = 0;
     int object_markers = 0;
     int runtime_objects = 0;
     int vegetation_markers = 0;

@@ -1019,13 +1019,8 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
                 core.cover[global_index] = data[static_cast<std::size_t>(cover_grid->offset + local_index)];
                 core.concealment[global_index] = data[static_cast<std::size_t>(concealment_grid->offset + local_index)];
                 if (structure_height_grid != nullptr) {
-                    const std::uint8_t structure_height =
+                    core.structure_height[global_index] =
                         data[static_cast<std::size_t>(structure_height_grid->offset + local_index)];
-                    if (structure_height > 3U) {
-                        core.fallback_reason = "bad_structure_height_grid";
-                        return false;
-                    }
-                    core.structure_height[global_index] = structure_height;
                 }
                 if (vegetation_type_grid != nullptr && vegetation_height_grid != nullptr) {
                     const std::uint8_t vegetation_type =

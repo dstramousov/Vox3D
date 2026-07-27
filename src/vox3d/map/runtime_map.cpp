@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <regex>
 #include <sstream>
@@ -558,12 +559,16 @@ constexpr std::uintmax_t kMaxRuntimeGridReadBytes = 64U * 1024U * 1024U;
         return grid;
     }
 
+    constexpr int kMaximumStructureHeight =
+        static_cast<int>(std::numeric_limits<std::uint8_t>::max());
+
     grid.cells.reserve(parsed.cells.size());
     for (int value : parsed.cells) {
-        if (value < 0 || value > 3) {
+        if (value < 0 || value > kMaximumStructureHeight) {
             diagnostics.AddWarning(
                 "runtime structure height value outside supported range source="
-                + std::string(kStructureHeightFile) + " value=" + std::to_string(value));
+                + std::string(kStructureHeightFile) + " value=" + std::to_string(value)
+                + " supported=0.." + std::to_string(kMaximumStructureHeight));
             grid.cells.clear();
             return grid;
         }
@@ -1291,35 +1296,31 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
 void UpdateStructureHeightStats(RuntimeMap& runtime)
 {
     runtime.info.structure_tiles = 0;
-    runtime.info.structure_height_1 = 0;
-    runtime.info.structure_height_2 = 0;
-    runtime.info.structure_height_3 = 0;
+    runtime.info.structure_blocks = 0;
+    runtime.info.structure_min_height = 0;
+    runtime.info.structure_max_height = 0;
     if (!runtime.structure_height.IsValid()) {
         return;
     }
 
     for (const std::uint8_t value : runtime.structure_height.cells) {
-        switch (value) {
-            case 0U:
-                break;
-            case 1U:
-                ++runtime.info.structure_tiles;
-                ++runtime.info.structure_height_1;
-                break;
-            case 2U:
-                ++runtime.info.structure_tiles;
-                ++runtime.info.structure_height_2;
-                break;
-            case 3U:
-                ++runtime.info.structure_tiles;
-                ++runtime.info.structure_height_3;
-                break;
-            default:
-                runtime.diagnostics.AddWarning(
-                    "runtime structure height contains unsupported value="
-                    + std::to_string(static_cast<int>(value)));
-                return;
+        if (value == 0U) {
+            continue;
         }
+
+        const int height = static_cast<int>(value);
+        ++runtime.info.structure_tiles;
+        runtime.info.structure_blocks += value;
+        if (runtime.info.structure_min_height == 0) {
+            runtime.info.structure_min_height = height;
+        } else {
+            runtime.info.structure_min_height = std::min(
+                runtime.info.structure_min_height,
+                height);
+        }
+        runtime.info.structure_max_height = std::max(
+            runtime.info.structure_max_height,
+            height);
     }
 }
 
@@ -1892,9 +1893,9 @@ std::string ToLogString(const RuntimeMap& map)
     out << " structure_height=" << (map.info.structure_height_loaded ? "loaded" : "default_zero");
     if (map.info.structure_height_loaded) {
         out << " structure_tiles=" << map.info.structure_tiles;
-        out << " structure_1=" << map.info.structure_height_1;
-        out << " structure_2=" << map.info.structure_height_2;
-        out << " structure_3=" << map.info.structure_height_3;
+        out << " structure_blocks=" << map.info.structure_blocks;
+        out << " structure_range=" << map.info.structure_min_height
+            << ".." << map.info.structure_max_height;
     }
     out << " vegetation_type=" << (map.info.vegetation_type_loaded ? "loaded" : "legacy");
     out << " vegetation_height=" << (map.info.vegetation_height_loaded ? "loaded" : "legacy");
