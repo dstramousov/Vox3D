@@ -2,6 +2,7 @@
 #include "vox3d/map/vxmap_runtime_reader.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cstdlib>
 #include <cctype>
@@ -623,6 +624,175 @@ constexpr std::uintmax_t kMaxRuntimeGridReadBytes = 64U * 1024U * 1024U;
         grid.cells.push_back(static_cast<std::uint8_t>(value));
     }
     return grid;
+}
+
+[[nodiscard]] RuntimeGrid<std::uint8_t> ReadStructureTypeGrid(
+    const MapPackageInfo& package,
+    bool& source_present,
+    Diagnostics& diagnostics)
+{
+    constexpr std::string_view kStructureTypeFile = "layers/structure_type.json";
+    RuntimeGrid<std::uint8_t> grid = ReadByteRowsGrid(
+        package,
+        kStructureTypeFile,
+        static_cast<int>(std::numeric_limits<std::uint8_t>::max()),
+        source_present,
+        diagnostics);
+    if (!source_present || !grid.IsValid()) {
+        return grid;
+    }
+
+    for (const std::uint8_t value : grid.cells) {
+        if (!IsKnownStructureType(static_cast<RuntimeStructureType>(value))) {
+            diagnostics.AddWarning(
+                "runtime structure type value is unsupported source="
+                + std::string(kStructureTypeFile) + " value="
+                + std::to_string(static_cast<int>(value)));
+            grid.cells.clear();
+            return grid;
+        }
+    }
+    return grid;
+}
+
+[[nodiscard]] RuntimeGrid<std::uint16_t> ReadStructureMicroGeometryGrid(
+    const MapPackageInfo& package,
+    bool& source_present,
+    int& division,
+    Diagnostics& diagnostics)
+{
+    RuntimeGrid<std::uint16_t> grid;
+    grid.width = package.width.value_or(0);
+    grid.height = package.height.value_or(0);
+    division = 0;
+
+    constexpr std::string_view kMicroGeometryFile =
+        "layers/structure_micro_geometry.json";
+    const std::filesystem::path path = package.path / kMicroGeometryFile;
+    source_present = Exists(path);
+    if (!source_present) {
+        grid.cells.assign(ExpectedCellCount(grid.width, grid.height), std::uint16_t{0});
+        return grid;
+    }
+
+    const std::string text = ReadTextFileLimited(
+        path,
+        kMaxRuntimeGridReadBytes,
+        diagnostics);
+    if (text.empty()) {
+        return grid;
+    }
+
+    const auto fail = [&diagnostics, &grid](std::string reason) {
+        diagnostics.AddWarning(
+            "runtime structure micro geometry is invalid source="
+            "layers/structure_micro_geometry.json reason=" + std::move(reason));
+        grid.cells.clear();
+    };
+
+    const std::optional<std::string> schema = ExtractStringByKeys(text, {"schema_version"});
+    const std::optional<std::string> kind = ExtractStringByKeys(text, {"kind"});
+    const std::optional<std::string> format = ExtractStringByKeys(text, {"format"});
+    const std::optional<std::string> bit_order = ExtractStringByKeys(text, {"bit_order"});
+    const std::optional<std::string> occupancy_rule = ExtractStringByKeys(text, {"occupancy_rule"});
+    const std::optional<std::string> floor_rule = ExtractStringByKeys(text, {"floor_rule"});
+    const std::optional<int> width = ExtractIntByKeys(text, {"width"});
+    const std::optional<int> height = ExtractIntByKeys(text, {"height"});
+    const std::optional<int> parsed_division = ExtractIntByKeys(text, {"division"});
+    const std::optional<int> subtile_size_px = ExtractIntByKeys(text, {"subtile_size_px"});
+    const std::optional<int> default_mask = ExtractIntByKeys(text, {"default_mask"});
+    const std::optional<int> full_mask = ExtractIntByKeys(text, {"full_mask"});
+
+    constexpr int kRequiredDivision = 4;
+    constexpr int kFullMask = static_cast<int>(std::numeric_limits<std::uint16_t>::max());
+    const int tile_size_px = package.tile_size.value_or(0);
+    const int required_subtile_size_px = tile_size_px / kRequiredDivision;
+    if (schema != "structure-micro-geometry-layer-v3"
+        || kind != "structure_micro_geometry"
+        || format != "sparse_uint16_masks"
+        || bit_order != "row_major_top_left_lsb"
+        || occupancy_rule != "bit_set_means_vertical_structure_solid"
+        || floor_rule != "floor_structure_types_use_zero_mask_and_render_as_tile_surfaces"
+        || width != grid.width || height != grid.height
+        || parsed_division != kRequiredDivision
+        || tile_size_px <= 0 || tile_size_px % kRequiredDivision != 0
+        || subtile_size_px != required_subtile_size_px
+        || default_mask != 0 || full_mask != kFullMask) {
+        fail("metadata_mismatch");
+        return grid;
+    }
+
+    const std::optional<std::string> cells = ExtractArrayAfterKey(text, "cells");
+    if (!cells.has_value()) {
+        fail("cells_missing");
+        return grid;
+    }
+
+    grid.cells.assign(ExpectedCellCount(grid.width, grid.height), std::uint16_t{0});
+    std::vector<std::uint8_t> seen(grid.cells.size(), std::uint8_t{0});
+    for (const std::string& object : ExtractTopLevelObjectsFromArray(*cells)) {
+        const std::optional<int> x = ExtractIntByKeys(object, {"x"});
+        const std::optional<int> y = ExtractIntByKeys(object, {"y"});
+        const std::optional<int> mask = ExtractIntByKeys(object, {"mask"});
+        if (!x.has_value() || !y.has_value() || !mask.has_value()
+            || *mask <= 0 || *mask > kFullMask) {
+            fail("bad_cell");
+            return grid;
+        }
+        const TileCoord tile{*x, *y};
+        if (!grid.Contains(tile)) {
+            fail("cell_out_of_bounds");
+            return grid;
+        }
+        const std::size_t index = static_cast<std::size_t>(tile.y)
+            * static_cast<std::size_t>(grid.width)
+            + static_cast<std::size_t>(tile.x);
+        if (seen[index] != 0U) {
+            fail("duplicate_cell");
+            return grid;
+        }
+        seen[index] = 1U;
+        grid.cells[index] = static_cast<std::uint16_t>(*mask);
+    }
+
+    division = kRequiredDivision;
+    return grid;
+}
+
+[[nodiscard]] bool ValidateStructureGeometryGrids(
+    const RuntimeGrid<std::uint8_t>& type_grid,
+    const RuntimeGrid<std::uint8_t>& height_grid,
+    const RuntimeGrid<std::uint16_t>& micro_mask_grid,
+    Diagnostics& diagnostics)
+{
+    if (!type_grid.IsValid() || !height_grid.IsValid() || !micro_mask_grid.IsValid()
+        || type_grid.width != height_grid.width || type_grid.height != height_grid.height
+        || type_grid.width != micro_mask_grid.width
+        || type_grid.height != micro_mask_grid.height) {
+        diagnostics.AddWarning(
+            "runtime structure geometry grids are unavailable or dimensionally inconsistent");
+        return false;
+    }
+
+    for (std::size_t index = 0; index < type_grid.cells.size(); ++index) {
+        const auto type = static_cast<RuntimeStructureType>(type_grid.cells[index]);
+        const std::uint8_t height = height_grid.cells[index];
+        const std::uint16_t mask = micro_mask_grid.cells[index];
+        const bool valid = IsKnownStructureType(type)
+            && ((type == RuntimeStructureType::kNone && height == 0U && mask == 0U)
+                || (IsVerticalStructureType(type) && height > 0U && mask != 0U)
+                || (IsFloorStructureType(type) && height == 0U && mask == 0U));
+        if (!valid) {
+            diagnostics.AddWarning(
+                "runtime structure type/height/micro-mask mismatch index="
+                + std::to_string(index) + " type="
+                + std::to_string(static_cast<int>(type_grid.cells[index]))
+                + " height=" + std::to_string(static_cast<int>(height))
+                + " mask=" + std::to_string(mask));
+            return false;
+        }
+    }
+    return true;
 }
 
 [[nodiscard]] RuntimeGrid<std::uint8_t> ReadVegetationTypeGrid(
@@ -1269,6 +1439,24 @@ void ValidateRuntimeMap(RuntimeMap& runtime)
     if (runtime.info.structure_height_loaded && !runtime.structure_height.IsValid()) {
         runtime.diagnostics.AddWarning("runtime structure height grid is not loaded");
     }
+    if (runtime.info.structure_type_loaded && !runtime.structure_type.IsValid()) {
+        runtime.diagnostics.AddWarning("runtime structure type grid is not loaded");
+    }
+    if (runtime.info.structure_micro_geometry_loaded
+        && !runtime.structure_micro_mask.IsValid()) {
+        runtime.diagnostics.AddWarning(
+            "runtime structure micro geometry grid is not loaded");
+    }
+    if (runtime.info.structure_type_loaded
+        != runtime.info.structure_micro_geometry_loaded) {
+        runtime.diagnostics.AddWarning(
+            "runtime structure type and micro geometry sources are incomplete");
+    }
+    if (runtime.info.structure_micro_geometry_loaded
+        && runtime.info.structure_micro_division != 4) {
+        runtime.diagnostics.AddWarning(
+            "runtime structure micro geometry division is unsupported");
+    }
     if (runtime.info.vegetation_type_loaded && !runtime.vegetation_type.IsValid()) {
         runtime.diagnostics.AddWarning("runtime vegetation type grid is not loaded");
     }
@@ -1321,6 +1509,38 @@ void UpdateStructureHeightStats(RuntimeMap& runtime)
         runtime.info.structure_max_height = std::max(
             runtime.info.structure_max_height,
             height);
+    }
+}
+
+void UpdateStructureGeometryStats(RuntimeMap& runtime)
+{
+    runtime.info.structure_type_tiles = 0;
+    runtime.info.structure_micro_tiles = 0;
+    runtime.info.structure_micro_full_masks = 0;
+    runtime.info.structure_micro_partial_masks = 0;
+    runtime.info.structure_micro_solid_subtiles = 0;
+    if (!runtime.structure_type.IsValid() || !runtime.structure_micro_mask.IsValid()) {
+        return;
+    }
+
+    constexpr std::uint16_t kFullMask =
+        std::numeric_limits<std::uint16_t>::max();
+    for (std::size_t index = 0; index < runtime.structure_type.cells.size(); ++index) {
+        if (runtime.structure_type.cells[index]
+            != static_cast<std::uint8_t>(RuntimeStructureType::kNone)) {
+            ++runtime.info.structure_type_tiles;
+        }
+        const std::uint16_t mask = runtime.structure_micro_mask.cells[index];
+        if (mask == 0U) {
+            continue;
+        }
+        ++runtime.info.structure_micro_tiles;
+        runtime.info.structure_micro_solid_subtiles += std::popcount(mask);
+        if (mask == kFullMask) {
+            ++runtime.info.structure_micro_full_masks;
+        } else {
+            ++runtime.info.structure_micro_partial_masks;
+        }
     }
 }
 
@@ -1413,6 +1633,11 @@ struct JsonRuntimeCore {
     RuntimeGrid<int> height;
     RuntimeGrid<std::uint8_t> structure_height;
     bool structure_height_present = false;
+    RuntimeGrid<std::uint8_t> structure_type;
+    bool structure_type_present = false;
+    RuntimeGrid<std::uint16_t> structure_micro_mask;
+    bool structure_micro_geometry_present = false;
+    int structure_micro_division = 0;
     RuntimeGrid<std::uint8_t> vegetation_type;
     RuntimeGrid<std::uint8_t> vegetation_height;
     bool vegetation_type_present = false;
@@ -1449,6 +1674,38 @@ struct JsonRuntimeCore {
         package,
         core.structure_height_present,
         core.diagnostics);
+    core.structure_type = ReadStructureTypeGrid(
+        package,
+        core.structure_type_present,
+        core.diagnostics);
+    core.structure_micro_mask = ReadStructureMicroGeometryGrid(
+        package,
+        core.structure_micro_geometry_present,
+        core.structure_micro_division,
+        core.diagnostics);
+    const bool structure_geometry_present = core.structure_type_present
+        || core.structure_micro_geometry_present;
+    if (core.structure_type_present != core.structure_micro_geometry_present) {
+        core.diagnostics.AddWarning(
+            "runtime structure type and micro geometry sources are incomplete");
+    } else if (structure_geometry_present && !core.structure_height_present) {
+        core.diagnostics.AddWarning(
+            "runtime structure geometry requires structure height source");
+    }
+    const bool structure_geometry_valid = core.structure_type_present
+        == core.structure_micro_geometry_present
+        && (!structure_geometry_present
+            || (core.structure_height_present
+                && core.structure_micro_division == 4
+                && ValidateStructureGeometryGrids(
+                    core.structure_type,
+                    core.structure_height,
+                    core.structure_micro_mask,
+                    core.diagnostics)));
+    if (!structure_geometry_valid) {
+        core.structure_type.cells.clear();
+        core.structure_micro_mask.cells.clear();
+    }
     core.vegetation_type = ReadVegetationTypeGrid(
         package,
         core.vegetation_type_present,
@@ -1489,6 +1746,17 @@ void ApplyJsonRuntimeCore(RuntimeMap& runtime, JsonRuntimeCore&& core)
     runtime.structure_height = std::move(core.structure_height);
     runtime.info.structure_height_loaded = core.structure_height_present
         && runtime.structure_height.IsValid();
+    runtime.structure_type = std::move(core.structure_type);
+    runtime.info.structure_type_loaded = core.structure_type_present
+        && runtime.structure_type.IsValid();
+    runtime.structure_micro_mask = std::move(core.structure_micro_mask);
+    runtime.info.structure_micro_geometry_loaded =
+        core.structure_micro_geometry_present
+        && runtime.structure_micro_mask.IsValid();
+    runtime.info.structure_micro_division =
+        runtime.info.structure_micro_geometry_loaded
+        ? core.structure_micro_division
+        : 0;
     runtime.vegetation_type = std::move(core.vegetation_type);
     runtime.vegetation_height = std::move(core.vegetation_height);
     runtime.info.vegetation_type_loaded = core.vegetation_type_present
@@ -1540,11 +1808,27 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
     RuntimeMapInfo& info = runtime.info;
     info.runtime_binary_json_compare_checked = true;
 
-    if (!json_core.terrain.IsValid() || !json_core.collision.IsValid() || !json_core.height.IsValid()
-        || !json_core.structure_height.IsValid() || !json_core.vegetation_type.IsValid()
+    if (!json_core.terrain.IsValid() || !json_core.collision.IsValid()
+        || !json_core.height.IsValid() || !json_core.structure_height.IsValid()
+        || !json_core.structure_type.IsValid()
+        || !json_core.structure_micro_mask.IsValid()
+        || !json_core.vegetation_type.IsValid()
         || !json_core.vegetation_height.IsValid()) {
         info.runtime_binary_json_compare_ok = false;
         info.runtime_binary_json_compare_reason = "json_core_unavailable";
+        return;
+    }
+
+    const bool binary_structure_geometry_present = info.structure_type_loaded
+        && info.structure_micro_geometry_loaded;
+    const bool json_structure_geometry_present = json_core.structure_type_present
+        && json_core.structure_micro_geometry_present;
+    if (binary_structure_geometry_present != json_structure_geometry_present
+        || (binary_structure_geometry_present
+            && info.structure_micro_division != json_core.structure_micro_division)) {
+        info.runtime_binary_json_compare_ok = false;
+        info.runtime_binary_json_compare_reason =
+            "structure_geometry_presence_mismatch";
         return;
     }
 
@@ -1554,6 +1838,13 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
     info.runtime_binary_json_structure_height_mismatches = CountGridMismatches(
         runtime.structure_height,
         json_core.structure_height);
+    info.runtime_binary_json_structure_type_mismatches = CountGridMismatches(
+        runtime.structure_type,
+        json_core.structure_type);
+    info.runtime_binary_json_structure_micro_geometry_mismatches =
+        CountGridMismatches(
+            runtime.structure_micro_mask,
+            json_core.structure_micro_mask);
     info.runtime_binary_json_vegetation_type_mismatches = CountGridMismatches(
         runtime.vegetation_type,
         json_core.vegetation_type);
@@ -1572,6 +1863,8 @@ void CompareRuntimeBinaryWithJson(RuntimeMap& runtime, const JsonRuntimeCore& js
         + info.runtime_binary_json_collision_mismatches
         + info.runtime_binary_json_height_mismatches
         + info.runtime_binary_json_structure_height_mismatches
+        + info.runtime_binary_json_structure_type_mismatches
+        + info.runtime_binary_json_structure_micro_geometry_mismatches
         + info.runtime_binary_json_vegetation_type_mismatches
         + info.runtime_binary_json_vegetation_height_mismatches
         + info.runtime_binary_json_point_mismatches;
@@ -1647,6 +1940,23 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
     runtime.info.structure_height_loaded = core.structure_height_present
         && runtime.structure_height.IsValid();
 
+    runtime.structure_type.width = runtime.info.width;
+    runtime.structure_type.height = runtime.info.height;
+    runtime.structure_type.cells = std::move(core.structure_type);
+    runtime.info.structure_type_loaded = core.structure_type_present
+        && runtime.structure_type.IsValid();
+
+    runtime.structure_micro_mask.width = runtime.info.width;
+    runtime.structure_micro_mask.height = runtime.info.height;
+    runtime.structure_micro_mask.cells = std::move(core.structure_micro_mask);
+    runtime.info.structure_micro_geometry_loaded =
+        core.structure_micro_geometry_present
+        && runtime.structure_micro_mask.IsValid();
+    runtime.info.structure_micro_division =
+        runtime.info.structure_micro_geometry_loaded
+        ? core.structure_micro_division
+        : 0;
+
     runtime.vegetation_type.width = runtime.info.width;
     runtime.vegetation_type.height = runtime.info.height;
     runtime.vegetation_type.cells = std::move(core.vegetation_type);
@@ -1716,6 +2026,80 @@ void BuildRuntimeTerrainOverview(RuntimeMap& runtime)
 }
 
 }  // namespace
+
+std::string_view ToString(RuntimeStructureType type)
+{
+    switch (type) {
+        case RuntimeStructureType::kNone:
+            return "none";
+        case RuntimeStructureType::kRuinWall:
+            return "ruin_wall";
+        case RuntimeStructureType::kRuinFloor:
+            return "ruin_floor";
+        case RuntimeStructureType::kFortressWall:
+            return "fortress_wall";
+        case RuntimeStructureType::kFortressTower:
+            return "fortress_tower";
+        case RuntimeStructureType::kFortressGate:
+            return "fortress_gate";
+        case RuntimeStructureType::kFortressKeep:
+            return "fortress_keep";
+        case RuntimeStructureType::kFortressBuilding:
+            return "fortress_building";
+        case RuntimeStructureType::kFortressFloor:
+            return "fortress_floor";
+        case RuntimeStructureType::kBuildingWall:
+            return "building_wall";
+        case RuntimeStructureType::kBuildingFloor:
+            return "building_floor";
+    }
+    return "unknown";
+}
+
+bool IsKnownStructureType(RuntimeStructureType type)
+{
+    return ToString(type) != "unknown";
+}
+
+bool IsVerticalStructureType(RuntimeStructureType type)
+{
+    switch (type) {
+        case RuntimeStructureType::kRuinWall:
+        case RuntimeStructureType::kFortressWall:
+        case RuntimeStructureType::kFortressTower:
+        case RuntimeStructureType::kFortressKeep:
+        case RuntimeStructureType::kFortressBuilding:
+        case RuntimeStructureType::kBuildingWall:
+            return true;
+        case RuntimeStructureType::kNone:
+        case RuntimeStructureType::kRuinFloor:
+        case RuntimeStructureType::kFortressGate:
+        case RuntimeStructureType::kFortressFloor:
+        case RuntimeStructureType::kBuildingFloor:
+            return false;
+    }
+    return false;
+}
+
+bool IsFloorStructureType(RuntimeStructureType type)
+{
+    switch (type) {
+        case RuntimeStructureType::kRuinFloor:
+        case RuntimeStructureType::kFortressGate:
+        case RuntimeStructureType::kFortressFloor:
+        case RuntimeStructureType::kBuildingFloor:
+            return true;
+        case RuntimeStructureType::kNone:
+        case RuntimeStructureType::kRuinWall:
+        case RuntimeStructureType::kFortressWall:
+        case RuntimeStructureType::kFortressTower:
+        case RuntimeStructureType::kFortressKeep:
+        case RuntimeStructureType::kFortressBuilding:
+        case RuntimeStructureType::kBuildingWall:
+            return false;
+    }
+    return false;
+}
 
 std::string_view ToString(RuntimeVegetationType type)
 {
@@ -1813,6 +2197,50 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
             runtime.diagnostics);
         runtime.info.structure_height_loaded = structure_height_present
             && runtime.structure_height.IsValid();
+        bool structure_type_present = false;
+        bool structure_micro_geometry_present = false;
+        int structure_micro_division = 0;
+        runtime.structure_type = ReadStructureTypeGrid(
+            package,
+            structure_type_present,
+            runtime.diagnostics);
+        runtime.structure_micro_mask = ReadStructureMicroGeometryGrid(
+            package,
+            structure_micro_geometry_present,
+            structure_micro_division,
+            runtime.diagnostics);
+        const bool structure_geometry_present = structure_type_present
+            || structure_micro_geometry_present;
+        if (structure_type_present != structure_micro_geometry_present) {
+            runtime.diagnostics.AddWarning(
+                "runtime structure type and micro geometry sources are incomplete");
+        } else if (structure_geometry_present && !structure_height_present) {
+            runtime.diagnostics.AddWarning(
+                "runtime structure geometry requires structure height source");
+        }
+        const bool structure_geometry_valid = structure_type_present
+            == structure_micro_geometry_present
+            && (!structure_geometry_present
+                || (structure_height_present
+                    && structure_micro_division == 4
+                    && ValidateStructureGeometryGrids(
+                        runtime.structure_type,
+                        runtime.structure_height,
+                        runtime.structure_micro_mask,
+                        runtime.diagnostics)));
+        runtime.info.structure_type_loaded = structure_geometry_valid
+            && structure_type_present && runtime.structure_type.IsValid();
+        runtime.info.structure_micro_geometry_loaded = structure_geometry_valid
+            && structure_micro_geometry_present
+            && runtime.structure_micro_mask.IsValid();
+        runtime.info.structure_micro_division =
+            runtime.info.structure_micro_geometry_loaded
+            ? structure_micro_division
+            : 0;
+        if (!structure_geometry_valid) {
+            runtime.structure_type.cells.clear();
+            runtime.structure_micro_mask.cells.clear();
+        }
         bool vegetation_type_present = false;
         bool vegetation_height_present = false;
         runtime.vegetation_type = ReadVegetationTypeGrid(
@@ -1845,6 +2273,23 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
             ExpectedCellCount(runtime.info.width, runtime.info.height),
             std::uint8_t{0});
     }
+    if (!runtime.structure_type.IsValid()) {
+        runtime.structure_type.width = runtime.info.width;
+        runtime.structure_type.height = runtime.info.height;
+        runtime.structure_type.cells.assign(
+            ExpectedCellCount(runtime.info.width, runtime.info.height),
+            static_cast<std::uint8_t>(RuntimeStructureType::kNone));
+        runtime.info.structure_type_loaded = false;
+    }
+    if (!runtime.structure_micro_mask.IsValid()) {
+        runtime.structure_micro_mask.width = runtime.info.width;
+        runtime.structure_micro_mask.height = runtime.info.height;
+        runtime.structure_micro_mask.cells.assign(
+            ExpectedCellCount(runtime.info.width, runtime.info.height),
+            std::uint16_t{0});
+        runtime.info.structure_micro_geometry_loaded = false;
+        runtime.info.structure_micro_division = 0;
+    }
     if (!runtime.vegetation_type.IsValid()) {
         runtime.vegetation_type.width = runtime.info.width;
         runtime.vegetation_type.height = runtime.info.height;
@@ -1867,6 +2312,7 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
     BuildRuntimeTerrainOverview(runtime);
     runtime.info.blocked_cells = CountBlockedCells(runtime.collision);
     UpdateStructureHeightStats(runtime);
+    UpdateStructureGeometryStats(runtime);
     UpdateHeightRange(runtime);
     ReadWorldOverlayData(runtime, package);
     UpdateVegetationStats(runtime);
@@ -1896,6 +2342,18 @@ std::string ToLogString(const RuntimeMap& map)
         out << " structure_blocks=" << map.info.structure_blocks;
         out << " structure_range=" << map.info.structure_min_height
             << ".." << map.info.structure_max_height;
+    }
+    out << " structure_type="
+        << (map.info.structure_type_loaded ? "loaded" : "legacy");
+    out << " structure_micro="
+        << (map.info.structure_micro_geometry_loaded ? "loaded" : "legacy");
+    if (map.info.structure_micro_geometry_loaded) {
+        out << " micro_division=" << map.info.structure_micro_division;
+        out << " structure_type_tiles=" << map.info.structure_type_tiles;
+        out << " micro_tiles=" << map.info.structure_micro_tiles;
+        out << " micro_full=" << map.info.structure_micro_full_masks;
+        out << " micro_partial=" << map.info.structure_micro_partial_masks;
+        out << " micro_subtiles=" << map.info.structure_micro_solid_subtiles;
     }
     out << " vegetation_type=" << (map.info.vegetation_type_loaded ? "loaded" : "legacy");
     out << " vegetation_height=" << (map.info.vegetation_height_loaded ? "loaded" : "legacy");
@@ -1938,6 +2396,10 @@ std::string ToLogString(const RuntimeMap& map)
             out << " height_mismatch=" << map.info.runtime_binary_json_height_mismatches;
             out << " structure_height_mismatch="
                 << map.info.runtime_binary_json_structure_height_mismatches;
+            out << " structure_type_mismatch="
+                << map.info.runtime_binary_json_structure_type_mismatches;
+            out << " structure_micro_mismatch="
+                << map.info.runtime_binary_json_structure_micro_geometry_mismatches;
             out << " vegetation_type_mismatch="
                 << map.info.runtime_binary_json_vegetation_type_mismatches;
             out << " vegetation_height_mismatch="

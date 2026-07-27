@@ -68,6 +68,55 @@ struct RuntimeGrid {
  */
 
 /**
+ * @brief Compact architectural type stored by map-package and VXMAP grids.
+ */
+enum class RuntimeStructureType : std::uint8_t {
+    kNone = 0,
+    kRuinWall = 1,
+    kRuinFloor = 2,
+    kFortressWall = 10,
+    kFortressTower = 11,
+    kFortressGate = 12,
+    kFortressKeep = 13,
+    kFortressBuilding = 14,
+    kFortressFloor = 15,
+    kBuildingWall = 20,
+    kBuildingFloor = 21,
+};
+
+/**
+ * @brief Returns the stable map-format label for an architectural type.
+ *
+ * @param type Architectural type code from the runtime grid.
+ * @return Stable lowercase label, or "unknown" for unsupported values.
+ */
+[[nodiscard]] std::string_view ToString(RuntimeStructureType type);
+
+/**
+ * @brief Checks whether an architectural type is defined by map schema v16.
+ *
+ * @param type Architectural type code to validate.
+ * @return True when the type is part of the supported structure dictionary.
+ */
+[[nodiscard]] bool IsKnownStructureType(RuntimeStructureType type);
+
+/**
+ * @brief Checks whether an architectural type represents a vertical solid.
+ *
+ * @param type Architectural type code to classify.
+ * @return True for wall, tower, keep, or building wall types.
+ */
+[[nodiscard]] bool IsVerticalStructureType(RuntimeStructureType type);
+
+/**
+ * @brief Checks whether an architectural type represents a flat surface.
+ *
+ * @param type Architectural type code to classify.
+ * @return True for floor and gate surface types.
+ */
+[[nodiscard]] bool IsFloorStructureType(RuntimeStructureType type);
+
+/**
  * @brief Compact vegetation type stored by map-package and VXMAP grids.
  */
 enum class RuntimeVegetationType : std::uint8_t {
@@ -204,6 +253,9 @@ struct RuntimeMapInfo {
     bool terrain_loaded = false;
     bool elevation_loaded = false;
     bool structure_height_loaded = false;
+    bool structure_type_loaded = false;
+    bool structure_micro_geometry_loaded = false;
+    int structure_micro_division = 0;
     bool vegetation_type_loaded = false;
     bool vegetation_height_loaded = false;
     bool collision_loaded = false;
@@ -233,6 +285,8 @@ struct RuntimeMapInfo {
     std::size_t runtime_binary_json_collision_mismatches = 0;
     std::size_t runtime_binary_json_height_mismatches = 0;
     std::size_t runtime_binary_json_structure_height_mismatches = 0;
+    std::size_t runtime_binary_json_structure_type_mismatches = 0;
+    std::size_t runtime_binary_json_structure_micro_geometry_mismatches = 0;
     std::size_t runtime_binary_json_vegetation_type_mismatches = 0;
     std::size_t runtime_binary_json_vegetation_height_mismatches = 0;
     std::size_t runtime_binary_json_point_mismatches = 0;
@@ -243,6 +297,11 @@ struct RuntimeMapInfo {
     std::uint64_t structure_blocks = 0;
     int structure_min_height = 0;
     int structure_max_height = 0;
+    int structure_type_tiles = 0;
+    int structure_micro_tiles = 0;
+    int structure_micro_full_masks = 0;
+    int structure_micro_partial_masks = 0;
+    int structure_micro_solid_subtiles = 0;
     int object_markers = 0;
     int runtime_objects = 0;
     int vegetation_markers = 0;
@@ -281,6 +340,8 @@ struct RuntimeMap {
     RuntimeGrid<std::uint8_t> collision;
     RuntimeGrid<int> height;
     RuntimeGrid<std::uint8_t> structure_height;
+    RuntimeGrid<std::uint8_t> structure_type;
+    RuntimeGrid<std::uint16_t> structure_micro_mask;
     RuntimeGrid<std::uint8_t> vegetation_type;
     RuntimeGrid<std::uint8_t> vegetation_height;
     RuntimeGrid<int> movement_cost;

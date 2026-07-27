@@ -1,4 +1,5 @@
 #include "vox3d/map/vxmap_runtime_reader.hpp"
+#include "vox3d/map/runtime_map.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,7 +23,7 @@ namespace {
 constexpr std::uint64_t kHeaderSize = 128;
 constexpr std::uint64_t kSectionEntrySize = 64;
 constexpr std::uint32_t kSupportedMajor = 1;
-constexpr std::uint32_t kSupportedMinor = 2;
+constexpr std::uint32_t kSupportedMinor = 3;
 constexpr std::uint32_t kEndianMarker = 0x01020304U;
 constexpr std::uint32_t kKnownHeaderFlags = 0x0000006FU;
 constexpr std::uint32_t kExpectedHeaderFlags = 0x0000004FU;
@@ -49,6 +50,8 @@ constexpr std::uint32_t kTypeStructureHeightGrid = 28;
 constexpr std::uint32_t kTypeStartGoal = 30;
 constexpr std::uint32_t kTypeVegetationTypeGrid = 31;
 constexpr std::uint32_t kTypeVegetationHeightGrid = 32;
+constexpr std::uint32_t kTypeStructureTypeGrid = 33;
+constexpr std::uint32_t kTypeStructureMicroMaskGrid = 34;
 
 constexpr std::array<std::uint32_t, 6> kRequiredGlobalSections{
     kTypeMetadata,
@@ -96,6 +99,22 @@ constexpr std::array<std::uint32_t, 11> kRequiredRegionSectionsV12{
     kTypeVegetationHeightGrid,
 };
 
+constexpr std::array<std::uint32_t, 13> kRequiredRegionSectionsV13{
+    kTypeTerrainGrid,
+    kTypeElevationGrid,
+    kTypeMovementGrid,
+    kTypeCollisionBits,
+    kTypeProjectileBlockBits,
+    kTypeVisionBlockBits,
+    kTypeCoverGrid,
+    kTypeConcealmentGrid,
+    kTypeStructureHeightGrid,
+    kTypeStructureTypeGrid,
+    kTypeStructureMicroMaskGrid,
+    kTypeVegetationTypeGrid,
+    kTypeVegetationHeightGrid,
+};
+
 
 struct Header {
     std::uint32_t format_major = 0;
@@ -118,6 +137,9 @@ struct Header {
 
 [[nodiscard]] std::uint32_t RequiredRegionalSectionCount(const Header& header)
 {
+    if (header.format_minor >= 3U) {
+        return static_cast<std::uint32_t>(kRequiredRegionSectionsV13.size());
+    }
     if (header.format_minor >= 2U) {
         return static_cast<std::uint32_t>(kRequiredRegionSectionsV12.size());
     }
@@ -136,9 +158,14 @@ struct Header {
     if (header.format_minor >= 1U && section_type == kTypeStructureHeightGrid) {
         return true;
     }
-    return header.format_minor >= 2U
+    if (header.format_minor >= 2U
         && (section_type == kTypeVegetationTypeGrid
-            || section_type == kTypeVegetationHeightGrid);
+            || section_type == kTypeVegetationHeightGrid)) {
+        return true;
+    }
+    return header.format_minor >= 3U
+        && (section_type == kTypeStructureTypeGrid
+            || section_type == kTypeStructureMicroMaskGrid);
 }
 
 struct SectionEntry {
@@ -850,10 +877,20 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             reason = "bad_region_index";
             return false;
         }
-        if (region.region_id != i || region.region_x != i % regions_x || region.region_y != i / regions_x
-            || region.width == 0 || region.height == 0 || region.tile_count != static_cast<std::uint32_t>(region.width) * region.height
-            || region.section_count != regional_section_count
-            || region.first_section_table_index != 6U + i * regional_section_count) {
+        const bool current_section_span = region.section_count == regional_section_count
+            && region.first_section_table_index == 6U + i * regional_section_count;
+        // Early v1.3 writers retained v1.2 span metadata in region records.
+        // Regional payloads remain unambiguous because parent_id is authoritative.
+        const bool legacy_v12_section_span = header.format_minor >= 3U
+            && region.section_count == kRequiredRegionSectionsV12.size()
+            && region.first_section_table_index
+                == 6U + i * kRequiredRegionSectionsV12.size();
+        if (region.region_id != i || region.region_x != i % regions_x
+            || region.region_y != i / regions_x || region.width == 0
+            || region.height == 0
+            || region.tile_count
+                != static_cast<std::uint32_t>(region.width) * region.height
+            || (!current_section_span && !legacy_v12_section_span)) {
             reason = "invalid_region_index";
             return false;
         }
@@ -867,18 +904,18 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     const RegionRecord& region,
     std::uint32_t section_type)
 {
-    const std::uint32_t begin = region.first_section_table_index;
-    const std::uint32_t end = begin + region.section_count;
-    if (end > entries.size()) {
-        return nullptr;
-    }
-    for (std::uint32_t i = begin; i < end; ++i) {
-        const SectionEntry& entry = entries[i];
-        if (entry.section_type == section_type && entry.parent_id == region.region_id) {
-            return &entry;
+    const SectionEntry* found = nullptr;
+    for (const SectionEntry& entry : entries) {
+        if (entry.section_type != section_type
+            || entry.parent_id != region.region_id) {
+            continue;
         }
+        if (found != nullptr) {
+            return nullptr;
+        }
+        found = &entry;
     }
-    return nullptr;
+    return found;
 }
 
 [[nodiscard]] bool BitsetValue(const std::vector<std::uint8_t>& data, const SectionEntry& section, std::uint32_t local_index)
@@ -924,6 +961,11 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     core.concealment.assign(tile_count, 0);
     core.structure_height.assign(tile_count, 0);
     core.structure_height_present = header.format_minor >= 1U;
+    core.structure_type.assign(tile_count, 0);
+    core.structure_type_present = header.format_minor >= 3U;
+    core.structure_micro_mask.assign(tile_count, 0);
+    core.structure_micro_geometry_present = header.format_minor >= 3U;
+    core.structure_micro_division = header.format_minor >= 3U ? 4 : 0;
     core.vegetation_type.assign(tile_count, 0);
     core.vegetation_height.assign(tile_count, 0);
     core.vegetation_type_present = header.format_minor >= 2U;
@@ -941,6 +983,12 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
         const SectionEntry* structure_height_grid = header.format_minor >= 1U
             ? FindRegionalSection(entries, region, kTypeStructureHeightGrid)
             : nullptr;
+        const SectionEntry* structure_type_grid = header.format_minor >= 3U
+            ? FindRegionalSection(entries, region, kTypeStructureTypeGrid)
+            : nullptr;
+        const SectionEntry* structure_micro_mask_grid = header.format_minor >= 3U
+            ? FindRegionalSection(entries, region, kTypeStructureMicroMaskGrid)
+            : nullptr;
         const SectionEntry* vegetation_type_grid = header.format_minor >= 2U
             ? FindRegionalSection(entries, region, kTypeVegetationTypeGrid)
             : nullptr;
@@ -951,6 +999,8 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             || collision_bits == nullptr || projectile_block_bits == nullptr || vision_block_bits == nullptr
             || cover_grid == nullptr || concealment_grid == nullptr
             || (header.format_minor >= 1U && structure_height_grid == nullptr)
+            || (header.format_minor >= 3U
+                && (structure_type_grid == nullptr || structure_micro_mask_grid == nullptr))
             || (header.format_minor >= 2U
                 && (vegetation_type_grid == nullptr || vegetation_height_grid == nullptr))) {
             core.fallback_reason = "missing_regional_grid";
@@ -968,6 +1018,12 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             || (structure_height_grid != nullptr
                 && (structure_height_grid->element_stride != 1U
                     || structure_height_grid->element_count != region.tile_count))
+            || (structure_type_grid != nullptr
+                && (structure_type_grid->element_stride != 1U
+                    || structure_type_grid->element_count != region.tile_count))
+            || (structure_micro_mask_grid != nullptr
+                && (structure_micro_mask_grid->element_stride != 2U
+                    || structure_micro_mask_grid->element_count != region.tile_count))
             || (vegetation_type_grid != nullptr
                 && (vegetation_type_grid->element_stride != 1U
                     || vegetation_type_grid->element_count != region.tile_count))
@@ -986,6 +1042,10 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             || cover_grid->stored_size != region.tile_count || concealment_grid->stored_size != region.tile_count
             || (structure_height_grid != nullptr
                 && structure_height_grid->stored_size != region.tile_count)
+            || (structure_type_grid != nullptr
+                && structure_type_grid->stored_size != region.tile_count)
+            || (structure_micro_mask_grid != nullptr
+                && structure_micro_mask_grid->stored_size != expected_i16_size)
             || (vegetation_type_grid != nullptr
                 && vegetation_type_grid->stored_size != region.tile_count)
             || (vegetation_height_grid != nullptr
@@ -1021,6 +1081,34 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
                 if (structure_height_grid != nullptr) {
                     core.structure_height[global_index] =
                         data[static_cast<std::size_t>(structure_height_grid->offset + local_index)];
+                }
+                if (structure_type_grid != nullptr && structure_micro_mask_grid != nullptr) {
+                    const std::uint8_t structure_type =
+                        data[static_cast<std::size_t>(structure_type_grid->offset + local_index)];
+                    std::uint16_t structure_micro_mask = 0;
+                    if (!ReadU16Le(
+                            data,
+                            structure_micro_mask_grid->offset
+                                + static_cast<std::uint64_t>(local_index) * 2U,
+                            structure_micro_mask)) {
+                        core.fallback_reason = "bad_structure_geometry_grid";
+                        return false;
+                    }
+                    const auto type = static_cast<RuntimeStructureType>(structure_type);
+                    const std::uint8_t structure_height = core.structure_height[global_index];
+                    const bool valid_cell = IsKnownStructureType(type)
+                        && ((type == RuntimeStructureType::kNone
+                                && structure_height == 0U && structure_micro_mask == 0U)
+                            || (IsVerticalStructureType(type)
+                                && structure_height > 0U && structure_micro_mask != 0U)
+                            || (IsFloorStructureType(type)
+                                && structure_height == 0U && structure_micro_mask == 0U));
+                    if (!valid_cell) {
+                        core.fallback_reason = "bad_structure_geometry_grid";
+                        return false;
+                    }
+                    core.structure_type[global_index] = structure_type;
+                    core.structure_micro_mask[global_index] = structure_micro_mask;
                 }
                 if (vegetation_type_grid != nullptr && vegetation_height_grid != nullptr) {
                     const std::uint8_t vegetation_type =

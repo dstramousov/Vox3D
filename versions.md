@@ -870,3 +870,11 @@
 - Replaced height-1/2/3-only diagnostics with generic structure tile, block, minimum, maximum, and average statistics.
 - Updated the 2D structure-height layer to visualize legal tall structures instead of marking values above 3 as errors.
 - Preserved dynamic world-height, voxel, mesh, collision, and binary-versus-JSON behavior for existing maps.
+
+## v0.5.93 -> v0.5.94
+
+- Added `map-package-map-v16` runtime loading for `structure_type` and sparse 4x4 `structure_micro_geometry` layers.
+- Added VXMAP runtime v1.3 support for regional structure-type and uint16 micro-mask sections while preserving v1.0-v1.2 compatibility.
+- Added strict structure type/height/micro-mask validation, JSON-to-VXMAP parity checks, and legacy zero-grid fallback for older maps.
+- Added structure micro-geometry diagnostics for typed tiles, full and partial masks, and occupied subtiles.
+- Kept existing full-tile structure rendering unchanged; micro-mesh generation is reserved for the next iteration.

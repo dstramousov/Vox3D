@@ -88,6 +88,11 @@ struct VxmapRuntimeCore {
     std::vector<std::uint8_t> concealment;
     std::vector<std::uint8_t> structure_height;
     bool structure_height_present = false;
+    std::vector<std::uint8_t> structure_type;
+    bool structure_type_present = false;
+    std::vector<std::uint16_t> structure_micro_mask;
+    bool structure_micro_geometry_present = false;
+    int structure_micro_division = 0;
     std::vector<std::uint8_t> vegetation_type;
     std::vector<std::uint8_t> vegetation_height;
     bool vegetation_type_present = false;
