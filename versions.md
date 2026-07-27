@@ -878,3 +878,11 @@
 - Added strict structure type/height/micro-mask validation, JSON-to-VXMAP parity checks, and legacy zero-grid fallback for older maps.
 - Added structure micro-geometry diagnostics for typed tiles, full and partial masks, and occupied subtiles.
 - Kept existing full-tile structure rendering unchanged; micro-mesh generation is reserved for the next iteration.
+
+## v0.5.94 -> v0.5.95
+
+- Added native 4x4 structure micro-mesh generation for `structure_micro_geometry` maps.
+- Removed legacy full-tile structure columns when authoritative micro geometry is present.
+- Integrated micro structures into simple, greedy, terrain, progressive, and dirty-rebuild mesh paths.
+- Preserved structure type metadata on generated faces and vertices for future fortress materials.
+- Kept legacy `structure_height` rendering unchanged for older maps without micro geometry.

@@ -201,6 +201,11 @@ VoxelWorld BuildVoxelWorld(const RuntimeMap& map, const ChunkGrid& chunks)
     }
 
     const std::uint64_t vertical_levels = VerticalLevelCount(levels);
+    const bool micro_structures = map.info.structure_type_loaded
+        && map.info.structure_micro_geometry_loaded
+        && map.info.structure_micro_division == 4
+        && map.structure_type.IsValid()
+        && map.structure_micro_mask.IsValid();
     int clamped_surface_levels = 0;
 
     world.columns.reserve(static_cast<std::size_t>(world.info.total_columns));
@@ -209,7 +214,8 @@ VoxelWorld BuildVoxelWorld(const RuntimeMap& map, const ChunkGrid& chunks)
             const std::size_t index = GridIndex(x, y, map.info.width);
             const bool blocked = map.collision.cells[index] != 0;
             const int raw_ground_surface_level = map.height.cells[index];
-            const std::uint8_t structure_height = map.structure_height.IsValid()
+            const std::uint8_t structure_height = !micro_structures
+                    && map.structure_height.IsValid()
                 ? map.structure_height.cells[index]
                 : 0U;
             const int raw_surface_level = raw_ground_surface_level + static_cast<int>(structure_height);

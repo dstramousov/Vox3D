@@ -1964,11 +1964,13 @@ void App::AdvanceProgressiveChunkBuild(float dt)
             workspace_.chunk_grid,
             selected);
         ChunkMeshCache batch_simple = BuildChunkMeshCacheForSelectedChunks(
+            workspace_.runtime_map,
             workspace_.voxel_world,
             workspace_.chunk_grid,
             ChunkMeshBuildMode::kSimpleFaces,
             selected);
         ChunkMeshCache batch_greedy = BuildChunkMeshCacheForSelectedChunks(
+            workspace_.runtime_map,
             workspace_.voxel_world,
             workspace_.chunk_grid,
             ChunkMeshBuildMode::kGreedyFaces,
@@ -2284,11 +2286,13 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     const SteadyTimePoint mesh_simple_start = Now();
     ChunkMeshCache next_simple_cache = partial_initial_mesh
         ? BuildChunkMeshCacheForSelectedChunks(
+            workspace_.runtime_map,
             next_voxel_world,
             next_chunk_grid,
             ChunkMeshBuildMode::kSimpleFaces,
             initial_chunk_selection)
         : BuildChunkMeshCache(
+            workspace_.runtime_map,
             next_voxel_world,
             next_chunk_grid,
             ChunkMeshBuildMode::kSimpleFaces);
@@ -2301,11 +2305,13 @@ void App::RebuildChunkPipeline(int chunk_size, std::string_view reason)
     const SteadyTimePoint mesh_greedy_start = Now();
     ChunkMeshCache next_greedy_cache = partial_initial_mesh
         ? BuildChunkMeshCacheForSelectedChunks(
+            workspace_.runtime_map,
             next_voxel_world,
             next_chunk_grid,
             ChunkMeshBuildMode::kGreedyFaces,
             initial_chunk_selection)
         : BuildChunkMeshCache(
+            workspace_.runtime_map,
             next_voxel_world,
             next_chunk_grid,
             ChunkMeshBuildMode::kGreedyFaces);
@@ -2491,7 +2497,8 @@ void App::RunDirtyRebuildProbe(std::string_view reason)
 
     const TileCoord tile = CenterTile(workspace_.runtime_map);
     const std::uint64_t marked = active_cache->MarkTileAndBorderChunksDirty(tile, workspace_.chunk_grid);
-    workspace_.last_mesh_rebuild = RebuildDirtyChunkMeshes(workspace_.voxel_world, workspace_.chunk_grid, active_cache);
+    workspace_.last_mesh_rebuild = RebuildDirtyChunkMeshes(
+        workspace_.runtime_map, workspace_.voxel_world, workspace_.chunk_grid, active_cache);
 
     if (workspace_.mesh_mode == ChunkMeshBuildMode::kGreedyFaces) {
         workspace_.greedy_chunk_meshes = ToChunkMeshBuildResult(workspace_.greedy_chunk_mesh_cache);

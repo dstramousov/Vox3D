@@ -83,6 +83,7 @@ struct MeshVertex {
     TerrainRenderPass terrain_pass = TerrainRenderPass::kBody;
     TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
     int level = 0;
+    std::uint8_t structure_type = 0;
 };
 
 /**
@@ -96,6 +97,7 @@ struct MeshFace {
     TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
     std::uint32_t first_vertex = 0;
     std::uint32_t first_index = 0;
+    std::uint8_t structure_type = 0;
 };
 
 /**

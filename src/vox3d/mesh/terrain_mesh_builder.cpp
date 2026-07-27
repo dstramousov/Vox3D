@@ -1,5 +1,7 @@
 #include "vox3d/mesh/terrain_mesh_builder.hpp"
 
+#include "vox3d/mesh/structure_micro_mesh_builder.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -395,6 +397,10 @@ void BuildStructureChunkMesh(
     ChunkMeshBuildInfo& info,
     Diagnostics& diagnostics)
 {
+    if (HasStructureMicroGeometry(map)) {
+        AppendStructureMicroChunkMesh(map, chunk, mesh, &info, diagnostics);
+        return;
+    }
     if (!map.structure_height.IsValid()) {
         return;
     }

@@ -3,6 +3,7 @@
 #include "vox3d/chunk/chunk_grid.hpp"
 #include "vox3d/core/result.hpp"
 #include "vox3d/core/types.hpp"
+#include "vox3d/map/runtime_map.hpp"
 #include "vox3d/mesh/mesh_data.hpp"
 #include "vox3d/voxel/voxel_world.hpp"
 
@@ -154,12 +155,14 @@ struct ChunkMeshCache {
 /**
  * @brief Builds a chunk mesh cache from a voxel world and chunk grid.
  *
+ * @param map Runtime map providing optional structure micro geometry.
  * @param world Source voxel world.
  * @param chunks Chunk grid describing chunk bounds.
  * @param mode Mesh generation algorithm used for all cache entries.
  * @return Fully populated mesh cache with all dirty flags cleared.
  */
 [[nodiscard]] ChunkMeshCache BuildChunkMeshCache(
+    const RuntimeMap& map,
     const VoxelWorld& world,
     const ChunkGrid& chunks,
     ChunkMeshBuildMode mode);
@@ -171,6 +174,7 @@ struct ChunkMeshCache {
  * and UI code can continue to consume a full-grid cache while startup builds
  * only the near-camera subset.
  *
+ * @param map Runtime map providing optional structure micro geometry.
  * @param world Source voxel world.
  * @param chunks Chunk grid describing chunk bounds.
  * @param mode Mesh generation algorithm used for selected cache entries.
@@ -178,6 +182,7 @@ struct ChunkMeshCache {
  * @return Partially populated mesh cache with unselected chunks left empty.
  */
 [[nodiscard]] ChunkMeshCache BuildChunkMeshCacheForSelectedChunks(
+    const RuntimeMap& map,
     const VoxelWorld& world,
     const ChunkGrid& chunks,
     ChunkMeshBuildMode mode,
@@ -186,12 +191,14 @@ struct ChunkMeshCache {
 /**
  * @brief Rebuilds only chunks marked dirty in a mesh cache.
  *
+ * @param map Runtime map providing optional structure micro geometry.
  * @param world Source voxel world.
  * @param chunks Chunk grid describing chunk bounds.
  * @param cache Cache to update in place. Must not be nullptr.
  * @return Dirty rebuild report with saved-work diagnostics.
  */
 [[nodiscard]] ChunkMeshRebuildReport RebuildDirtyChunkMeshes(
+    const RuntimeMap& map,
     const VoxelWorld& world,
     const ChunkGrid& chunks,
     ChunkMeshCache* cache);

@@ -1,6 +1,7 @@
 #include "vox3d/mesh/chunk_mesh_cache.hpp"
 
 #include "vox3d/mesh/chunk_mesh_builder.hpp"
+#include "vox3d/mesh/structure_micro_mesh_builder.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -131,6 +132,46 @@ void AppendDiagnostics(const Diagnostics& source, Diagnostics& target)
     }
 }
 
+void AppendMicroGeometryToBuild(
+    const RuntimeMap& map,
+    const ChunkGrid& chunks,
+    ChunkMeshBuildResult& build)
+{
+    if (!HasStructureMicroGeometry(map)
+        || build.chunks.size() != chunks.chunks.size()) {
+        return;
+    }
+
+    for (std::size_t index = 0; index < build.chunks.size(); ++index) {
+        ChunkMeshData& mesh = build.chunks[index];
+        const bool was_empty = mesh.faces.empty();
+        const std::size_t old_faces = mesh.faces.size();
+        const std::size_t old_vertices = mesh.vertices.size();
+        const std::size_t old_indices = mesh.indices.size();
+        AppendStructureMicroChunkMesh(
+            map,
+            chunks.chunks[index],
+            mesh,
+            &build.info,
+            build.diagnostics);
+        build.info.visible_faces += mesh.faces.size() - old_faces;
+        build.info.vertices += mesh.vertices.size() - old_vertices;
+        build.info.indices += mesh.indices.size() - old_indices;
+        if (was_empty && !mesh.faces.empty()) {
+            ++build.info.non_empty_chunks;
+        }
+    }
+}
+
+void AppendMicroGeometryToChunk(
+    const RuntimeMap& map,
+    const ChunkInfo& chunk,
+    ChunkMeshData& mesh,
+    Diagnostics& diagnostics)
+{
+    AppendStructureMicroChunkMesh(map, chunk, mesh, nullptr, diagnostics);
+}
+
 }  // namespace
 
 bool ChunkMeshCacheInfo::IsValid() const
@@ -236,10 +277,15 @@ void ChunkMeshCache::ClearDirty()
     info.dirty_chunks = 0;
 }
 
-ChunkMeshCache BuildChunkMeshCache(const VoxelWorld& world, const ChunkGrid& chunks, ChunkMeshBuildMode mode)
+ChunkMeshCache BuildChunkMeshCache(
+    const RuntimeMap& map,
+    const VoxelWorld& world,
+    const ChunkGrid& chunks,
+    ChunkMeshBuildMode mode)
 {
     ChunkMeshCache cache;
     ChunkMeshBuildResult build = BuildChunkMeshes(world, chunks, mode);
+    AppendMicroGeometryToBuild(map, chunks, build);
     CopyBuildInfo(build.info, cache.info);
     cache.chunks = std::move(build.chunks);
     cache.dirty.assign(cache.chunks.size(), 0);
@@ -254,6 +300,7 @@ ChunkMeshCache BuildChunkMeshCache(const VoxelWorld& world, const ChunkGrid& chu
 
 
 ChunkMeshCache BuildChunkMeshCacheForSelectedChunks(
+    const RuntimeMap& map,
     const VoxelWorld& world,
     const ChunkGrid& chunks,
     ChunkMeshBuildMode mode,
@@ -289,6 +336,7 @@ ChunkMeshCache BuildChunkMeshCacheForSelectedChunks(
         }
 
         ChunkMeshBuildChunkResult chunk_result = BuildChunkMeshForChunk(world, chunk, mode);
+        AppendMicroGeometryToChunk(map, chunk, chunk_result.mesh, chunk_result.diagnostics);
         AppendDiagnostics(chunk_result.diagnostics, cache.diagnostics);
         if (!chunk_result.IsValid()) {
             ChunkMeshData empty_mesh;
@@ -307,7 +355,11 @@ ChunkMeshCache BuildChunkMeshCacheForSelectedChunks(
     return cache;
 }
 
-ChunkMeshRebuildReport RebuildDirtyChunkMeshes(const VoxelWorld& world, const ChunkGrid& chunks, ChunkMeshCache* cache)
+ChunkMeshRebuildReport RebuildDirtyChunkMeshes(
+    const RuntimeMap& map,
+    const VoxelWorld& world,
+    const ChunkGrid& chunks,
+    ChunkMeshCache* cache)
 {
     ChunkMeshRebuildReport report;
     report.attempted = true;
@@ -351,7 +403,10 @@ ChunkMeshRebuildReport RebuildDirtyChunkMeshes(const VoxelWorld& world, const Ch
             continue;
         }
 
-        ChunkMeshBuildChunkResult chunk_result = BuildChunkMeshForChunk(world, chunks.chunks[index], cache->info.mode);
+        ChunkMeshBuildChunkResult chunk_result = BuildChunkMeshForChunk(
+            world, chunks.chunks[index], cache->info.mode);
+        AppendMicroGeometryToChunk(
+            map, chunks.chunks[index], chunk_result.mesh, chunk_result.diagnostics);
         AppendDiagnostics(chunk_result.diagnostics, report.diagnostics);
         if (!chunk_result.IsValid()) {
             continue;
