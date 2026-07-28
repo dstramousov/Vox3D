@@ -4,6 +4,7 @@
 #include "confirm_dialog.hpp"
 #include "menu.hpp"
 #include "process_metrics.hpp"
+#include "vox3d/render/adaptive_tree_visibility.hpp"
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "vox3d/render_raylib/free_fly_camera.hpp"
 #include "vox3d/render_raylib/gpu_diagnostics.hpp"
@@ -226,6 +227,9 @@ void DrawStatsOverlay(
  * @param labels Localized labels used for the FPS and memory prefixes.
  * @param layout Cached UI layout.
  * @param memory Latest cached process memory snapshot.
+ * @param gpu_diagnostics Latest stable GPU frame diagnostics.
+ * @param tree_visibility Adaptive detailed-tree visibility state.
+ * @param vegetation_stats Last detailed-tree draw and cull statistics.
  * @param version Application version shown in the status bar.
  */
 void DrawFpsCounter(
@@ -234,6 +238,8 @@ void DrawFpsCounter(
     const UiLayoutCache& layout,
     const ProcessMemoryInfo& memory,
     const GpuDiagnosticsSnapshot& gpu_diagnostics,
+    const AdaptiveTreeVisibilityStatus& tree_visibility,
+    const RaylibVegetationMeshStats& vegetation_stats,
     std::string_view version);
 
 /**

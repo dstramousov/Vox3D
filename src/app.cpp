@@ -951,11 +951,8 @@ bool App::Initialize()
         config_.vegetation_models_enabled,
         config_.vegetation_model_tree_limit,
         config_.vegetation_model_asset_directory,
-        config_.vegetation_model_lod_near_distance,
-        config_.vegetation_model_lod_near_transition_width,
-        config_.vegetation_model_lod_far_distance,
-        config_.vegetation_model_lod_far_transition_width,
         config_.vegetation_model_cull_distance,
+        config_.vegetation_model_cull_transition_width,
         config_.vegetation_altitude_zoning_enabled,
         config_.vegetation_altitude_elevations,
         config_.vegetation_altitude_deciduous,
@@ -969,7 +966,8 @@ bool App::Initialize()
         config_.vegetation_conifer_cool,
         config_.vegetation_conifer_brown,
         config_.vegetation_lighting_enabled,
-        Vector3{config_.vegetation_light_direction_x, config_.vegetation_light_direction_y, config_.vegetation_light_direction_z},
+        Vector3{config_.vegetation_light_direction_x, config_.vegetation_light_direction_y,
+            config_.vegetation_light_direction_z},
         config_.vegetation_light_ambient,
         config_.vegetation_light_diffuse,
         config_.vegetation_light_hemisphere,
@@ -978,19 +976,38 @@ bool App::Initialize()
     };
     const bool tree_assets_ready = chunk_mesh_preview_.ConfigureExperimentalTrees(
         tree_options);
+    adaptive_tree_visibility_.Configure(AdaptiveTreeVisibilityConfig{
+        config_.vegetation_adaptive_cull_enabled
+            && config_.vegetation_models_enabled
+            && tree_assets_ready,
+        config_.vegetation_model_cull_distance,
+        config_.vegetation_adaptive_cull_min_distance,
+        config_.vegetation_adaptive_cull_max_distance,
+        config_.vegetation_adaptive_cull_increase_step,
+        config_.vegetation_adaptive_cull_decrease_step,
+        config_.vegetation_adaptive_cull_increase_delay_seconds,
+        config_.vegetation_adaptive_cull_decrease_delay_seconds,
+        config_.vegetation_adaptive_cull_cooldown_seconds,
+        config_.vegetation_adaptive_cull_low_frame_ratio,
+        config_.vegetation_adaptive_cull_high_frame_ratio,
+        config_.target_fps,
+    });
     logger_.Info(
         "vegetation_models",
         "enabled=" + std::string(config_.vegetation_models_enabled ? "true" : "false")
             + " ready=" + std::string(tree_assets_ready ? "true" : "false")
             + " limit=" + std::to_string(config_.vegetation_model_tree_limit)
             + " directory=\"" + config_.vegetation_model_asset_directory.string() + "\""
-            + " lod_near=" + std::to_string(config_.vegetation_model_lod_near_distance)
-            + " lod_near_transition="
-            + std::to_string(config_.vegetation_model_lod_near_transition_width)
-            + " lod_far=" + std::to_string(config_.vegetation_model_lod_far_distance)
-            + " lod_far_transition="
-            + std::to_string(config_.vegetation_model_lod_far_transition_width)
-            + " cull=" + std::to_string(config_.vegetation_model_cull_distance));
+            + " detailed_only=true"
+            + " cull=" + std::to_string(config_.vegetation_model_cull_distance)
+            + " cull_transition="
+            + std::to_string(config_.vegetation_model_cull_transition_width)
+            + " adaptive="
+            + std::string(adaptive_tree_visibility_.Status().enabled ? "true" : "false")
+            + " adaptive_min="
+            + std::to_string(config_.vegetation_adaptive_cull_min_distance)
+            + " adaptive_max="
+            + std::to_string(config_.vegetation_adaptive_cull_max_distance));
     gpu_diagnostics_.Initialize();
     {
         const GpuDiagnosticsSnapshot& gpu = gpu_diagnostics_.Snapshot();
@@ -1825,6 +1842,30 @@ void App::Update(float dt)
 
     UpdateVisibilityStats();
 
+    const GpuDiagnosticsSnapshot& gpu = gpu_diagnostics_.Snapshot();
+    const AdaptiveTreeVisibilitySample tree_sample{
+        screen_ == AppScreen::kWorkspace
+            && workspace_.show_3d_preview
+            && workspace_.show_3d_object_trees
+            && chunk_mesh_preview_.IsUploaded(),
+        gpu.gpu_sample_available,
+        gpu.gpu_frame_average_ms,
+        gpu.cpu_frame_average_ms,
+    };
+    if (adaptive_tree_visibility_.Update(tree_sample, dt)) {
+        const AdaptiveTreeVisibilityStatus& status =
+            adaptive_tree_visibility_.Status();
+        chunk_mesh_preview_.SetExperimentalTreeCullDistance(
+            status.current_distance);
+        logger_.Info(
+            "adaptive_tree_visibility",
+            "decision=" + std::string(ToString(status.decision))
+                + " distance=" + std::to_string(status.current_distance)
+                + " frame_ms=" + std::to_string(status.sampled_frame_ms)
+                + " source="
+                + std::string(status.using_gpu_sample ? "gpu" : "cpu"));
+    }
+
     if (!config_.window_resizable || !IsWindowResized()) {
         return;
     }
@@ -2114,6 +2155,8 @@ void App::Draw()
         layout_cache_,
         process_memory_,
         gpu_diagnostics_.Snapshot(),
+        adaptive_tree_visibility_.Status(),
+        chunk_mesh_preview_.VegetationStats(),
         config_.version);
     if (config_.debug_ui) {
         DrawDebugOverlay(UiFonts(), config_, window_config_, screen_, dialog_.type, main_menu_.State(), workspace_, hovered_item_, labels_, layout_cache_);

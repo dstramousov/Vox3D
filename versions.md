@@ -914,3 +914,20 @@
 - Normalized medium and far LOD width, height, and ground contact against each tree's selected near model.
 - Matched simplified LOD trunk and foliage base colors to the corresponding near-model species palettes.
 - Preserved deterministic transition bands, nominal LOD radii, cull distance, tree placement, and altitude zoning.
+
+
+## v0.5.99 -> v0.5.100
+
+- Added explicit deciduous, conifer, and dead-conifer visual families for tree LOD selection.
+- Kept dead conifers on their original detailed model at every visible distance instead of replacing them with a live green conifer LOD.
+- Normalized detailed, medium, and far live-tree materials to the same family palette before applying each instance's stable foliage tint.
+- Added per-frame near, medium, far, dead-original, and culled GLB tree diagnostics.
+- Preserved existing LOD radii, transition bands, tree placement, altitude zoning, and cull distance.
+
+## v0.5.100 -> v0.5.101
+
+- Removed the two universal medium/far tree LOD model families from runtime loading and drawing.
+- Kept each visible tree on its original detailed model so distance changes no longer alter species, silhouette, or palette.
+- Added adaptive detailed-tree culling driven by stable GPU frame time with CPU fallback, hysteresis, cooldown, and asymmetric quality steps.
+- Added deterministic per-tree cull-distance dispersion so the distant forest thins gradually instead of ending on a circular boundary.
+- Added configurable adaptive-cull limits and timing thresholds plus HUD diagnostics for current radius and drawn/culled trees.

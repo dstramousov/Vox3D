@@ -1,5 +1,6 @@
 #include "config_loader.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <charconv>
@@ -533,6 +534,24 @@ void NormalizeConfig(AppConfig& config, std::vector<std::string>& diagnostics)
         diagnostics.push_back("config: clamped ui.font_scale to 2.00");
         config.ui_font_scale = 2.00F;
     }
+    if (config.vegetation_adaptive_cull_min_distance
+        > config.vegetation_adaptive_cull_max_distance) {
+        diagnostics.push_back(
+            "config: swapped vegetation_models.adaptive_cull min/max distances");
+        std::swap(
+            config.vegetation_adaptive_cull_min_distance,
+            config.vegetation_adaptive_cull_max_distance);
+    }
+    config.vegetation_model_cull_distance = std::clamp(
+        config.vegetation_model_cull_distance,
+        config.vegetation_adaptive_cull_min_distance,
+        config.vegetation_adaptive_cull_max_distance);
+    config.vegetation_adaptive_cull_low_frame_ratio = std::clamp(
+        config.vegetation_adaptive_cull_low_frame_ratio, 0.05F, 0.95F);
+    config.vegetation_adaptive_cull_high_frame_ratio = std::clamp(
+        config.vegetation_adaptive_cull_high_frame_ratio,
+        config.vegetation_adaptive_cull_low_frame_ratio + 0.01F,
+        1.50F);
 }
 
 }  // namespace
@@ -570,11 +589,18 @@ bool LoadAppConfigFromFile(
     AssignBool(*root, {"vegetation_models", "enabled"}, config.vegetation_models_enabled, "vegetation_models.enabled", diagnostics);
     AssignNonNegativeInt(*root, {"vegetation_models", "tree_limit"}, config.vegetation_model_tree_limit, "vegetation_models.tree_limit", diagnostics);
     AssignPath(*root, {"vegetation_models", "asset_directory"}, config.vegetation_model_asset_directory, "vegetation_models.asset_directory", diagnostics);
-    AssignPositiveFloat(*root, {"vegetation_models", "lod_near_distance"}, config.vegetation_model_lod_near_distance, "vegetation_models.lod_near_distance", diagnostics);
-    AssignNonNegativeFloat(*root, {"vegetation_models", "lod_near_transition_width"}, config.vegetation_model_lod_near_transition_width, "vegetation_models.lod_near_transition_width", diagnostics);
-    AssignPositiveFloat(*root, {"vegetation_models", "lod_far_distance"}, config.vegetation_model_lod_far_distance, "vegetation_models.lod_far_distance", diagnostics);
-    AssignNonNegativeFloat(*root, {"vegetation_models", "lod_far_transition_width"}, config.vegetation_model_lod_far_transition_width, "vegetation_models.lod_far_transition_width", diagnostics);
     AssignPositiveFloat(*root, {"vegetation_models", "cull_distance"}, config.vegetation_model_cull_distance, "vegetation_models.cull_distance", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "cull_transition_width"}, config.vegetation_model_cull_transition_width, "vegetation_models.cull_transition_width", diagnostics);
+    AssignBool(*root, {"vegetation_models", "adaptive_cull", "enabled"}, config.vegetation_adaptive_cull_enabled, "vegetation_models.adaptive_cull.enabled", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "adaptive_cull", "min_distance"}, config.vegetation_adaptive_cull_min_distance, "vegetation_models.adaptive_cull.min_distance", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "adaptive_cull", "max_distance"}, config.vegetation_adaptive_cull_max_distance, "vegetation_models.adaptive_cull.max_distance", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "adaptive_cull", "increase_step"}, config.vegetation_adaptive_cull_increase_step, "vegetation_models.adaptive_cull.increase_step", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "adaptive_cull", "decrease_step"}, config.vegetation_adaptive_cull_decrease_step, "vegetation_models.adaptive_cull.decrease_step", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "adaptive_cull", "increase_delay_seconds"}, config.vegetation_adaptive_cull_increase_delay_seconds, "vegetation_models.adaptive_cull.increase_delay_seconds", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "adaptive_cull", "decrease_delay_seconds"}, config.vegetation_adaptive_cull_decrease_delay_seconds, "vegetation_models.adaptive_cull.decrease_delay_seconds", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "adaptive_cull", "cooldown_seconds"}, config.vegetation_adaptive_cull_cooldown_seconds, "vegetation_models.adaptive_cull.cooldown_seconds", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "adaptive_cull", "low_frame_ratio"}, config.vegetation_adaptive_cull_low_frame_ratio, "vegetation_models.adaptive_cull.low_frame_ratio", diagnostics);
+    AssignPositiveFloat(*root, {"vegetation_models", "adaptive_cull", "high_frame_ratio"}, config.vegetation_adaptive_cull_high_frame_ratio, "vegetation_models.adaptive_cull.high_frame_ratio", diagnostics);
     AssignBool(*root, {"vegetation_models", "altitude_zoning", "enabled"}, config.vegetation_altitude_zoning_enabled, "vegetation_models.altitude_zoning.enabled", diagnostics);
     constexpr std::array<std::string_view, 6> kZoneNames{"lowland", "hills", "mountain", "upper", "treeline", "summit"};
     for (std::size_t zone = 0; zone < kZoneNames.size(); ++zone) {

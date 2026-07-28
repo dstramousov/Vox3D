@@ -2721,6 +2721,13 @@ struct StatsOverlaySection {
         {"Drawn pillars", std::to_string(vegetation_stats.last_drawn_pillars)},
         {"GLB assets / instances", std::to_string(vegetation_stats.experimental_tree_assets)
             + " / " + std::to_string(vegetation_stats.experimental_tree_instances)},
+        {"GLB drawn / culled",
+            std::to_string(vegetation_stats.last_experimental_tree_drawn_instances)
+                + " / "
+                + std::to_string(vegetation_stats.last_experimental_tree_culled_instances)},
+        {"Tree cull radius",
+            std::to_string(static_cast<int>(std::lround(
+                vegetation_stats.experimental_tree_cull_distance)))},
         {"GLB draw calls", std::to_string(vegetation_stats.last_experimental_tree_draw_calls)},
     });
     add("Mesh Comparison", {
@@ -3749,6 +3756,8 @@ void DrawFpsCounter(
     const UiLayoutCache& layout,
     const ProcessMemoryInfo& memory,
     const GpuDiagnosticsSnapshot& gpu_diagnostics,
+    const AdaptiveTreeVisibilityStatus& tree_visibility,
+    const RaylibVegetationMeshStats& vegetation_stats,
     std::string_view version)
 {
     struct StatusSegment {
@@ -3761,16 +3770,27 @@ void DrawFpsCounter(
     const std::string memory_value = memory.available
         ? FormatMemory(memory.resident_bytes, labels)
         : labels.debug_none;
-    const std::array<StatusSegment, 8> segments{{
+    std::vector<StatusSegment> segments{
         {"v", false},
         {std::string(version), true},
         {" | " + labels.fps_label + ": ", false},
         {std::to_string(GetFPS()), true},
         {" | GPU: ", false},
         {GpuFrameStatusText(gpu_diagnostics), true},
-        {" | " + labels.memory_label + ": ", false},
-        {memory_value, true},
-    }};
+    };
+    if (tree_visibility.enabled) {
+        segments.push_back(StatusSegment{" | TREE: ", false});
+        segments.push_back(StatusSegment{
+            std::to_string(static_cast<int>(std::lround(
+                tree_visibility.current_distance)))
+                + " "
+                + std::to_string(vegetation_stats.last_experimental_tree_drawn_instances)
+                + "/"
+                + std::to_string(vegetation_stats.last_experimental_tree_culled_instances),
+            true});
+    }
+    segments.push_back(StatusSegment{" | " + labels.memory_label + ": ", false});
+    segments.push_back(StatusSegment{memory_value, true});
 
     const float spacing = FontSpacing(metrics.fps_font_size);
     float total_width = 0.0F;
@@ -3785,7 +3805,8 @@ void DrawFpsCounter(
     const float y = status.height > 1.0F
         ? status.y + (status.height - text_height) * 0.5F
         : metrics.screen_padding;
-    float x = static_cast<float>(metrics.window_width) - total_width - metrics.screen_padding * 0.35F;
+    float x = static_cast<float>(metrics.window_width)
+        - total_width - metrics.screen_padding * 0.35F;
     const Color normal_color = status.height > 1.0F ? kEditorStatusText : kText;
     for (const StatusSegment& segment : segments) {
         DrawTextEx(

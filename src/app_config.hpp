@@ -8,7 +8,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.94-dev"
+#define VOX3D_VERSION "0.5.101-dev"
 #endif
 
 namespace vox3d {
@@ -27,11 +27,18 @@ struct AppConfig {
     bool vegetation_models_enabled = false;
     int vegetation_model_tree_limit = 0;
     std::filesystem::path vegetation_model_asset_directory = "assets/models/trees";
-    float vegetation_model_lod_near_distance = 70.0F;
-    float vegetation_model_lod_near_transition_width = 24.0F;
-    float vegetation_model_lod_far_distance = 140.0F;
-    float vegetation_model_lod_far_transition_width = 36.0F;
-    float vegetation_model_cull_distance = 220.0F;
+    float vegetation_model_cull_distance = 320.0F;
+    float vegetation_model_cull_transition_width = 64.0F;
+    bool vegetation_adaptive_cull_enabled = true;
+    float vegetation_adaptive_cull_min_distance = 160.0F;
+    float vegetation_adaptive_cull_max_distance = 2048.0F;
+    float vegetation_adaptive_cull_increase_step = 32.0F;
+    float vegetation_adaptive_cull_decrease_step = 64.0F;
+    float vegetation_adaptive_cull_increase_delay_seconds = 5.0F;
+    float vegetation_adaptive_cull_decrease_delay_seconds = 1.0F;
+    float vegetation_adaptive_cull_cooldown_seconds = 2.0F;
+    float vegetation_adaptive_cull_low_frame_ratio = 0.60F;
+    float vegetation_adaptive_cull_high_frame_ratio = 0.82F;
     bool vegetation_altitude_zoning_enabled = true;
     std::array<float, 6> vegetation_altitude_elevations{-1.0F, 5.0F, 10.0F, 15.0F, 18.0F, 20.0F};
     std::array<float, 6> vegetation_altitude_deciduous{0.70F, 0.50F, 0.20F, 0.05F, 0.00F, 0.00F};

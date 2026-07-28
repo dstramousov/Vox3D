@@ -269,6 +269,9 @@ struct RaylibVegetationMeshStats {
     std::uint64_t experimental_tree_assets = 0;
     std::uint64_t experimental_tree_instances = 0;
     std::uint64_t last_experimental_tree_draw_calls = 0;
+    std::uint64_t last_experimental_tree_drawn_instances = 0;
+    std::uint64_t last_experimental_tree_culled_instances = 0;
+    float experimental_tree_cull_distance = 0.0F;
 
     /**
      * @brief Returns true when at least one vegetation model is uploaded.
@@ -285,11 +288,8 @@ struct RaylibExperimentalTreeOptions {
     bool enabled = false;
     int tree_limit = 0;
     std::filesystem::path asset_directory = "assets/models/trees";
-    float lod_near_distance = 70.0F;
-    float lod_near_transition_width = 24.0F;
-    float lod_far_distance = 140.0F;
-    float lod_far_transition_width = 36.0F;
-    float cull_distance = 220.0F;
+    float cull_distance = 320.0F;
+    float cull_transition_width = 64.0F;
     bool altitude_zoning_enabled = true;
     std::array<float, 6> altitude_elevations{-1.0F, 5.0F, 10.0F, 15.0F, 18.0F, 20.0F};
     std::array<float, 6> altitude_deciduous{0.70F, 0.50F, 0.20F, 0.05F, 0.00F, 0.00F};
@@ -389,6 +389,13 @@ public:
      */
     [[nodiscard]] bool ConfigureExperimentalTrees(
         const RaylibExperimentalTreeOptions& options);
+
+    /**
+     * @brief Updates the detailed-tree culling distance without reloading assets.
+     *
+     * @param distance New non-negative culling distance in world units.
+     */
+    void SetExperimentalTreeCullDistance(float distance);
 
     /**
      * @brief Uploads chunk mesh data into raylib Model resources.
@@ -569,12 +576,6 @@ private:
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
     std::vector<Model> experimental_tree_models_;
-    // x = maximum horizontal extent, y = vertical extent, z = minimum local Y.
-    std::vector<Vector3> experimental_tree_model_metrics_;
-    std::array<Model, 2> experimental_tree_medium_lod_models_{};
-    std::array<Vector3, 2> experimental_tree_medium_lod_metrics_{};
-    std::array<Model, 2> experimental_tree_far_lod_models_{};
-    std::array<Vector3, 2> experimental_tree_far_lod_metrics_{};
     Shader experimental_tree_instancing_shader_{};
     std::vector<RaylibExperimentalTreeInstance> experimental_tree_instances_;
     RaylibExperimentalTreeOptions experimental_tree_options_;

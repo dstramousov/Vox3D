@@ -5,6 +5,7 @@
 #include "logger.hpp"
 #include "menu.hpp"
 #include "process_metrics.hpp"
+#include "vox3d/render/adaptive_tree_visibility.hpp"
 #include "vox3d/render_raylib/chunk_mesh_preview.hpp"
 #include "vox3d/render_raylib/free_fly_camera.hpp"
 #include "vox3d/render_raylib/map_2d_view.hpp"
@@ -159,6 +160,7 @@ private:
     Map2DView map_2d_view_;
     RaylibChunkMeshPreview chunk_mesh_preview_;
     GpuDiagnostics gpu_diagnostics_;
+    AdaptiveTreeVisibilityController adaptive_tree_visibility_;
     FreeFlyCameraController preview_camera_;
     std::string hovered_item_ = "none";
     UiLayoutCache layout_cache_{};

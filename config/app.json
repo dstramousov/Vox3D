@@ -13,11 +13,7 @@
     "enabled": true,
     "tree_limit": 0,
     "asset_directory": "assets/models/trees",
-    "lod_near_distance": 70.0,
-    "lod_near_transition_width": 24.0,
-    "lod_far_distance": 140.0,
-    "lod_far_transition_width": 36.0,
-    "cull_distance": 220.0,
+    "cull_distance": 320.0,
     "altitude_zoning": {
       "enabled": true,
       "lowland": {
@@ -118,6 +114,19 @@
       "hemisphere": 0.1,
       "crown_bottom_shading": 0.18,
       "flat_foliage_shading": 0.9
+    },
+    "cull_transition_width": 64.0,
+    "adaptive_cull": {
+      "enabled": true,
+      "min_distance": 160.0,
+      "max_distance": 2048.0,
+      "increase_step": 32.0,
+      "decrease_step": 64.0,
+      "increase_delay_seconds": 5.0,
+      "decrease_delay_seconds": 1.0,
+      "cooldown_seconds": 2.0,
+      "low_frame_ratio": 0.6,
+      "high_frame_ratio": 0.82
     }
   },
   "window": {
