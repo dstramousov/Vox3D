@@ -401,6 +401,38 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
     return "Val " + ValidationStatusLabel(workspace_state.passability_validation_status);
 }
 
+[[nodiscard]] bool HasCompactPathStatus(const WorkspaceState& workspace_state)
+{
+    return workspace_state.path_pick_mode != WorkspacePathPickMode::kSelect
+        || workspace_state.path_probe.IsValid()
+        || workspace_state.has_path_start
+        || workspace_state.has_path_goal;
+}
+
+[[nodiscard]] bool HasCompactValidationStatus(const WorkspaceState& workspace_state)
+{
+    return workspace_state.passability_validation_status
+        == WorkspaceValidationStatus::kDone;
+}
+
+[[nodiscard]] std::string_view AdaptiveTreeHudState(
+    AdaptiveTreeVisibilityDecision decision)
+{
+    switch (decision) {
+        case AdaptiveTreeVisibilityDecision::kDisabled:
+            return "OFF";
+        case AdaptiveTreeVisibilityDecision::kWaitingForSample:
+            return "WAIT";
+        case AdaptiveTreeVisibilityDecision::kHolding:
+            return "HOLD";
+        case AdaptiveTreeVisibilityDecision::kIncreased:
+            return "UP";
+        case AdaptiveTreeVisibilityDecision::kDecreased:
+            return "DOWN";
+    }
+    return "UNKNOWN";
+}
+
 [[nodiscard]] std::string_view Map2DBaseLayerLabel(Map2DBaseLayer layer)
 {
     switch (layer) {
@@ -553,7 +585,6 @@ void DrawMap2DLegend(
     Map2DViewStatus map_2d_status,
     const UiLabels& labels)
 {
-    const std::string preview_mode = workspace_state.show_3d_preview ? "3D" : "2D";
     if (!workspace_state.show_3d_preview) {
         std::string status = labels.workspace_status_ready + " | 2D | Layer "
             + std::string(Map2DBaseLayerLabel(workspace_state.map_2d_base_layer));
@@ -579,32 +610,25 @@ void DrawMap2DLegend(
         return status;
     }
     if (!workspace_state.chunk_meshes.IsValid()) {
-        return labels.workspace_status_ready + " | " + preview_mode + " | " + MapStatusLabel(workspace_state.map, labels);
-    }
-    if (workspace_state.show_3d_preview && workspace_state.visibility_stats.resident_chunks > 0) {
-        return labels.workspace_status_ready + " | " + preview_mode + " | " + MeshModeLabel(workspace_state.mesh_mode)
-            + " | " + ColorModeLabel(workspace_state.color_mode)
-            + " | " + VisibilityModeLabel(workspace_state.visibility_mode)
-            + " | Visible " + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
-            + std::to_string(workspace_state.visibility_stats.resident_chunks)
-            + " | Resident " + std::to_string(workspace_state.progressive_chunks_built) + "/"
-            + std::to_string(workspace_state.progressive_chunks_total)
-            + " | Drawn " + std::to_string(workspace_state.visibility_stats.drawn_models)
-            + " | Faces " + std::to_string(workspace_state.visibility_stats.drawn_faces)
-            + " | " + PathStatusCompactText(workspace_state)
-            + " | " + ValidationStatusCompactText(workspace_state);
+        return "Map " + MapStatusLabel(workspace_state.map, labels);
     }
 
-    return labels.workspace_status_ready + " | " + preview_mode + " | " + MeshModeLabel(workspace_state.mesh_mode)
-        + " | " + ColorModeLabel(workspace_state.color_mode)
-        + " | Chunk " + std::to_string(workspace_state.chunk_size_tiles)
-        + " | Faces " + std::to_string(workspace_state.mesh_stats.active_faces)
-        + " | Models " + std::to_string(workspace_state.mesh_stats.draw_models)
-        + " | Resident " + std::to_string(workspace_state.progressive_chunks_built) + "/"
+    const std::uint64_t face_count = workspace_state.visibility_stats.resident_chunks > 0
+        ? workspace_state.visibility_stats.drawn_faces
+        : workspace_state.mesh_stats.active_faces;
+    std::string status = "Chunks "
+        + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
+        + std::to_string(workspace_state.visibility_stats.resident_chunks)
+        + " | Loaded " + std::to_string(workspace_state.progressive_chunks_built) + "/"
         + std::to_string(workspace_state.progressive_chunks_total)
-        + " | Saved " + CompactPercent(workspace_state.mesh_stats.ActiveReductionRatio())
-        + " | " + PathStatusCompactText(workspace_state)
-        + " | " + ValidationStatusCompactText(workspace_state);
+        + " | Faces " + std::to_string(face_count);
+    if (HasCompactPathStatus(workspace_state)) {
+        status += " | " + PathStatusCompactText(workspace_state);
+    }
+    if (HasCompactValidationStatus(workspace_state)) {
+        status += " | " + ValidationStatusCompactText(workspace_state);
+    }
+    return status;
 }
 
 void PushMapStats(std::vector<std::string>& lines, const WorkspaceState& workspace_state, const UiLabels& labels)
@@ -3741,12 +3765,27 @@ void DrawWorkspace(
         ? map_2d_view->Status()
         : Map2DViewStatus{};
     const std::string status = CompactStatusText(workspace_state, map_2d_status, labels);
+    const float status_font_size = metrics.workspace_status_font_size;
+    const float status_spacing = FontSpacing(status_font_size);
+    const float status_x = workspace.status_bar.x + metrics.screen_padding * 0.35F;
+    const float max_status_width = std::max(
+        0.0F,
+        workspace.status_bar.width * 0.45F - metrics.screen_padding * 0.70F);
+    const std::string fitted_status = EllipsizeToWidth(
+        fonts.text,
+        status,
+        status_font_size,
+        status_spacing,
+        max_status_width);
     DrawTextEx(
         fonts.text,
-        status.c_str(),
-        Vector2{metrics.screen_padding * 0.35F, workspace.status_bar.y + (workspace.status_bar.height - metrics.workspace_status_font_size) * 0.5F},
-        metrics.workspace_status_font_size,
-        FontSpacing(metrics.workspace_status_font_size),
+        fitted_status.c_str(),
+        Vector2{
+            status_x,
+            workspace.status_bar.y
+                + (workspace.status_bar.height - status_font_size) * 0.5F},
+        status_font_size,
+        status_spacing,
         kEditorStatusText);
 }
 
@@ -3778,30 +3817,52 @@ void DrawFpsCounter(
         {" | GPU: ", false},
         {GpuFrameStatusText(gpu_diagnostics), true},
     };
+    segments.push_back(StatusSegment{" | TREE AUTO ", false});
+    segments.push_back(StatusSegment{
+        std::string(AdaptiveTreeHudState(tree_visibility.decision)),
+        true});
     if (tree_visibility.enabled) {
-        segments.push_back(StatusSegment{" | TREE: ", false});
+        segments.push_back(StatusSegment{" R", false});
         segments.push_back(StatusSegment{
             std::to_string(static_cast<int>(std::lround(
-                tree_visibility.current_distance)))
-                + " "
-                + std::to_string(vegetation_stats.last_experimental_tree_drawn_instances)
+                tree_visibility.current_distance))),
+            true});
+        segments.push_back(StatusSegment{" ", false});
+        segments.push_back(StatusSegment{
+            std::to_string(vegetation_stats.last_experimental_tree_drawn_instances)
                 + "/"
-                + std::to_string(vegetation_stats.last_experimental_tree_culled_instances),
+                + std::to_string(
+                    vegetation_stats.last_experimental_tree_culled_instances),
             true});
     }
     segments.push_back(StatusSegment{" | " + labels.memory_label + ": ", false});
     segments.push_back(StatusSegment{memory_value, true});
 
-    const float spacing = FontSpacing(metrics.fps_font_size);
+    const Rectangle status = layout.workspace.status_bar;
+    const float max_width = status.height > 1.0F
+        ? std::max(0.0F, status.width * 0.53F - metrics.screen_padding * 0.70F)
+        : std::max(
+            0.0F,
+            static_cast<float>(metrics.window_width) - metrics.screen_padding * 0.70F);
+    float font_size = metrics.fps_font_size;
+    float spacing = FontSpacing(font_size);
     float total_width = 0.0F;
     float text_height = 0.0F;
-    for (const StatusSegment& segment : segments) {
-        const Vector2 size = Measure(font, segment.text, metrics.fps_font_size, spacing);
-        total_width += size.x;
-        text_height = std::max(text_height, size.y);
+    while (true) {
+        total_width = 0.0F;
+        text_height = 0.0F;
+        for (const StatusSegment& segment : segments) {
+            const Vector2 size = Measure(font, segment.text, font_size, spacing);
+            total_width += size.x;
+            text_height = std::max(text_height, size.y);
+        }
+        if (total_width <= max_width || font_size <= 10.0F) {
+            break;
+        }
+        font_size -= 1.0F;
+        spacing = FontSpacing(font_size);
     }
 
-    const Rectangle status = layout.workspace.status_bar;
     const float y = status.height > 1.0F
         ? status.y + (status.height - text_height) * 0.5F
         : metrics.screen_padding;
@@ -3813,10 +3874,10 @@ void DrawFpsCounter(
             font,
             segment.text.c_str(),
             Vector2{x, y},
-            metrics.fps_font_size,
+            font_size,
             spacing,
             segment.highlighted ? kStatusValue : normal_color);
-        x += Measure(font, segment.text, metrics.fps_font_size, spacing).x;
+        x += Measure(font, segment.text, font_size, spacing).x;
     }
 }
 

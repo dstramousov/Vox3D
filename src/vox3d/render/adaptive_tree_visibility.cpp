@@ -113,10 +113,10 @@ bool AdaptiveTreeVisibilityController::Update(
         overload_seconds_ = 0.0F;
     }
 
-    status_.decision = AdaptiveTreeVisibilityDecision::kHolding;
     if (cooldown_seconds_ > 0.0F) {
         return false;
     }
+    status_.decision = AdaptiveTreeVisibilityDecision::kHolding;
 
     if (overload_seconds_ >= config_.decrease_delay_seconds
         && status_.current_distance > config_.min_distance) {

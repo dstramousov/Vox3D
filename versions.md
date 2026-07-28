@@ -931,3 +931,12 @@
 - Added adaptive detailed-tree culling driven by stable GPU frame time with CPU fallback, hysteresis, cooldown, and asymmetric quality steps.
 - Added deterministic per-tree cull-distance dispersion so the distant forest thins gradually instead of ending on a circular boundary.
 - Added configurable adaptive-cull limits and timing thresholds plus HUD diagnostics for current radius and drawn/culled trees.
+
+## v0.5.101 -> v0.5.102
+
+- Simplified the 3D status bar to visible/resident chunks, progressive loading, and drawn terrain faces.
+- Removed redundant ready, view, mesh, color, visibility-mode, and drawn-model labels from the 3D status line.
+- Hid inactive path and validation placeholders while preserving their diagnostics when those tools are used.
+- Added explicit adaptive-tree controller states (`AUTO WAIT`, `AUTO HOLD`, `AUTO UP`, `AUTO DOWN`, and `AUTO OFF`) next to the current radius and drawn/culled tree counts.
+- Kept `UP` and `DOWN` visible during the controller cooldown instead of exposing them for only one frame.
+- Limited the left status text width so it cannot run underneath the right-side performance diagnostics.
