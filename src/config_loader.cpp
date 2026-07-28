@@ -571,7 +571,9 @@ bool LoadAppConfigFromFile(
     AssignNonNegativeInt(*root, {"vegetation_models", "tree_limit"}, config.vegetation_model_tree_limit, "vegetation_models.tree_limit", diagnostics);
     AssignPath(*root, {"vegetation_models", "asset_directory"}, config.vegetation_model_asset_directory, "vegetation_models.asset_directory", diagnostics);
     AssignPositiveFloat(*root, {"vegetation_models", "lod_near_distance"}, config.vegetation_model_lod_near_distance, "vegetation_models.lod_near_distance", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lod_near_transition_width"}, config.vegetation_model_lod_near_transition_width, "vegetation_models.lod_near_transition_width", diagnostics);
     AssignPositiveFloat(*root, {"vegetation_models", "lod_far_distance"}, config.vegetation_model_lod_far_distance, "vegetation_models.lod_far_distance", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lod_far_transition_width"}, config.vegetation_model_lod_far_transition_width, "vegetation_models.lod_far_transition_width", diagnostics);
     AssignPositiveFloat(*root, {"vegetation_models", "cull_distance"}, config.vegetation_model_cull_distance, "vegetation_models.cull_distance", diagnostics);
     AssignBool(*root, {"vegetation_models", "altitude_zoning", "enabled"}, config.vegetation_altitude_zoning_enabled, "vegetation_models.altitude_zoning.enabled", diagnostics);
     constexpr std::array<std::string_view, 6> kZoneNames{"lowland", "hills", "mountain", "upper", "treeline", "summit"};

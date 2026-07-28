@@ -28,7 +28,9 @@ struct AppConfig {
     int vegetation_model_tree_limit = 0;
     std::filesystem::path vegetation_model_asset_directory = "assets/models/trees";
     float vegetation_model_lod_near_distance = 70.0F;
+    float vegetation_model_lod_near_transition_width = 24.0F;
     float vegetation_model_lod_far_distance = 140.0F;
+    float vegetation_model_lod_far_transition_width = 36.0F;
     float vegetation_model_cull_distance = 220.0F;
     bool vegetation_altitude_zoning_enabled = true;
     std::array<float, 6> vegetation_altitude_elevations{-1.0F, 5.0F, 10.0F, 15.0F, 18.0F, 20.0F};

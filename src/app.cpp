@@ -952,7 +952,9 @@ bool App::Initialize()
         config_.vegetation_model_tree_limit,
         config_.vegetation_model_asset_directory,
         config_.vegetation_model_lod_near_distance,
+        config_.vegetation_model_lod_near_transition_width,
         config_.vegetation_model_lod_far_distance,
+        config_.vegetation_model_lod_far_transition_width,
         config_.vegetation_model_cull_distance,
         config_.vegetation_altitude_zoning_enabled,
         config_.vegetation_altitude_elevations,
@@ -983,7 +985,11 @@ bool App::Initialize()
             + " limit=" + std::to_string(config_.vegetation_model_tree_limit)
             + " directory=\"" + config_.vegetation_model_asset_directory.string() + "\""
             + " lod_near=" + std::to_string(config_.vegetation_model_lod_near_distance)
+            + " lod_near_transition="
+            + std::to_string(config_.vegetation_model_lod_near_transition_width)
             + " lod_far=" + std::to_string(config_.vegetation_model_lod_far_distance)
+            + " lod_far_transition="
+            + std::to_string(config_.vegetation_model_lod_far_transition_width)
             + " cull=" + std::to_string(config_.vegetation_model_cull_distance));
     gpu_diagnostics_.Initialize();
     {

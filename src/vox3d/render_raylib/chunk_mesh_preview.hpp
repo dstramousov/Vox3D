@@ -285,7 +285,9 @@ struct RaylibExperimentalTreeOptions {
     int tree_limit = 0;
     std::filesystem::path asset_directory = "assets/models/trees";
     float lod_near_distance = 70.0F;
+    float lod_near_transition_width = 24.0F;
     float lod_far_distance = 140.0F;
+    float lod_far_transition_width = 36.0F;
     float cull_distance = 220.0F;
     bool altitude_zoning_enabled = true;
     std::array<float, 6> altitude_elevations{-1.0F, 5.0F, 10.0F, 15.0F, 18.0F, 20.0F};
@@ -319,6 +321,7 @@ struct RaylibExperimentalTreeInstance {
     std::size_t model_index = 0;
     std::uint8_t foliage_tint_index = 0;
     std::uint8_t foliage_palette_index = 0;
+    std::uint32_t lod_hash = 0;
 };
 
 /**

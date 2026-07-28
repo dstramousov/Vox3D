@@ -139,7 +139,8 @@ struct RgbaColor {
 constexpr int kGeographicMinLevel = -5;
 constexpr int kGeographicMaxLevel = 20;
 
-// Keep one explicit color per supported elevation so adjacent terrain terraces remain distinguishable.
+// Keep one explicit color per supported elevation so adjacent terrain
+// terraces remain distinguishable.
 constexpr std::array<RgbaColor, kGeographicMaxLevel - kGeographicMinLevel + 1>
     kGeographicLevelColors{{
         RgbaColor{17, 45, 101, 255},   // -5
@@ -587,7 +588,9 @@ struct Ray3f {
         case ChunkVisibilityClass::kVisible:
             return Color{255, 255, 255, 255};
         case ChunkVisibilityClass::kFade:
-            return Color{86, 94, 94, 255};
+            // Keep geographic/material colors stable across visibility classes.
+            // The fade ring controls residency and culling, not palette changes.
+            return Color{255, 255, 255, 255};
         case ChunkVisibilityClass::kHidden:
             return Color{0, 0, 0, 0};
     }
@@ -1292,6 +1295,7 @@ void AppendExperimentalTreeInstances(
                 SelectFoliageTint(
                     hash, model_index, altitude, options.foliage_color_zoning_enabled),
                 SelectFoliagePalette(hash, altitude),
+                hash,
             });
         }
     }
@@ -1511,8 +1515,6 @@ void DrawExperimentalTreeInstances(
     std::vector<TintBatches> near_fade(models.size());
     std::array<std::array<TintBatches, kSpecies>, 2U> visible_lod_batches;
     std::array<std::array<TintBatches, kSpecies>, 2U> fade_lod_batches;
-    const float near_sq = options.lod_near_distance * options.lod_near_distance;
-    const float far_sq = options.lod_far_distance * options.lod_far_distance;
     const float cull_sq = options.cull_distance * options.cull_distance;
 
     for (const RaylibExperimentalTreeInstance& instance : instances) {
@@ -1535,7 +1537,23 @@ void DrawExperimentalTreeInstances(
         if (distance_sq > cull_sq) {
             continue;
         }
-        const std::size_t tier = distance_sq <= near_sq ? 0U : (distance_sq <= far_sq ? 1U : 2U);
+        // Spread each switch across a stable radial band so dense forests do
+        // not reveal one hard circular LOD boundary around the camera.
+        const float near_bias =
+            static_cast<float>(instance.lod_hash & 0xFFFFU) / 65535.0F - 0.5F;
+        const float far_bias =
+            static_cast<float>((instance.lod_hash >> 16U) & 0xFFFFU) / 65535.0F - 0.5F;
+        const float near_distance = std::max(0.0F,
+            options.lod_near_distance
+                + near_bias * options.lod_near_transition_width);
+        const float far_distance = std::max(near_distance,
+            options.lod_far_distance
+                + far_bias * options.lod_far_transition_width);
+        const float near_sq = near_distance * near_distance;
+        const float far_sq = far_distance * far_distance;
+        const std::size_t tier = distance_sq <= near_sq
+            ? 0U
+            : (distance_sq <= far_sq ? 1U : 2U);
         const std::size_t species = (instance.model_index <= 5U || instance.model_index == 12U) ? 0U : 1U;
         const Matrix transform = ExperimentalTreeTransform(instance);
         const bool fade = classes[chunk_index] == ChunkVisibilityClass::kFade;

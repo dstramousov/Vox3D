@@ -14,7 +14,9 @@
     "tree_limit": 0,
     "asset_directory": "assets/models/trees",
     "lod_near_distance": 70.0,
+    "lod_near_transition_width": 24.0,
     "lod_far_distance": 140.0,
+    "lod_far_transition_width": 36.0,
     "cull_distance": 220.0,
     "altitude_zoning": {
       "enabled": true,

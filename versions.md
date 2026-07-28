@@ -886,3 +886,24 @@
 - Integrated micro structures into simple, greedy, terrain, progressive, and dirty-rebuild mesh paths.
 - Preserved structure type metadata on generated faces and vertices for future fortress materials.
 - Kept legacy `structure_height` rendering unchanged for older maps without micro geometry.
+
+
+## v0.5.95 -> v0.5.96
+
+- Removed the dark visibility-ring tint from terrain, structures, and vegetation.
+- Kept geographic and model colors identical across visible and fade chunks.
+- Preserved existing chunk residency, fade-ring classification, frustum culling, and hidden-chunk behavior.
+
+## v0.5.96 -> v0.5.97
+
+- Corrected the remaining broad green bands in geographic mode, which were elevation-palette bands rather than visibility tinting.
+- Unified land elevations 0 through 4 to one lowland green so ordinary terrain terraces no longer resemble renderer LOD rings.
+- Preserved water-depth colors and introduced a gradual high-altitude transition for hills, rock, and snow levels.
+- Kept chunk visibility, frustum culling, vegetation LOD distances, and model selection unchanged.
+
+## v0.5.97 -> v0.5.98
+
+- Restored the original distinct geographic colors for every land elevation from 0 through 20.
+- Replaced hard circular tree LOD boundaries with deterministic per-tree radial transition bands.
+- Added configurable near and far LOD transition widths while preserving the existing nominal radii and cull distance.
+- Kept tree placement, foliage zoning, chunk visibility, and model assets unchanged.
