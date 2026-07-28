@@ -415,24 +415,6 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
         == WorkspaceValidationStatus::kDone;
 }
 
-[[nodiscard]] std::string_view AdaptiveTreeHudState(
-    AdaptiveTreeVisibilityDecision decision)
-{
-    switch (decision) {
-        case AdaptiveTreeVisibilityDecision::kDisabled:
-            return "OFF";
-        case AdaptiveTreeVisibilityDecision::kWaitingForSample:
-            return "WAIT";
-        case AdaptiveTreeVisibilityDecision::kHolding:
-            return "HOLD";
-        case AdaptiveTreeVisibilityDecision::kIncreased:
-            return "UP";
-        case AdaptiveTreeVisibilityDecision::kDecreased:
-            return "DOWN";
-    }
-    return "UNKNOWN";
-}
-
 [[nodiscard]] std::string_view Map2DBaseLayerLabel(Map2DBaseLayer layer)
 {
     switch (layer) {
@@ -618,8 +600,7 @@ void DrawMap2DLegend(
         : workspace_state.mesh_stats.active_faces;
     std::string status = "Chunks "
         + std::to_string(workspace_state.visibility_stats.visible_chunks) + "/"
-        + std::to_string(workspace_state.visibility_stats.resident_chunks)
-        + " | Loaded " + std::to_string(workspace_state.progressive_chunks_built) + "/"
+        + std::to_string(workspace_state.visibility_stats.resident_chunks) + "/"
         + std::to_string(workspace_state.progressive_chunks_total)
         + " | Faces " + std::to_string(face_count);
     if (HasCompactPathStatus(workspace_state)) {
@@ -3809,32 +3790,29 @@ void DrawFpsCounter(
     const std::string memory_value = memory.available
         ? FormatMemory(memory.resident_bytes, labels)
         : labels.debug_none;
+    const std::uint64_t visible_trees =
+        vegetation_stats.last_experimental_tree_drawn_instances;
+    const std::uint64_t total_trees = visible_trees
+        + vegetation_stats.last_experimental_tree_culled_instances;
+    const int visible_tree_percent = total_trees > 0U
+        ? static_cast<int>(std::lround(
+            100.0 * static_cast<double>(visible_trees)
+            / static_cast<double>(total_trees)))
+        : 0;
+
     std::vector<StatusSegment> segments{
-        {"v", false},
+        {"v ", false},
         {std::string(version), true},
         {" | " + labels.fps_label + ": ", false},
         {std::to_string(GetFPS()), true},
         {" | GPU: ", false},
         {GpuFrameStatusText(gpu_diagnostics), true},
+        {" | R ", false},
+        {std::to_string(static_cast<int>(std::lround(
+            tree_visibility.current_distance))), true},
+        {" tiles | Visible ", false},
+        {std::to_string(visible_tree_percent) + "%", true},
     };
-    segments.push_back(StatusSegment{" | TREE AUTO ", false});
-    segments.push_back(StatusSegment{
-        std::string(AdaptiveTreeHudState(tree_visibility.decision)),
-        true});
-    if (tree_visibility.enabled) {
-        segments.push_back(StatusSegment{" R", false});
-        segments.push_back(StatusSegment{
-            std::to_string(static_cast<int>(std::lround(
-                tree_visibility.current_distance))),
-            true});
-        segments.push_back(StatusSegment{" ", false});
-        segments.push_back(StatusSegment{
-            std::to_string(vegetation_stats.last_experimental_tree_drawn_instances)
-                + "/"
-                + std::to_string(
-                    vegetation_stats.last_experimental_tree_culled_instances),
-            true});
-    }
     segments.push_back(StatusSegment{" | " + labels.memory_label + ": ", false});
     segments.push_back(StatusSegment{memory_value, true});
 

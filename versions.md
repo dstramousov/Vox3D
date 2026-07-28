@@ -940,3 +940,10 @@
 - Added explicit adaptive-tree controller states (`AUTO WAIT`, `AUTO HOLD`, `AUTO UP`, `AUTO DOWN`, and `AUTO OFF`) next to the current radius and drawn/culled tree counts.
 - Kept `UP` and `DOWN` visible during the controller cooldown instead of exposing them for only one frame.
 - Limited the left status text width so it cannot run underneath the right-side performance diagnostics.
+
+## v0.5.102 -> v0.5.103
+
+- Condensed the 3D chunk status to `visible/resident/total` and removed the separate progressive-loaded field.
+- Replaced internal adaptive-tree state and raw draw/cull counters with the current radius in tiles and the visible-tree percentage.
+- Changed the version prefix to the readable `v 0.5.103` form while preserving FPS, GPU time, face count, and process-memory diagnostics.
+- Kept adaptive tree visibility, culling decisions, rendering, and performance behavior unchanged.
