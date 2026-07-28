@@ -1383,14 +1383,42 @@ void main()
 }
 )glsl";
 
-[[nodiscard]] Matrix ExperimentalTreeTransform(
-    const RaylibExperimentalTreeInstance& instance)
+[[nodiscard]] Vector3 ExperimentalTreeModelMetrics(const Model& model)
 {
-    const Matrix scale = MatrixScale(instance.scale, instance.scale, instance.scale);
+    const BoundingBox bounds = GetModelBoundingBox(model);
+    const float extent_x = std::max(0.0001F, bounds.max.x - bounds.min.x);
+    const float extent_y = std::max(0.0001F, bounds.max.y - bounds.min.y);
+    const float extent_z = std::max(0.0001F, bounds.max.z - bounds.min.z);
+    return Vector3{std::max(extent_x, extent_z), extent_y, bounds.min.y};
+}
+
+[[nodiscard]] Vector2 ExperimentalTreeLodScale(
+    Vector3 target_metrics,
+    Vector3 source_metrics)
+{
+    constexpr float kMinScale = 0.25F;
+    constexpr float kMaxScale = 4.0F;
+    return Vector2{
+        std::clamp(target_metrics.x / source_metrics.x, kMinScale, kMaxScale),
+        std::clamp(target_metrics.y / source_metrics.y, kMinScale, kMaxScale),
+    };
+}
+
+[[nodiscard]] Matrix ExperimentalTreeTransform(
+    const RaylibExperimentalTreeInstance& instance,
+    Vector2 lod_scale,
+    float source_min_y)
+{
+    const float horizontal_scale = instance.scale * lod_scale.x;
+    const float vertical_scale = instance.scale * lod_scale.y;
+    const Matrix scale = MatrixScale(
+        horizontal_scale,
+        vertical_scale,
+        horizontal_scale);
     const Matrix rotation = MatrixRotateY(instance.rotation_degrees * DEG2RAD);
     const Matrix translation = MatrixTranslate(
         instance.position.x,
-        instance.position.y,
+        instance.position.y - source_min_y * vertical_scale,
         instance.position.z);
     return MatrixMultiply(MatrixMultiply(scale, rotation), translation);
 }
@@ -1430,6 +1458,29 @@ void main()
             > static_cast<unsigned int>(color.r) * 115U
         && static_cast<unsigned int>(color.g) * 100U
             > static_cast<unsigned int>(color.b) * 115U;
+}
+
+void NormalizeExperimentalTreeLodMaterials(Model& model, std::size_t species)
+{
+    constexpr std::array<Color, 2> kFoliageColors{
+        Color{31, 96, 36, 255},
+        Color{24, 78, 31, 255},
+    };
+    constexpr std::array<Color, 2> kTrunkColors{
+        Color{96, 58, 31, 255},
+        Color{82, 49, 27, 255},
+    };
+    const std::size_t safe_species = std::min<std::size_t>(species, 1U);
+    for (int material_index = 0; material_index < model.materialCount; ++material_index) {
+        Material& material = model.materials[material_index];
+        if (material.maps == nullptr) {
+            continue;
+        }
+        MaterialMap& diffuse_map = material.maps[MATERIAL_MAP_DIFFUSE];
+        diffuse_map.color = IsTreeFoliageColor(diffuse_map.color)
+            ? kFoliageColors[safe_species]
+            : kTrunkColors[safe_species];
+    }
 }
 
 constexpr std::array<std::array<Color, 4>, 5> kTreeFoliagePalettes{{
@@ -1487,8 +1538,11 @@ void DrawExperimentalTreeBatch(
 
 void DrawExperimentalTreeInstances(
     const std::vector<Model>& models,
+    const std::vector<Vector3>& model_metrics,
     const std::array<Model, 2>& medium_lod_models,
+    const std::array<Vector3, 2>& medium_lod_metrics,
     const std::array<Model, 2>& far_lod_models,
+    const std::array<Vector3, 2>& far_lod_metrics,
     const std::vector<RaylibExperimentalTreeInstance>& instances,
     const ChunkMeshBuildInfo& info,
     const ChunkVisibilityReport& visibility_report,
@@ -1555,7 +1609,21 @@ void DrawExperimentalTreeInstances(
             ? 0U
             : (distance_sq <= far_sq ? 1U : 2U);
         const std::size_t species = (instance.model_index <= 5U || instance.model_index == 12U) ? 0U : 1U;
-        const Matrix transform = ExperimentalTreeTransform(instance);
+        Vector2 lod_scale{1.0F, 1.0F};
+        float source_min_y = 0.0F;
+        if (tier > 0U && instance.model_index < model_metrics.size()) {
+            const Vector3 source_metrics = tier == 1U
+                ? medium_lod_metrics[species]
+                : far_lod_metrics[species];
+            lod_scale = ExperimentalTreeLodScale(
+                model_metrics[instance.model_index],
+                source_metrics);
+            source_min_y = source_metrics.z;
+        }
+        const Matrix transform = ExperimentalTreeTransform(
+            instance,
+            lod_scale,
+            source_min_y);
         const bool fade = classes[chunk_index] == ChunkVisibilityClass::kFade;
         const std::size_t palette_index = static_cast<std::size_t>(instance.foliage_palette_index)
             % kPaletteCount;
@@ -2511,6 +2579,7 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
     set_float_uniform("flatFoliageShading", options.flat_foliage_shading);
 
     experimental_tree_models_.reserve(kModelNames.size());
+    experimental_tree_model_metrics_.reserve(kModelNames.size());
     for (const std::string_view name : kModelNames) {
         const std::filesystem::path path = options.asset_directory / name;
         const std::string path_text = path.string();
@@ -2528,6 +2597,8 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
         for (int material_index = 0; material_index < model.materialCount; ++material_index) {
             model.materials[material_index].shader = experimental_tree_instancing_shader_;
         }
+        experimental_tree_model_metrics_.push_back(
+            ExperimentalTreeModelMetrics(model));
         TraceLog(LOG_INFO, "VOX3D: loaded experimental tree model: %s meshes=%d",
             path_text.c_str(), model.meshCount);
         experimental_tree_models_.push_back(model);
@@ -2540,7 +2611,7 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
         "forest-lod-far-deciduous.glb",
         "forest-lod-far-conifer.glb",
     };
-    const auto load_lod_models = [&](const auto& names, auto& destination) {
+    const auto load_lod_models = [&](const auto& names, auto& destination, auto& metrics) {
         for (std::size_t index = 0; index < names.size(); ++index) {
             const std::filesystem::path path = options.asset_directory / names[index];
             const std::string path_text = path.string();
@@ -2552,15 +2623,23 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
                 }
                 return false;
             }
+            NormalizeExperimentalTreeLodMaterials(model, index);
             for (int material_index = 0; material_index < model.materialCount; ++material_index) {
                 model.materials[material_index].shader = experimental_tree_instancing_shader_;
             }
             destination[index] = model;
+            metrics[index] = ExperimentalTreeModelMetrics(model);
         }
         return true;
     };
-    if (!load_lod_models(kMediumLodNames, experimental_tree_medium_lod_models_)
-        || !load_lod_models(kFarLodNames, experimental_tree_far_lod_models_)) {
+    if (!load_lod_models(
+            kMediumLodNames,
+            experimental_tree_medium_lod_models_,
+            experimental_tree_medium_lod_metrics_)
+        || !load_lod_models(
+            kFarLodNames,
+            experimental_tree_far_lod_models_,
+            experimental_tree_far_lod_metrics_)) {
         UnloadExperimentalTreeAssets();
         experimental_tree_options_.enabled = false;
         return false;
@@ -2883,8 +2962,11 @@ void RaylibChunkMeshPreview::Draw(
         vegetation_stats_);
     DrawExperimentalTreeInstances(
         experimental_tree_models_,
+        experimental_tree_model_metrics_,
         experimental_tree_medium_lod_models_,
+        experimental_tree_medium_lod_metrics_,
         experimental_tree_far_lod_models_,
+        experimental_tree_far_lod_metrics_,
         experimental_tree_instances_,
         build_result.info,
         visibility_report,
@@ -3026,18 +3108,21 @@ void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
         }
     }
     experimental_tree_models_.clear();
+    experimental_tree_model_metrics_.clear();
     for (Model& model : experimental_tree_medium_lod_models_) {
         if (model.meshCount > 0 && model.meshes != nullptr) {
             UnloadModel(model);
         }
         model = Model{};
     }
+    experimental_tree_medium_lod_metrics_ = {};
     for (Model& model : experimental_tree_far_lod_models_) {
         if (model.meshCount > 0 && model.meshes != nullptr) {
             UnloadModel(model);
         }
         model = Model{};
     }
+    experimental_tree_far_lod_metrics_ = {};
     if (experimental_tree_instancing_shader_.id != 0U) {
         UnloadShader(experimental_tree_instancing_shader_);
         experimental_tree_instancing_shader_ = Shader{};

@@ -907,3 +907,10 @@
 - Replaced hard circular tree LOD boundaries with deterministic per-tree radial transition bands.
 - Added configurable near and far LOD transition widths while preserving the existing nominal radii and cull distance.
 - Kept tree placement, foliage zoning, chunk visibility, and model assets unchanged.
+
+## v0.5.98 -> v0.5.99
+
+- Corrected medium and far conifer LOD crown orientation so simplified trees preserve the upright conifer silhouette.
+- Normalized medium and far LOD width, height, and ground contact against each tree's selected near model.
+- Matched simplified LOD trunk and foliage base colors to the corresponding near-model species palettes.
+- Preserved deterministic transition bands, nominal LOD radii, cull distance, tree placement, and altitude zoning.

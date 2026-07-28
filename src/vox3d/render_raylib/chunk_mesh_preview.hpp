@@ -11,6 +11,7 @@
 
 #include <raylib.h>
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -568,8 +569,12 @@ private:
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
     std::vector<Model> experimental_tree_models_;
+    // x = maximum horizontal extent, y = vertical extent, z = minimum local Y.
+    std::vector<Vector3> experimental_tree_model_metrics_;
     std::array<Model, 2> experimental_tree_medium_lod_models_{};
+    std::array<Vector3, 2> experimental_tree_medium_lod_metrics_{};
     std::array<Model, 2> experimental_tree_far_lod_models_{};
+    std::array<Vector3, 2> experimental_tree_far_lod_metrics_{};
     Shader experimental_tree_instancing_shader_{};
     std::vector<RaylibExperimentalTreeInstance> experimental_tree_instances_;
     RaylibExperimentalTreeOptions experimental_tree_options_;
