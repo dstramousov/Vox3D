@@ -38,6 +38,8 @@ std::string_view ToString(RaylibChunkMeshColorMode mode)
             return "chunk_id";
         case RaylibChunkMeshColorMode::kFaceType:
             return "face_type";
+        case RaylibChunkMeshColorMode::kStructureTop:
+            return "structure_top";
     }
     return "unknown";
 }
@@ -206,6 +208,24 @@ constexpr std::array<RgbaColor, kGeographicMaxLevel - kGeographicMinLevel + 1>
     return RgbaColor{180, 180, 170, 255};
 }
 
+[[nodiscard]] RgbaColor StructureTopBaseColor(const MeshVertex& vertex)
+{
+    switch (vertex.structure_top_part) {
+        case StructureTopPart::kWalkway:
+            return RgbaColor{45, 135, 225, 255};
+        case StructureTopPart::kParapet:
+            return RgbaColor{238, 196, 50, 255};
+        case StructureTopPart::kCrenellation:
+            return RgbaColor{224, 66, 58, 255};
+        case StructureTopPart::kNone:
+            break;
+    }
+    if (vertex.block_type == BlockTypeId::kRuinStructure) {
+        return RgbaColor{112, 96, 78, 255};
+    }
+    return RgbaColor{72, 91, 74, 255};
+}
+
 [[nodiscard]] RgbaColor VertexBaseColor(
     const MeshVertex& vertex,
     ChunkCoord chunk_coord,
@@ -226,6 +246,8 @@ constexpr std::array<RgbaColor, kGeographicMaxLevel - kGeographicMinLevel + 1>
             return ChunkBaseColor(chunk_coord);
         case RaylibChunkMeshColorMode::kFaceType:
             return FaceTypeBaseColor(vertex.face_direction);
+        case RaylibChunkMeshColorMode::kStructureTop:
+            return StructureTopBaseColor(vertex);
     }
     return TraversalBaseColor(vertex.surface_kind, vertex.block_type);
 }

@@ -68,6 +68,7 @@ enum class WorkspaceColorMode {
     kGeographic,
     kChunkId,
     kFaceType,
+    kStructureTop,
 };
 
 /**
@@ -143,6 +144,7 @@ enum class WorkspacePanelItem {
     k3DColorGeographic,
     k3DColorChunkId,
     k3DColorFaceType,
+    k3DColorStructureTop,
     k3DDebugOverlaysGroup,
     k3DVisibilityGroup,
     k3DVisibilityAllChunks,

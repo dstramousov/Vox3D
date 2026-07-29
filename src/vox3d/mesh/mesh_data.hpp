@@ -36,6 +36,16 @@ enum class TerrainRenderPass : std::uint8_t {
 /**
  * @brief Compact traversal category used by the 3D traversal color overlay.
  */
+enum class StructureTopPart : std::uint8_t {
+    kNone,
+    kWalkway,
+    kParapet,
+    kCrenellation,
+};
+
+/**
+ * @brief Compact traversal category used by the 3D traversal color overlay.
+ */
 enum class TerrainSurfaceKind : std::uint8_t {
     kUnknown,
     kWalkableGround,
@@ -84,6 +94,7 @@ struct MeshVertex {
     TerrainSurfaceKind surface_kind = TerrainSurfaceKind::kUnknown;
     int level = 0;
     std::uint8_t structure_type = 0;
+    StructureTopPart structure_top_part = StructureTopPart::kNone;
 };
 
 /**
@@ -98,6 +109,7 @@ struct MeshFace {
     std::uint32_t first_vertex = 0;
     std::uint32_t first_index = 0;
     std::uint8_t structure_type = 0;
+    StructureTopPart structure_top_part = StructureTopPart::kNone;
 };
 
 /**

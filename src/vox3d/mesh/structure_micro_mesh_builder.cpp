@@ -12,6 +12,9 @@ namespace {
 
 constexpr int kMicroDivision = 4;
 constexpr float kMicroSize = 1.0F / static_cast<float>(kMicroDivision);
+constexpr float kParapetHeight = 0.40F;
+constexpr float kCrenellationHeight = 0.75F;
+constexpr float kWalkwaySurfaceOffset = 0.01F;
 
 struct MicroColumn {
     bool solid = false;
@@ -24,6 +27,15 @@ struct TopMaskCell {
     bool visible = false;
     int top_level = 0;
     RuntimeStructureType structure_type = RuntimeStructureType::kNone;
+    StructureTopPart top_part = StructureTopPart::kNone;
+};
+
+struct RaisedCell {
+    bool visible = false;
+    float bottom = 0.0F;
+    float top = 0.0F;
+    RuntimeStructureType structure_type = RuntimeStructureType::kNone;
+    StructureTopPart top_part = StructureTopPart::kNone;
 };
 
 struct VisibleWallSegment {
@@ -59,7 +71,8 @@ struct WallRunCell {
 [[nodiscard]] bool SameTopCell(const TopMaskCell& lhs, const TopMaskCell& rhs)
 {
     return lhs.visible && rhs.visible && lhs.top_level == rhs.top_level
-        && lhs.structure_type == rhs.structure_type;
+        && lhs.structure_type == rhs.structure_type
+        && lhs.top_part == rhs.top_part;
 }
 
 [[nodiscard]] MicroColumn ColumnAt(const RuntimeMap& map, int micro_x, int micro_y)
@@ -79,7 +92,20 @@ struct WallRunCell {
     const int sub_x = micro_x % kMicroDivision;
     const int sub_y = micro_y % kMicroDivision;
     const std::size_t tile_index = GridIndex(tile_x, tile_y, map.info.width);
-    const std::uint16_t mask = map.structure_micro_mask.cells[tile_index];
+    std::uint16_t mask = map.structure_micro_mask.cells[tile_index];
+    if (mask == 0U) {
+        if (map.info.structure_top_geometry_loaded
+            && map.structure_walkway_mask.IsValid()
+            && map.structure_walkway_mask.cells[tile_index] != 0U) {
+            // Schema v3 permits the walkway mask to define the body footprint
+            // when the legacy vertical micro mask is empty.
+            mask = map.structure_walkway_mask.cells[tile_index];
+        } else {
+            // Structure-micro v8 keeps legacy fallback tiles outside the sparse
+            // mask list. Preserve their previous full-tile body geometry.
+            mask = std::numeric_limits<std::uint16_t>::max();
+        }
+    }
     const int bit_index = sub_y * kMicroDivision + sub_x;
     if ((mask & static_cast<std::uint16_t>(1U << bit_index)) == 0U) {
         return column;
@@ -105,6 +131,7 @@ void EmitQuad(
     FaceDirection direction,
     TerrainRenderPass render_pass,
     RuntimeStructureType structure_type,
+    StructureTopPart top_part,
     const std::array<MeshPosition, 4>& corners,
     Diagnostics& diagnostics)
 {
@@ -127,6 +154,7 @@ void EmitQuad(
     face.first_vertex = first_vertex;
     face.first_index = first_index;
     face.structure_type = structure_type_id;
+    face.structure_top_part = top_part;
     mesh.faces.push_back(face);
 
     for (const MeshPosition& position : corners) {
@@ -138,6 +166,7 @@ void EmitQuad(
         vertex.surface_kind = TerrainSurfaceKind::kUnknown;
         vertex.level = block.z;
         vertex.structure_type = structure_type_id;
+        vertex.structure_top_part = top_part;
         mesh.vertices.push_back(vertex);
     }
 
@@ -163,7 +192,10 @@ void EmitTopRect(
     const float x1 = static_cast<float>(micro_x + width) * kMicroSize;
     const float y0 = static_cast<float>(micro_y) * kMicroSize;
     const float y1 = static_cast<float>(micro_y + height) * kMicroSize;
-    const float z = static_cast<float>(cell.top_level + 1);
+    const float z = static_cast<float>(cell.top_level + 1)
+        + (cell.top_part == StructureTopPart::kWalkway
+            ? kWalkwaySurfaceOffset
+            : 0.0F);
 
     const std::size_t before = mesh.faces.size();
     EmitQuad(
@@ -172,6 +204,7 @@ void EmitTopRect(
         FaceDirection::kUp,
         TerrainRenderPass::kTops,
         cell.structure_type,
+        cell.top_part,
         {{{x0, y0, z}, {x1, y0, z}, {x1, y1, z}, {x0, y1, z}}},
         diagnostics);
     if (info != nullptr && mesh.faces.size() != before) {
@@ -195,10 +228,39 @@ void BuildTopFaces(
 
     for (int local_y = 0; local_y < height; ++local_y) {
         for (int local_x = 0; local_x < width; ++local_x) {
-            const MicroColumn column = ColumnAt(
-                map,
-                micro_min_x + local_x,
-                micro_min_y + local_y);
+            const int micro_x = micro_min_x + local_x;
+            const int micro_y = micro_min_y + local_y;
+            const int tile_x = micro_x / kMicroDivision;
+            const int tile_y = micro_y / kMicroDivision;
+            const int sub_x = micro_x % kMicroDivision;
+            const int sub_y = micro_y % kMicroDivision;
+            const std::size_t tile_index = GridIndex(
+                tile_x,
+                tile_y,
+                map.info.width);
+            if (map.info.structure_top_geometry_loaded
+                && map.structure_walkway_mask.IsValid()) {
+                const std::uint16_t walkway =
+                    map.structure_walkway_mask.cells[tile_index];
+                if (walkway != 0U) {
+                    const int bit_index = sub_y * kMicroDivision + sub_x;
+                    if ((walkway & static_cast<std::uint16_t>(1U << bit_index))
+                        == 0U) {
+                        continue;
+                    }
+                    const auto structure_type = static_cast<RuntimeStructureType>(
+                        map.structure_type.cells[tile_index]);
+                    mask[GridIndex(local_x, local_y, width)] = TopMaskCell{
+                        true,
+                        map.height.cells[tile_index]
+                            + static_cast<int>(map.structure_height.cells[tile_index]),
+                        structure_type,
+                        StructureTopPart::kWalkway,
+                    };
+                    continue;
+                }
+            }
+            const MicroColumn column = ColumnAt(map, micro_x, micro_y);
             if (!column.solid) {
                 continue;
             }
@@ -206,6 +268,7 @@ void BuildTopFaces(
                 true,
                 column.top_level,
                 column.structure_type,
+                StructureTopPart::kNone,
             };
         }
     }
@@ -451,6 +514,7 @@ void BuildWallPlane(
                 direction,
                 TerrainRenderPass::kWalls,
                 start_segment.structure_type,
+                StructureTopPart::kNone,
                 WallCorners(
                     direction,
                     fixed_boundary,
@@ -462,6 +526,203 @@ void BuildWallPlane(
             if (info != nullptr && mesh.faces.size() != before) {
                 ++info->structure_wall_faces;
             }
+        }
+    }
+}
+
+[[nodiscard]] RaisedCell RaisedCellAt(
+    const RuntimeMap& map,
+    int micro_x,
+    int micro_y)
+{
+    RaisedCell cell;
+    if (!map.info.structure_top_geometry_loaded
+        || !map.structure_walkway_mask.IsValid()
+        || !map.structure_parapet_mask.IsValid()
+        || !map.structure_crenellation_mask.IsValid()
+        || micro_x < 0 || micro_y < 0) {
+        return cell;
+    }
+    const int tile_x = micro_x / kMicroDivision;
+    const int tile_y = micro_y / kMicroDivision;
+    if (tile_x < 0 || tile_y < 0 || tile_x >= map.info.width
+        || tile_y >= map.info.height) {
+        return cell;
+    }
+    const int sub_x = micro_x % kMicroDivision;
+    const int sub_y = micro_y % kMicroDivision;
+    const int bit_index = sub_y * kMicroDivision + sub_x;
+    const std::uint16_t bit = static_cast<std::uint16_t>(1U << bit_index);
+    const std::size_t tile_index = GridIndex(tile_x, tile_y, map.info.width);
+    const std::uint16_t walkway = map.structure_walkway_mask.cells[tile_index];
+    if ((walkway & bit) == 0U) {
+        return cell;
+    }
+
+    const std::uint16_t crenellation =
+        map.structure_crenellation_mask.cells[tile_index];
+    const std::uint16_t parapet = map.structure_parapet_mask.cells[tile_index];
+    if ((crenellation & bit) != 0U) {
+        cell.top_part = StructureTopPart::kCrenellation;
+        cell.top = kCrenellationHeight;
+    } else if ((parapet & bit) != 0U) {
+        cell.top_part = StructureTopPart::kParapet;
+        cell.top = kParapetHeight;
+    } else {
+        return cell;
+    }
+
+    const int height = static_cast<int>(map.structure_height.cells[tile_index]);
+    const auto structure_type = static_cast<RuntimeStructureType>(
+        map.structure_type.cells[tile_index]);
+    if (height <= 0 || !IsVerticalStructureType(structure_type)) {
+        return RaisedCell{};
+    }
+    cell.visible = true;
+    cell.bottom = static_cast<float>(map.height.cells[tile_index] + height + 1);
+    cell.top += cell.bottom;
+    cell.structure_type = structure_type;
+    return cell;
+}
+
+void EmitRaisedQuad(
+    ChunkMeshData& mesh,
+    int micro_x,
+    int micro_y,
+    FaceDirection direction,
+    const RaisedCell& cell,
+    float bottom,
+    float top,
+    ChunkMeshBuildInfo* info,
+    Diagnostics& diagnostics)
+{
+    if (!cell.visible || top <= bottom) {
+        return;
+    }
+    const float x0 = static_cast<float>(micro_x) * kMicroSize;
+    const float x1 = static_cast<float>(micro_x + 1) * kMicroSize;
+    const float y0 = static_cast<float>(micro_y) * kMicroSize;
+    const float y1 = static_cast<float>(micro_y + 1) * kMicroSize;
+    std::array<MeshPosition, 4> corners{};
+    TerrainRenderPass pass = TerrainRenderPass::kWalls;
+    switch (direction) {
+        case FaceDirection::kUp:
+            pass = TerrainRenderPass::kTops;
+            corners = {{{x0, y0, top}, {x1, y0, top},
+                        {x1, y1, top}, {x0, y1, top}}};
+            break;
+        case FaceDirection::kWest:
+            corners = {{{x0, y0, bottom}, {x0, y0, top},
+                        {x0, y1, top}, {x0, y1, bottom}}};
+            break;
+        case FaceDirection::kEast:
+            corners = {{{x1, y1, bottom}, {x1, y1, top},
+                        {x1, y0, top}, {x1, y0, bottom}}};
+            break;
+        case FaceDirection::kNorth:
+            corners = {{{x1, y0, bottom}, {x1, y0, top},
+                        {x0, y0, top}, {x0, y0, bottom}}};
+            break;
+        case FaceDirection::kSouth:
+            corners = {{{x0, y1, bottom}, {x0, y1, top},
+                        {x1, y1, top}, {x1, y1, bottom}}};
+            break;
+        case FaceDirection::kDown:
+            return;
+    }
+    const std::size_t before = mesh.faces.size();
+    EmitQuad(
+        mesh,
+        BlockCoord{micro_x / kMicroDivision,
+                   micro_y / kMicroDivision,
+                   static_cast<int>(cell.bottom) - 1},
+        direction,
+        pass,
+        cell.structure_type,
+        cell.top_part,
+        corners,
+        diagnostics);
+    if (info != nullptr && mesh.faces.size() != before) {
+        if (pass == TerrainRenderPass::kTops) {
+            ++info->structure_top_faces;
+        } else {
+            ++info->structure_wall_faces;
+        }
+    }
+}
+
+void EmitRaisedSide(
+    const RuntimeMap& map,
+    ChunkMeshData& mesh,
+    int micro_x,
+    int micro_y,
+    int neighbor_x,
+    int neighbor_y,
+    FaceDirection direction,
+    const RaisedCell& cell,
+    ChunkMeshBuildInfo* info,
+    Diagnostics& diagnostics)
+{
+    const RaisedCell neighbor = RaisedCellAt(map, neighbor_x, neighbor_y);
+    float exposed_bottom = cell.bottom;
+    if (neighbor.visible && neighbor.bottom < cell.top
+        && neighbor.top > cell.bottom) {
+        exposed_bottom = std::max(exposed_bottom, neighbor.top);
+    }
+    EmitRaisedQuad(
+        mesh,
+        micro_x,
+        micro_y,
+        direction,
+        cell,
+        exposed_bottom,
+        cell.top,
+        info,
+        diagnostics);
+}
+
+void BuildRaisedTopGeometry(
+    const RuntimeMap& map,
+    const ChunkInfo& chunk,
+    ChunkMeshData& mesh,
+    ChunkMeshBuildInfo* info,
+    Diagnostics& diagnostics)
+{
+    if (!map.info.structure_top_geometry_loaded) {
+        return;
+    }
+    const int micro_min_x = chunk.bounds.min_x * kMicroDivision;
+    const int micro_min_y = chunk.bounds.min_y * kMicroDivision;
+    const int micro_max_x = chunk.bounds.max_x * kMicroDivision;
+    const int micro_max_y = chunk.bounds.max_y * kMicroDivision;
+    for (int micro_y = micro_min_y; micro_y < micro_max_y; ++micro_y) {
+        for (int micro_x = micro_min_x; micro_x < micro_max_x; ++micro_x) {
+            const RaisedCell cell = RaisedCellAt(map, micro_x, micro_y);
+            if (!cell.visible) {
+                continue;
+            }
+            EmitRaisedQuad(
+                mesh,
+                micro_x,
+                micro_y,
+                FaceDirection::kUp,
+                cell,
+                cell.bottom,
+                cell.top,
+                info,
+                diagnostics);
+            EmitRaisedSide(
+                map, mesh, micro_x, micro_y, micro_x - 1, micro_y,
+                FaceDirection::kWest, cell, info, diagnostics);
+            EmitRaisedSide(
+                map, mesh, micro_x, micro_y, micro_x + 1, micro_y,
+                FaceDirection::kEast, cell, info, diagnostics);
+            EmitRaisedSide(
+                map, mesh, micro_x, micro_y, micro_x, micro_y - 1,
+                FaceDirection::kNorth, cell, info, diagnostics);
+            EmitRaisedSide(
+                map, mesh, micro_x, micro_y, micro_x, micro_y + 1,
+                FaceDirection::kSouth, cell, info, diagnostics);
         }
     }
 }
@@ -528,7 +789,18 @@ bool HasStructureMicroGeometry(const RuntimeMap& map)
         && map.structure_type.width == map.info.width
         && map.structure_type.height == map.info.height
         && map.structure_micro_mask.width == map.info.width
-        && map.structure_micro_mask.height == map.info.height;
+        && map.structure_micro_mask.height == map.info.height
+        && (!map.info.structure_top_geometry_loaded
+            || (map.info.structure_top_division == kMicroDivision
+                && map.structure_walkway_mask.IsValid()
+                && map.structure_parapet_mask.IsValid()
+                && map.structure_crenellation_mask.IsValid()
+                && map.structure_walkway_mask.width == map.info.width
+                && map.structure_walkway_mask.height == map.info.height
+                && map.structure_parapet_mask.width == map.info.width
+                && map.structure_parapet_mask.height == map.info.height
+                && map.structure_crenellation_mask.width == map.info.width
+                && map.structure_crenellation_mask.height == map.info.height));
 }
 
 void AppendStructureMicroChunkMesh(
@@ -544,6 +816,7 @@ void AppendStructureMicroChunkMesh(
 
     BuildTopFaces(map, chunk, mesh, info, diagnostics);
     BuildWallFaces(map, chunk, mesh, info, diagnostics);
+    BuildRaisedTopGeometry(map, chunk, mesh, info, diagnostics);
 }
 
 }  // namespace vox3d

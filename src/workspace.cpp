@@ -94,6 +94,8 @@ std::string_view ToString(WorkspaceColorMode mode)
             return "chunk_id";
         case WorkspaceColorMode::kFaceType:
             return "face_type";
+        case WorkspaceColorMode::kStructureTop:
+            return "structure_top";
     }
     return "unknown";
 }
@@ -237,6 +239,8 @@ std::string_view ToString(WorkspacePanelItem item)
             return "3d_color_chunk_id";
         case WorkspacePanelItem::k3DColorFaceType:
             return "3d_color_face_type";
+        case WorkspacePanelItem::k3DColorStructureTop:
+            return "3d_color_structure_top";
         case WorkspacePanelItem::k3DObjectsGroup:
             return "3d_objects";
         case WorkspacePanelItem::k3DObjectsAll:
@@ -595,6 +599,11 @@ std::vector<WorkspacePanelItemState> BuildWorkspacePanelItems(const WorkspaceSta
                 2,
                 workspace.chunk_meshes.IsValid(),
                 workspace.color_mode == WorkspaceColorMode::kFaceType));
+            items.push_back(Radio(
+                Item::k3DColorStructureTop,
+                2,
+                workspace.runtime_map.info.structure_top_geometry_loaded,
+                workspace.color_mode == WorkspaceColorMode::kStructureTop));
 
             items.push_back(Group(Item::k3DDebugOverlaysGroup, 1));
             items.push_back(Checkbox(

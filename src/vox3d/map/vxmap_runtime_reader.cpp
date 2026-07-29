@@ -23,7 +23,7 @@ namespace {
 constexpr std::uint64_t kHeaderSize = 128;
 constexpr std::uint64_t kSectionEntrySize = 64;
 constexpr std::uint32_t kSupportedMajor = 1;
-constexpr std::uint32_t kSupportedMinor = 3;
+constexpr std::uint32_t kSupportedMinor = 5;
 constexpr std::uint32_t kEndianMarker = 0x01020304U;
 constexpr std::uint32_t kKnownHeaderFlags = 0x0000006FU;
 constexpr std::uint32_t kExpectedHeaderFlags = 0x0000004FU;
@@ -52,6 +52,9 @@ constexpr std::uint32_t kTypeVegetationTypeGrid = 31;
 constexpr std::uint32_t kTypeVegetationHeightGrid = 32;
 constexpr std::uint32_t kTypeStructureTypeGrid = 33;
 constexpr std::uint32_t kTypeStructureMicroMaskGrid = 34;
+constexpr std::uint32_t kTypeStructureWalkwayMaskGrid = 35;
+constexpr std::uint32_t kTypeStructureParapetMaskGrid = 36;
+constexpr std::uint32_t kTypeStructureCrenellationMaskGrid = 37;
 
 constexpr std::array<std::uint32_t, 6> kRequiredGlobalSections{
     kTypeMetadata,
@@ -115,6 +118,25 @@ constexpr std::array<std::uint32_t, 13> kRequiredRegionSectionsV13{
     kTypeVegetationHeightGrid,
 };
 
+constexpr std::array<std::uint32_t, 16> kRequiredRegionSectionsV15{
+    kTypeTerrainGrid,
+    kTypeElevationGrid,
+    kTypeMovementGrid,
+    kTypeCollisionBits,
+    kTypeProjectileBlockBits,
+    kTypeVisionBlockBits,
+    kTypeCoverGrid,
+    kTypeConcealmentGrid,
+    kTypeStructureHeightGrid,
+    kTypeStructureTypeGrid,
+    kTypeStructureMicroMaskGrid,
+    kTypeStructureWalkwayMaskGrid,
+    kTypeStructureParapetMaskGrid,
+    kTypeStructureCrenellationMaskGrid,
+    kTypeVegetationTypeGrid,
+    kTypeVegetationHeightGrid,
+};
+
 
 struct Header {
     std::uint32_t format_major = 0;
@@ -137,6 +159,9 @@ struct Header {
 
 [[nodiscard]] std::uint32_t RequiredRegionalSectionCount(const Header& header)
 {
+    if (header.format_minor >= 5U) {
+        return static_cast<std::uint32_t>(kRequiredRegionSectionsV15.size());
+    }
     if (header.format_minor >= 3U) {
         return static_cast<std::uint32_t>(kRequiredRegionSectionsV13.size());
     }
@@ -163,9 +188,15 @@ struct Header {
             || section_type == kTypeVegetationHeightGrid)) {
         return true;
     }
-    return header.format_minor >= 3U
+    if (header.format_minor >= 3U
         && (section_type == kTypeStructureTypeGrid
-            || section_type == kTypeStructureMicroMaskGrid);
+            || section_type == kTypeStructureMicroMaskGrid)) {
+        return true;
+    }
+    return header.format_minor >= 5U
+        && (section_type == kTypeStructureWalkwayMaskGrid
+            || section_type == kTypeStructureParapetMaskGrid
+            || section_type == kTypeStructureCrenellationMaskGrid);
 }
 
 struct SectionEntry {
@@ -643,7 +674,9 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     report.max_elevation = header.max_elevation;
     report.build_id_hex = BuildIdToHex(header.build_id);
 
-    if (header.format_major != kSupportedMajor || header.format_minor > kSupportedMinor) {
+    const bool supported_minor = header.format_minor <= 3U
+        || header.format_minor == kSupportedMinor;
+    if (header.format_major != kSupportedMajor || !supported_minor) {
         Fail(report, "unsupported_version");
         return false;
     }
@@ -966,6 +999,11 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
     core.structure_micro_mask.assign(tile_count, 0);
     core.structure_micro_geometry_present = header.format_minor >= 3U;
     core.structure_micro_division = header.format_minor >= 3U ? 4 : 0;
+    core.structure_walkway_mask.assign(tile_count, 0);
+    core.structure_parapet_mask.assign(tile_count, 0);
+    core.structure_crenellation_mask.assign(tile_count, 0);
+    core.structure_top_geometry_present = header.format_minor >= 5U;
+    core.structure_top_division = header.format_minor >= 5U ? 4 : 0;
     core.vegetation_type.assign(tile_count, 0);
     core.vegetation_height.assign(tile_count, 0);
     core.vegetation_type_present = header.format_minor >= 2U;
@@ -989,6 +1027,15 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
         const SectionEntry* structure_micro_mask_grid = header.format_minor >= 3U
             ? FindRegionalSection(entries, region, kTypeStructureMicroMaskGrid)
             : nullptr;
+        const SectionEntry* structure_walkway_mask_grid = header.format_minor >= 5U
+            ? FindRegionalSection(entries, region, kTypeStructureWalkwayMaskGrid)
+            : nullptr;
+        const SectionEntry* structure_parapet_mask_grid = header.format_minor >= 5U
+            ? FindRegionalSection(entries, region, kTypeStructureParapetMaskGrid)
+            : nullptr;
+        const SectionEntry* structure_crenellation_mask_grid = header.format_minor >= 5U
+            ? FindRegionalSection(entries, region, kTypeStructureCrenellationMaskGrid)
+            : nullptr;
         const SectionEntry* vegetation_type_grid = header.format_minor >= 2U
             ? FindRegionalSection(entries, region, kTypeVegetationTypeGrid)
             : nullptr;
@@ -1001,6 +1048,10 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             || (header.format_minor >= 1U && structure_height_grid == nullptr)
             || (header.format_minor >= 3U
                 && (structure_type_grid == nullptr || structure_micro_mask_grid == nullptr))
+            || (header.format_minor >= 5U
+                && (structure_walkway_mask_grid == nullptr
+                    || structure_parapet_mask_grid == nullptr
+                    || structure_crenellation_mask_grid == nullptr))
             || (header.format_minor >= 2U
                 && (vegetation_type_grid == nullptr || vegetation_height_grid == nullptr))) {
             core.fallback_reason = "missing_regional_grid";
@@ -1024,6 +1075,15 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
             || (structure_micro_mask_grid != nullptr
                 && (structure_micro_mask_grid->element_stride != 2U
                     || structure_micro_mask_grid->element_count != region.tile_count))
+            || (structure_walkway_mask_grid != nullptr
+                && (structure_walkway_mask_grid->element_stride != 2U
+                    || structure_walkway_mask_grid->element_count != region.tile_count))
+            || (structure_parapet_mask_grid != nullptr
+                && (structure_parapet_mask_grid->element_stride != 2U
+                    || structure_parapet_mask_grid->element_count != region.tile_count))
+            || (structure_crenellation_mask_grid != nullptr
+                && (structure_crenellation_mask_grid->element_stride != 2U
+                    || structure_crenellation_mask_grid->element_count != region.tile_count))
             || (vegetation_type_grid != nullptr
                 && (vegetation_type_grid->element_stride != 1U
                     || vegetation_type_grid->element_count != region.tile_count))
@@ -1046,6 +1106,12 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
                 && structure_type_grid->stored_size != region.tile_count)
             || (structure_micro_mask_grid != nullptr
                 && structure_micro_mask_grid->stored_size != expected_i16_size)
+            || (structure_walkway_mask_grid != nullptr
+                && structure_walkway_mask_grid->stored_size != expected_i16_size)
+            || (structure_parapet_mask_grid != nullptr
+                && structure_parapet_mask_grid->stored_size != expected_i16_size)
+            || (structure_crenellation_mask_grid != nullptr
+                && structure_crenellation_mask_grid->stored_size != expected_i16_size)
             || (vegetation_type_grid != nullptr
                 && vegetation_type_grid->stored_size != region.tile_count)
             || (vegetation_height_grid != nullptr
@@ -1086,29 +1152,67 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
                     const std::uint8_t structure_type =
                         data[static_cast<std::size_t>(structure_type_grid->offset + local_index)];
                     std::uint16_t structure_micro_mask = 0;
+                    std::uint16_t structure_walkway_mask = 0;
+                    std::uint16_t structure_parapet_mask = 0;
+                    std::uint16_t structure_crenellation_mask = 0;
                     if (!ReadU16Le(
                             data,
                             structure_micro_mask_grid->offset
                                 + static_cast<std::uint64_t>(local_index) * 2U,
-                            structure_micro_mask)) {
+                            structure_micro_mask)
+                        || (structure_walkway_mask_grid != nullptr
+                            && !ReadU16Le(
+                                data,
+                                structure_walkway_mask_grid->offset
+                                    + static_cast<std::uint64_t>(local_index) * 2U,
+                                structure_walkway_mask))
+                        || (structure_parapet_mask_grid != nullptr
+                            && !ReadU16Le(
+                                data,
+                                structure_parapet_mask_grid->offset
+                                    + static_cast<std::uint64_t>(local_index) * 2U,
+                                structure_parapet_mask))
+                        || (structure_crenellation_mask_grid != nullptr
+                            && !ReadU16Le(
+                                data,
+                                structure_crenellation_mask_grid->offset
+                                    + static_cast<std::uint64_t>(local_index) * 2U,
+                                structure_crenellation_mask))) {
                         core.fallback_reason = "bad_structure_geometry_grid";
                         return false;
                     }
                     const auto type = static_cast<RuntimeStructureType>(structure_type);
                     const std::uint8_t structure_height = core.structure_height[global_index];
+                    const bool top_masks_empty = structure_walkway_mask == 0U
+                        && structure_parapet_mask == 0U
+                        && structure_crenellation_mask == 0U;
+                    const bool raised_masks_on_walkway =
+                        ((structure_parapet_mask | structure_crenellation_mask)
+                            & static_cast<std::uint16_t>(~structure_walkway_mask))
+                        == 0U;
                     const bool valid_cell = IsKnownStructureType(type)
                         && ((type == RuntimeStructureType::kNone
-                                && structure_height == 0U && structure_micro_mask == 0U)
+                                && structure_height == 0U
+                                && structure_micro_mask == 0U
+                                && top_masks_empty)
                             || (IsVerticalStructureType(type)
-                                && structure_height > 0U && structure_micro_mask != 0U)
+                                && structure_height > 0U
+                                && raised_masks_on_walkway)
                             || (IsFloorStructureType(type)
-                                && structure_height == 0U && structure_micro_mask == 0U));
+                                && structure_height == 0U
+                                && structure_micro_mask == 0U
+                                && structure_parapet_mask == 0U
+                                && structure_crenellation_mask == 0U));
                     if (!valid_cell) {
                         core.fallback_reason = "bad_structure_geometry_grid";
                         return false;
                     }
                     core.structure_type[global_index] = structure_type;
                     core.structure_micro_mask[global_index] = structure_micro_mask;
+                    core.structure_walkway_mask[global_index] = structure_walkway_mask;
+                    core.structure_parapet_mask[global_index] = structure_parapet_mask;
+                    core.structure_crenellation_mask[global_index] =
+                        structure_crenellation_mask;
                 }
                 if (vegetation_type_grid != nullptr && vegetation_height_grid != nullptr) {
                     const std::uint8_t vegetation_type =

@@ -256,6 +256,8 @@ struct RuntimeMapInfo {
     bool structure_type_loaded = false;
     bool structure_micro_geometry_loaded = false;
     int structure_micro_division = 0;
+    bool structure_top_geometry_loaded = false;
+    int structure_top_division = 0;
     bool vegetation_type_loaded = false;
     bool vegetation_height_loaded = false;
     bool collision_loaded = false;
@@ -287,6 +289,9 @@ struct RuntimeMapInfo {
     std::size_t runtime_binary_json_structure_height_mismatches = 0;
     std::size_t runtime_binary_json_structure_type_mismatches = 0;
     std::size_t runtime_binary_json_structure_micro_geometry_mismatches = 0;
+    std::size_t runtime_binary_json_structure_walkway_mismatches = 0;
+    std::size_t runtime_binary_json_structure_parapet_mismatches = 0;
+    std::size_t runtime_binary_json_structure_crenellation_mismatches = 0;
     std::size_t runtime_binary_json_vegetation_type_mismatches = 0;
     std::size_t runtime_binary_json_vegetation_height_mismatches = 0;
     std::size_t runtime_binary_json_point_mismatches = 0;
@@ -302,6 +307,12 @@ struct RuntimeMapInfo {
     int structure_micro_full_masks = 0;
     int structure_micro_partial_masks = 0;
     int structure_micro_solid_subtiles = 0;
+    int structure_walkway_tiles = 0;
+    int structure_walkway_subtiles = 0;
+    int structure_parapet_tiles = 0;
+    int structure_parapet_subtiles = 0;
+    int structure_crenellation_tiles = 0;
+    int structure_crenellation_subtiles = 0;
     int object_markers = 0;
     int runtime_objects = 0;
     int vegetation_markers = 0;
@@ -342,6 +353,9 @@ struct RuntimeMap {
     RuntimeGrid<std::uint8_t> structure_height;
     RuntimeGrid<std::uint8_t> structure_type;
     RuntimeGrid<std::uint16_t> structure_micro_mask;
+    RuntimeGrid<std::uint16_t> structure_walkway_mask;
+    RuntimeGrid<std::uint16_t> structure_parapet_mask;
+    RuntimeGrid<std::uint16_t> structure_crenellation_mask;
     RuntimeGrid<std::uint8_t> vegetation_type;
     RuntimeGrid<std::uint8_t> vegetation_height;
     RuntimeGrid<int> movement_cost;

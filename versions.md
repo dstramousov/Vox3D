@@ -947,3 +947,11 @@
 - Replaced internal adaptive-tree state and raw draw/cull counters with the current radius in tiles and the visible-tree percentage.
 - Changed the version prefix to the readable `v 0.5.103` form while preserving FPS, GPU time, face count, and process-memory diagnostics.
 - Kept adaptive tree visibility, culling decisions, rendering, and performance behavior unchanged.
+
+## v0.5.103 -> v0.5.104
+
+- Added VXMAP runtime 1.5 decoding for regional walkway, parapet, and crenellation uint16 mask sections.
+- Added JSON loading and validation for `structure_top_geometry` schema v3 while preserving legacy structure-micro v8 fallback tiles.
+- Rendered walkway masks as explicit 4x4 top surfaces and crenellation/parapet bits as separate raised 1x1-subtile geometry above `structure_height`.
+- Added the `Structure Top` diagnostic color mode: walkway blue, parapet yellow, crenellation red, with structure bodies and terrain muted.
+- Added binary/JSON parity counters and runtime statistics for all three structure-top mask channels.

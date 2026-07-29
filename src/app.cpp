@@ -723,6 +723,8 @@ void MergeFaceVisibility(FaceVisibilityResult& target, const FaceVisibilityResul
         case WorkspaceColorMode::kChunkId:
             return WorkspaceColorMode::kFaceType;
         case WorkspaceColorMode::kFaceType:
+            return WorkspaceColorMode::kStructureTop;
+        case WorkspaceColorMode::kStructureTop:
             return WorkspaceColorMode::kTraversal;
     }
     return WorkspaceColorMode::kTraversal;
@@ -739,6 +741,8 @@ void MergeFaceVisibility(FaceVisibilityResult& target, const FaceVisibilityResul
             return RaylibChunkMeshColorMode::kChunkId;
         case WorkspaceColorMode::kFaceType:
             return RaylibChunkMeshColorMode::kFaceType;
+        case WorkspaceColorMode::kStructureTop:
+            return RaylibChunkMeshColorMode::kStructureTop;
     }
     return RaylibChunkMeshColorMode::kTraversal;
 }
@@ -3632,6 +3636,9 @@ void App::ActivateWorkspacePanelItem(WorkspacePanelItem item)
             break;
         case WorkspacePanelItem::k3DColorFaceType:
             SetColorMode(WorkspaceColorMode::kFaceType, "panel");
+            break;
+        case WorkspacePanelItem::k3DColorStructureTop:
+            SetColorMode(WorkspaceColorMode::kStructureTop, "panel");
             break;
         case WorkspacePanelItem::k3DVisibilityAllChunks:
             SetVisibilityMode(WorkspaceVisibilityMode::kAllChunks, "panel");

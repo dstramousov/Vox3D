@@ -261,6 +261,8 @@ void PushWordWrappedLine(std::vector<std::string>& lines, std::string& current)
             return "chunk";
         case WorkspaceColorMode::kFaceType:
             return "face type";
+        case WorkspaceColorMode::kStructureTop:
+            return "structure top";
     }
     return "unknown";
 }
@@ -1567,6 +1569,8 @@ struct HelpControlLine
             return "Chunk Id";
         case WorkspacePanelItem::k3DColorFaceType:
             return "Face Type";
+        case WorkspacePanelItem::k3DColorStructureTop:
+            return "Structure Top";
         case WorkspacePanelItem::k3DDebugOverlaysGroup:
             return "Debug Overlays";
         case WorkspacePanelItem::k3DVisibilityGroup:

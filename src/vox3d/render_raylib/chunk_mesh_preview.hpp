@@ -29,6 +29,7 @@ enum class RaylibChunkMeshColorMode : std::uint8_t {
     kGeographic,
     kChunkId,
     kFaceType,
+    kStructureTop,
 };
 
 /**
