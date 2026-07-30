@@ -951,6 +951,34 @@ bool App::Initialize()
     }
 
     window_initialized_ = true;
+    const RaylibWorldLightingOptions world_lighting_options{
+        config_.world_lighting_enabled,
+        Vector3{config_.world_light_direction_x, config_.world_light_direction_y,
+            config_.world_light_direction_z},
+        Vector3{config_.world_sun_color[0], config_.world_sun_color[1],
+            config_.world_sun_color[2]},
+        Vector3{config_.world_sky_ambient_color[0], config_.world_sky_ambient_color[1],
+            config_.world_sky_ambient_color[2]},
+        Vector3{config_.world_ground_ambient_color[0], config_.world_ground_ambient_color[1],
+            config_.world_ground_ambient_color[2]},
+        config_.world_sun_intensity,
+        config_.world_ambient_intensity,
+        config_.world_top_brightness,
+        config_.world_side_brightness,
+        config_.world_bottom_brightness,
+        config_.world_color_variation,
+    };
+    const bool world_lighting_ready = chunk_mesh_preview_.ConfigureWorldLighting(
+        world_lighting_options);
+    logger_.Info(
+        "render3d_lighting",
+        "enabled=" + std::string(config_.world_lighting_enabled ? "true" : "false")
+            + " ready=" + std::string(world_lighting_ready ? "true" : "false")
+            + " direction=" + std::to_string(config_.world_light_direction_x) + ","
+            + std::to_string(config_.world_light_direction_y) + ","
+            + std::to_string(config_.world_light_direction_z)
+            + " sun=" + std::to_string(config_.world_sun_intensity)
+            + " ambient=" + std::to_string(config_.world_ambient_intensity));
     const RaylibExperimentalTreeOptions tree_options{
         config_.vegetation_models_enabled,
         config_.vegetation_model_tree_limit,
@@ -969,9 +997,9 @@ bool App::Initialize()
         config_.vegetation_deciduous_ochre,
         config_.vegetation_conifer_cool,
         config_.vegetation_conifer_brown,
-        config_.vegetation_lighting_enabled,
-        Vector3{config_.vegetation_light_direction_x, config_.vegetation_light_direction_y,
-            config_.vegetation_light_direction_z},
+        config_.world_lighting_enabled && config_.vegetation_lighting_enabled,
+        Vector3{config_.world_light_direction_x, config_.world_light_direction_y,
+            config_.world_light_direction_z},
         config_.vegetation_light_ambient,
         config_.vegetation_light_diffuse,
         config_.vegetation_light_hemisphere,

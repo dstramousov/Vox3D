@@ -963,3 +963,11 @@
 - Reconstructed expanded round tower cells to one connected top level when the v9 footprint contains missing or overlapped source heights.
 - Treated an intentionally empty `structure_top_geometry` layer as valid, producing flat structure tops without walkway, parapet, or crenellation overlays.
 - Preserved loading and rendering behavior for older structure-micro v3-v8 and structure-top v3 maps.
+
+## v0.5.105 -> v0.5.106
+
+- Added a shared stylized world-lighting shader for terrain, fortress geometry, buildings, and static vegetation.
+- Added warm directional sunlight, cool hemispheric ambient light, and configurable top, side, and bottom surface brightness.
+- Added deterministic per-tile color variation while preserving the previous fixed-color appearance when lighting is disabled or shader creation fails.
+- Added `render_3d.lighting` configuration for light direction, colors, intensities, material brightness, and variation strength.
+- Unified the experimental GLB tree light direction and global enable state with the new world-lighting configuration.

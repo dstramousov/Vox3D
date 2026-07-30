@@ -8,7 +8,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.105-dev"
+#define VOX3D_VERSION "0.5.106-dev"
 #endif
 
 namespace vox3d {
@@ -60,6 +60,20 @@ struct AppConfig {
     float vegetation_light_hemisphere = 0.18F;
     float vegetation_crown_bottom_shading = 0.14F;
     float vegetation_flat_foliage_shading = 0.90F;
+
+    bool world_lighting_enabled = true;
+    float world_light_direction_x = -0.60F;
+    float world_light_direction_y = -1.00F;
+    float world_light_direction_z = -0.40F;
+    std::array<float, 3> world_sun_color{1.00F, 0.93F, 0.82F};
+    std::array<float, 3> world_sky_ambient_color{0.48F, 0.58F, 0.72F};
+    std::array<float, 3> world_ground_ambient_color{0.30F, 0.27F, 0.23F};
+    float world_sun_intensity = 0.86F;
+    float world_ambient_intensity = 0.38F;
+    float world_top_brightness = 1.08F;
+    float world_side_brightness = 0.94F;
+    float world_bottom_brightness = 0.62F;
+    float world_color_variation = 0.04F;
 
     int base_width = 1280;
     int base_height = 720;

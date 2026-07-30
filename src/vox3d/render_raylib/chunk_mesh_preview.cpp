@@ -736,11 +736,22 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     }
 }
 
+void AssignModelShader(Model& model, Shader shader)
+{
+    if (shader.id == 0U || model.materials == nullptr) {
+        return;
+    }
+    for (int material_index = 0; material_index < model.materialCount; ++material_index) {
+        model.materials[material_index].shader = shader;
+    }
+}
+
 [[nodiscard]] Model LoadChunkModel(
     const ChunkMeshData& chunk,
     int map_width,
     int map_height,
-    RaylibChunkMeshColorMode color_mode)
+    RaylibChunkMeshColorMode color_mode,
+    Shader shader)
 {
     Mesh mesh{};
     mesh.vertexCount = static_cast<int>(chunk.vertices.size());
@@ -769,7 +780,9 @@ void CopyChunkIndices(const ChunkMeshData& chunk, Mesh& mesh)
     CopyChunkVertices(chunk, mesh, map_width, map_height, color_mode);
     CopyChunkIndices(chunk, mesh);
     UploadMesh(&mesh, false);
-    return LoadModelFromMesh(mesh);
+    Model model = LoadModelFromMesh(mesh);
+    AssignModelShader(model, shader);
+    return model;
 }
 
 struct VegetationMeshBuffers {
@@ -984,7 +997,9 @@ constexpr std::uint64_t kGpuIndexBytes = sizeof(unsigned short);
     return vertices * kGpuVertexBytes + indices * kGpuIndexBytes;
 }
 
-[[nodiscard]] Model LoadVegetationModel(const VegetationMeshBuffers& source)
+[[nodiscard]] Model LoadVegetationModel(
+    const VegetationMeshBuffers& source,
+    Shader shader)
 {
     if (source.vertices.empty() || source.indices.empty()
         || source.vertices.size() / 3ULL > static_cast<std::size_t>(std::numeric_limits<unsigned short>::max())) {
@@ -1020,7 +1035,9 @@ constexpr std::uint64_t kGpuIndexBytes = sizeof(unsigned short);
     std::copy(source.colors.begin(), source.colors.end(), mesh.colors);
     std::copy(source.indices.begin(), source.indices.end(), mesh.indices);
     UploadMesh(&mesh, false);
-    return LoadModelFromMesh(mesh);
+    Model model = LoadModelFromMesh(mesh);
+    AssignModelShader(model, shader);
+    return model;
 }
 
 void AccumulateVegetationStats(
@@ -1051,7 +1068,8 @@ void AccumulateVegetationStats(
     const ChunkMeshData& chunk,
     std::vector<RaylibUploadedVegetationModel>& models,
     RaylibVegetationMeshStats& stats,
-    bool skip_trees)
+    bool skip_trees,
+    Shader shader)
 {
     float max_top = -std::numeric_limits<float>::infinity();
     if (!UsesStaticVegetationMesh(map)) {
@@ -1069,7 +1087,7 @@ void AccumulateVegetationStats(
         if (mesh.pillars == 0 || mesh.faces == 0) {
             continue;
         }
-        Model model = LoadVegetationModel(mesh);
+        Model model = LoadVegetationModel(mesh, shader);
         if (model.meshCount <= 0 || model.meshes == nullptr) {
             continue;
         }
@@ -1353,6 +1371,101 @@ void AppendExperimentalTreeInstances(
 [[nodiscard]] std::vector<ChunkVisibilityClass> BuildChunkVisibilityClassMap(
     const ChunkMeshBuildInfo& info,
     const ChunkVisibilityReport& report);
+
+constexpr const char* kWorldLightingVertexShader = R"glsl(
+#version 330
+in vec3 vertexPosition;
+in vec3 vertexNormal;
+in vec4 vertexColor;
+uniform mat4 mvp;
+out vec3 fragWorldPosition;
+out vec3 fragWorldNormal;
+out vec4 fragColor;
+void main()
+{
+    fragWorldPosition = vertexPosition;
+    fragWorldNormal = vertexNormal;
+    fragColor = vertexColor;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)glsl";
+
+constexpr const char* kWorldLightingFragmentShader = R"glsl(
+#version 330
+in vec3 fragWorldPosition;
+in vec3 fragWorldNormal;
+in vec4 fragColor;
+uniform vec4 colDiffuse;
+uniform vec3 lightDirection;
+uniform vec3 sunColor;
+uniform vec3 skyAmbientColor;
+uniform vec3 groundAmbientColor;
+uniform float sunIntensity;
+uniform float ambientIntensity;
+uniform float topBrightness;
+uniform float sideBrightness;
+uniform float bottomBrightness;
+uniform float colorVariation;
+uniform float lightingEnabled;
+uniform float legacyFaceShading;
+out vec4 finalColor;
+
+float LegacyDirectionShade(vec3 normal)
+{
+    if (normal.y > 0.5) {
+        return 1.12;
+    }
+    if (normal.y < -0.5) {
+        return 0.50;
+    }
+    if (abs(normal.x) > abs(normal.z)) {
+        return normal.x < 0.0 ? 0.78 : 0.92;
+    }
+    return normal.z > 0.0 ? 0.78 : 0.92;
+}
+
+float MaterialBrightness(vec3 normal)
+{
+    if (normal.y > 0.5) {
+        return topBrightness;
+    }
+    if (normal.y < -0.5) {
+        return bottomBrightness;
+    }
+    return sideBrightness;
+}
+
+float CellVariation(vec3 worldPosition)
+{
+    vec2 cell = floor(worldPosition.xz);
+    float hashValue = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+    return 1.0 + (hashValue * 2.0 - 1.0) * colorVariation;
+}
+
+void main()
+{
+    vec4 baseColor = fragColor * colDiffuse;
+    if (lightingEnabled < 0.5) {
+        finalColor = baseColor;
+        return;
+    }
+
+    vec3 normal = normalize(fragWorldNormal);
+    if (legacyFaceShading > 0.5) {
+        baseColor.rgb /= LegacyDirectionShade(normal);
+    }
+
+    vec3 toLight = normalize(-lightDirection);
+    float lambert = max(dot(normal, toLight), 0.0);
+    float skyFactor = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);
+    vec3 ambient = mix(groundAmbientColor, skyAmbientColor, skyFactor)
+        * ambientIntensity;
+    vec3 direct = sunColor * lambert * sunIntensity;
+    vec3 illumination = clamp(ambient + direct, vec3(0.14), vec3(1.35));
+    float material = MaterialBrightness(normal) * CellVariation(fragWorldPosition);
+    finalColor = vec4(baseColor.rgb * illumination * material, baseColor.a);
+}
+)glsl";
 
 
 constexpr const char* kExperimentalTreeInstancingVertexShader = R"glsl(
@@ -2497,6 +2610,88 @@ RaylibChunkMeshPreview::~RaylibChunkMeshPreview()
     Shutdown();
 }
 
+bool RaylibChunkMeshPreview::ConfigureWorldLighting(
+    const RaylibWorldLightingOptions& options)
+{
+    if (IsUploaded()) {
+        TraceLog(LOG_ERROR, "VOX3D: world lighting must be configured before mesh upload");
+        return false;
+    }
+
+    UnloadWorldLighting();
+    world_lighting_options_ = options;
+    const float direction_length = Vector3Length(world_lighting_options_.light_direction);
+    if (direction_length > 0.0001F) {
+        world_lighting_options_.light_direction = Vector3Scale(
+            world_lighting_options_.light_direction,
+            1.0F / direction_length);
+    } else {
+        world_lighting_options_.light_direction = Vector3{-0.60F, -1.00F, -0.40F};
+        world_lighting_options_.light_direction = Vector3Normalize(
+            world_lighting_options_.light_direction);
+    }
+    world_lighting_options_.color_variation = std::clamp(
+        world_lighting_options_.color_variation,
+        0.0F,
+        1.0F);
+
+    world_lighting_shader_ = LoadShaderFromMemory(
+        kWorldLightingVertexShader,
+        kWorldLightingFragmentShader);
+    if (world_lighting_shader_.id == 0U) {
+        TraceLog(LOG_ERROR, "VOX3D: failed to create stylized world lighting shader");
+        return false;
+    }
+
+    world_lighting_shader_.locs[SHADER_LOC_VERTEX_POSITION] = GetShaderLocationAttrib(
+        world_lighting_shader_, "vertexPosition");
+    world_lighting_shader_.locs[SHADER_LOC_VERTEX_NORMAL] = GetShaderLocationAttrib(
+        world_lighting_shader_, "vertexNormal");
+    world_lighting_shader_.locs[SHADER_LOC_VERTEX_COLOR] = GetShaderLocationAttrib(
+        world_lighting_shader_, "vertexColor");
+    world_lighting_shader_.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(
+        world_lighting_shader_, "mvp");
+    world_lighting_shader_.locs[SHADER_LOC_COLOR_DIFFUSE] = GetShaderLocation(
+        world_lighting_shader_, "colDiffuse");
+
+    const auto set_float_uniform = [&](const char* name, float value) {
+        const int location = GetShaderLocation(world_lighting_shader_, name);
+        if (location >= 0) {
+            SetShaderValue(world_lighting_shader_, location, &value, SHADER_UNIFORM_FLOAT);
+        }
+    };
+    const auto set_vec3_uniform = [&](const char* name, Vector3 value) {
+        const int location = GetShaderLocation(world_lighting_shader_, name);
+        if (location >= 0) {
+            SetShaderValue(world_lighting_shader_, location, &value, SHADER_UNIFORM_VEC3);
+        }
+    };
+
+    set_vec3_uniform("lightDirection", world_lighting_options_.light_direction);
+    set_vec3_uniform("sunColor", world_lighting_options_.sun_color);
+    set_vec3_uniform("skyAmbientColor", world_lighting_options_.sky_ambient_color);
+    set_vec3_uniform("groundAmbientColor", world_lighting_options_.ground_ambient_color);
+    set_float_uniform("sunIntensity", world_lighting_options_.sun_intensity);
+    set_float_uniform("ambientIntensity", world_lighting_options_.ambient_intensity);
+    set_float_uniform("topBrightness", world_lighting_options_.top_brightness);
+    set_float_uniform("sideBrightness", world_lighting_options_.side_brightness);
+    set_float_uniform("bottomBrightness", world_lighting_options_.bottom_brightness);
+    set_float_uniform("colorVariation", world_lighting_options_.color_variation);
+    world_lighting_enabled_location_ = GetShaderLocation(
+        world_lighting_shader_, "lightingEnabled");
+    if (world_lighting_enabled_location_ >= 0) {
+        const float lighting_enabled = world_lighting_options_.enabled ? 1.0F : 0.0F;
+        SetShaderValue(
+            world_lighting_shader_,
+            world_lighting_enabled_location_,
+            &lighting_enabled,
+            SHADER_UNIFORM_FLOAT);
+    }
+    world_legacy_face_shading_location_ = GetShaderLocation(
+        world_lighting_shader_, "legacyFaceShading");
+    return true;
+}
+
 bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
     const RaylibExperimentalTreeOptions& options)
 {
@@ -2621,6 +2816,7 @@ bool RaylibChunkMeshPreview::UploadAdditional(
     if (!build_result.IsValid()) {
         return false;
     }
+    uploaded_color_mode_ = color_mode;
 
     const auto upload_started = std::chrono::steady_clock::now();
     const std::uint64_t bytes_before = gpu_resource_stats_.current_bytes;
@@ -2645,7 +2841,8 @@ bool RaylibChunkMeshPreview::UploadAdditional(
                 chunk,
                 vegetation_models_,
                 vegetation_stats_,
-                experimental_tree_options_.enabled);
+                experimental_tree_options_.enabled,
+                world_lighting_shader_);
             if (experimental_tree_options_.enabled) {
                 AppendExperimentalTreeInstances(
                     *runtime_map,
@@ -2673,7 +2870,12 @@ bool RaylibChunkMeshPreview::UploadAdditional(
                     continue;
                 }
 
-                Model model = LoadChunkModel(pass_mesh, build_result.info.map_width, build_result.info.map_height, color_mode);
+                Model model = LoadChunkModel(
+                    pass_mesh,
+                    build_result.info.map_width,
+                    build_result.info.map_height,
+                    color_mode,
+                    world_lighting_shader_);
                 if (model.meshCount <= 0 || model.meshes == nullptr) {
                     ++stats_.skipped_chunks;
                     continue;
@@ -2707,7 +2909,12 @@ bool RaylibChunkMeshPreview::UploadAdditional(
             continue;
         }
 
-        Model model = LoadChunkModel(chunk, build_result.info.map_width, build_result.info.map_height, color_mode);
+        Model model = LoadChunkModel(
+            chunk,
+            build_result.info.map_width,
+            build_result.info.map_height,
+            color_mode,
+            world_lighting_shader_);
         if (model.meshCount <= 0 || model.meshes == nullptr) {
             ++stats_.skipped_chunks;
             continue;
@@ -2891,8 +3098,35 @@ void RaylibChunkMeshPreview::Draw(
         visibility_items_,
         BuildCoreVisibilityOptions(build_result, camera, visibility));
 
+    const bool diagnostic_color_mode =
+        uploaded_color_mode_ == RaylibChunkMeshColorMode::kChunkId
+        || uploaded_color_mode_ == RaylibChunkMeshColorMode::kFaceType
+        || uploaded_color_mode_ == RaylibChunkMeshColorMode::kStructureTop;
+    if (world_lighting_shader_.id != 0U
+        && world_lighting_enabled_location_ >= 0) {
+        const float lighting_enabled =
+            world_lighting_options_.enabled && !diagnostic_color_mode ? 1.0F : 0.0F;
+        SetShaderValue(
+            world_lighting_shader_,
+            world_lighting_enabled_location_,
+            &lighting_enabled,
+            SHADER_UNIFORM_FLOAT);
+    }
+
+    const auto set_legacy_face_shading = [&](float value) {
+        if (world_lighting_shader_.id != 0U
+            && world_legacy_face_shading_location_ >= 0) {
+            SetShaderValue(
+                world_lighting_shader_,
+                world_legacy_face_shading_location_,
+                &value,
+                SHADER_UNIFORM_FLOAT);
+        }
+    };
+
     constexpr Vector3 kOrigin{0.0F, 0.0F, 0.0F};
     constexpr float kScale = 1.0F;
+    set_legacy_face_shading(1.0F);
     for (const RaylibUploadedChunkModel& chunk : chunks_) {
         if (!IsTerrainPassEnabled(chunk.terrain_pass, terrain_passes)
             || chunk.visibility_item_index >= visibility_report.entries.size()) {
@@ -2910,6 +3144,7 @@ void RaylibChunkMeshPreview::Draw(
         render_frame_stats_.vertices_submitted += chunk.vertices;
         render_frame_stats_.triangles_submitted += chunk.indices / 3ULL;
     }
+    set_legacy_face_shading(0.0F);
     DrawVegetationChunkModels(
         vegetation_models_,
         build_result.info,
@@ -3051,6 +3286,7 @@ void RaylibChunkMeshPreview::Shutdown()
 {
     Unload();
     UnloadExperimentalTreeAssets();
+    UnloadWorldLighting();
 }
 
 void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
@@ -3072,6 +3308,16 @@ void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
     vegetation_stats_.last_experimental_tree_drawn_instances = 0;
     vegetation_stats_.last_experimental_tree_culled_instances = 0;
     vegetation_stats_.experimental_tree_cull_distance = 0.0F;
+}
+
+void RaylibChunkMeshPreview::UnloadWorldLighting()
+{
+    if (world_lighting_shader_.id != 0U) {
+        UnloadShader(world_lighting_shader_);
+        world_lighting_shader_ = Shader{};
+    }
+    world_lighting_enabled_location_ = -1;
+    world_legacy_face_shading_location_ = -1;
 }
 
 bool RaylibChunkMeshPreview::IsUploaded() const

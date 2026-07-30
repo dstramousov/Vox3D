@@ -631,6 +631,25 @@ bool LoadAppConfigFromFile(
     AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "hemisphere"}, config.vegetation_light_hemisphere, "vegetation_models.lighting.hemisphere", diagnostics);
     AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "crown_bottom_shading"}, config.vegetation_crown_bottom_shading, "vegetation_models.lighting.crown_bottom_shading", diagnostics);
     AssignUnitFloat(*root, {"vegetation_models", "lighting", "flat_foliage_shading"}, config.vegetation_flat_foliage_shading, "vegetation_models.lighting.flat_foliage_shading", diagnostics);
+    AssignBool(*root, {"render_3d", "lighting", "enabled"}, config.world_lighting_enabled, "render_3d.lighting.enabled", diagnostics);
+    AssignFloat(*root, {"render_3d", "lighting", "direction_x"}, config.world_light_direction_x, "render_3d.lighting.direction_x", diagnostics);
+    AssignFloat(*root, {"render_3d", "lighting", "direction_y"}, config.world_light_direction_y, "render_3d.lighting.direction_y", diagnostics);
+    AssignFloat(*root, {"render_3d", "lighting", "direction_z"}, config.world_light_direction_z, "render_3d.lighting.direction_z", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "sun_color_r"}, config.world_sun_color[0], "render_3d.lighting.sun_color_r", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "sun_color_g"}, config.world_sun_color[1], "render_3d.lighting.sun_color_g", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "sun_color_b"}, config.world_sun_color[2], "render_3d.lighting.sun_color_b", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "sky_ambient_color_r"}, config.world_sky_ambient_color[0], "render_3d.lighting.sky_ambient_color_r", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "sky_ambient_color_g"}, config.world_sky_ambient_color[1], "render_3d.lighting.sky_ambient_color_g", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "sky_ambient_color_b"}, config.world_sky_ambient_color[2], "render_3d.lighting.sky_ambient_color_b", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "ground_ambient_color_r"}, config.world_ground_ambient_color[0], "render_3d.lighting.ground_ambient_color_r", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "ground_ambient_color_g"}, config.world_ground_ambient_color[1], "render_3d.lighting.ground_ambient_color_g", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "ground_ambient_color_b"}, config.world_ground_ambient_color[2], "render_3d.lighting.ground_ambient_color_b", diagnostics);
+    AssignNonNegativeFloat(*root, {"render_3d", "lighting", "sun_intensity"}, config.world_sun_intensity, "render_3d.lighting.sun_intensity", diagnostics);
+    AssignNonNegativeFloat(*root, {"render_3d", "lighting", "ambient_intensity"}, config.world_ambient_intensity, "render_3d.lighting.ambient_intensity", diagnostics);
+    AssignNonNegativeFloat(*root, {"render_3d", "lighting", "top_brightness"}, config.world_top_brightness, "render_3d.lighting.top_brightness", diagnostics);
+    AssignNonNegativeFloat(*root, {"render_3d", "lighting", "side_brightness"}, config.world_side_brightness, "render_3d.lighting.side_brightness", diagnostics);
+    AssignNonNegativeFloat(*root, {"render_3d", "lighting", "bottom_brightness"}, config.world_bottom_brightness, "render_3d.lighting.bottom_brightness", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "color_variation"}, config.world_color_variation, "render_3d.lighting.color_variation", diagnostics);
 
     AssignPositiveInt(*root, {"window", "base_width"}, config.base_width, "window.base_width", diagnostics);
     AssignPositiveInt(*root, {"window", "base_height"}, config.base_height, "window.base_height", diagnostics);

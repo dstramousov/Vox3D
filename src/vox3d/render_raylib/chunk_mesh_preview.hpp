@@ -283,6 +283,23 @@ struct RaylibVegetationMeshStats {
 };
 
 /**
+ * @brief Runtime options for stylized terrain and structure lighting.
+ */
+struct RaylibWorldLightingOptions {
+    bool enabled = true;
+    Vector3 light_direction{-0.60F, -1.00F, -0.40F};
+    Vector3 sun_color{1.00F, 0.93F, 0.82F};
+    Vector3 sky_ambient_color{0.48F, 0.58F, 0.72F};
+    Vector3 ground_ambient_color{0.30F, 0.27F, 0.23F};
+    float sun_intensity = 0.86F;
+    float ambient_intensity = 0.38F;
+    float top_brightness = 1.08F;
+    float side_brightness = 0.94F;
+    float bottom_brightness = 0.62F;
+    float color_variation = 0.04F;
+};
+
+/**
  * @brief Runtime options for the experimental GLB tree renderer.
  */
 struct RaylibExperimentalTreeOptions {
@@ -377,6 +394,21 @@ public:
     RaylibChunkMeshPreview& operator=(const RaylibChunkMeshPreview&) = delete;
     RaylibChunkMeshPreview(RaylibChunkMeshPreview&&) = delete;
     RaylibChunkMeshPreview& operator=(RaylibChunkMeshPreview&&) = delete;
+
+    /**
+     * @brief Configures the shared stylized world-lighting shader.
+     *
+     * The shader is used by terrain, structures, and static vegetation. If
+     * shader creation fails, the renderer keeps the previous fixed-color path.
+     * This method must be called while a raylib window/context is alive and
+     * before chunk meshes are uploaded.
+     *
+     * @param options World-lighting parameters.
+     * @return True when the shader is ready, or false when fallback rendering
+     *     must be used.
+     */
+    [[nodiscard]] bool ConfigureWorldLighting(
+        const RaylibWorldLightingOptions& options);
 
     /**
      * @brief Configures and loads the experimental GLB tree asset set.
@@ -573,9 +605,16 @@ public:
 private:
     void RebuildGpuResourceStats();
     void UnloadExperimentalTreeAssets();
+    void UnloadWorldLighting();
 
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
+    Shader world_lighting_shader_{};
+    int world_lighting_enabled_location_ = -1;
+    int world_legacy_face_shading_location_ = -1;
+    RaylibWorldLightingOptions world_lighting_options_;
+    RaylibChunkMeshColorMode uploaded_color_mode_ =
+        RaylibChunkMeshColorMode::kGeographic;
     std::vector<Model> experimental_tree_models_;
     Shader experimental_tree_instancing_shader_{};
     std::vector<RaylibExperimentalTreeInstance> experimental_tree_instances_;

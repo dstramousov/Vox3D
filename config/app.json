@@ -9,6 +9,29 @@
   "map": {
     "path": "../TopDownMapGen/output/map_package"
   },
+  "render_3d": {
+    "lighting": {
+      "enabled": true,
+      "direction_x": -0.6,
+      "direction_y": -1.0,
+      "direction_z": -0.4,
+      "sun_color_r": 1.0,
+      "sun_color_g": 0.93,
+      "sun_color_b": 0.82,
+      "sky_ambient_color_r": 0.48,
+      "sky_ambient_color_g": 0.58,
+      "sky_ambient_color_b": 0.72,
+      "ground_ambient_color_r": 0.3,
+      "ground_ambient_color_g": 0.27,
+      "ground_ambient_color_b": 0.23,
+      "sun_intensity": 0.86,
+      "ambient_intensity": 0.38,
+      "top_brightness": 1.08,
+      "side_brightness": 0.94,
+      "bottom_brightness": 0.62,
+      "color_variation": 0.04
+    }
+  },
   "vegetation_models": {
     "enabled": true,
     "tree_limit": 0,
