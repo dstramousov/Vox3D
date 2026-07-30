@@ -955,3 +955,11 @@
 - Rendered walkway masks as explicit 4x4 top surfaces and crenellation/parapet bits as separate raised 1x1-subtile geometry above `structure_height`.
 - Added the `Structure Top` diagnostic color mode: walkway blue, parapet yellow, crenellation red, with structure bodies and terrain muted.
 - Added binary/JSON parity counters and runtime statistics for all three structure-top mask channels.
+
+## v0.5.104 -> v0.5.105
+
+- Added JSON compatibility for `structure-micro-geometry-layer-v9` and `structure-top-geometry-layer-v6`, including the new two-subtile crenellation rule.
+- Accepted VXMAP 1.5 refined fortress footprints where structure type and micro occupancy replace stale coarse height ownership outside the new body contour.
+- Reconstructed expanded round tower cells to one connected top level when the v9 footprint contains missing or overlapped source heights.
+- Treated an intentionally empty `structure_top_geometry` layer as valid, producing flat structure tops without walkway, parapet, or crenellation overlays.
+- Preserved loading and rendering behavior for older structure-micro v3-v8 and structure-top v3 maps.

@@ -1192,11 +1192,11 @@ void Fail(VxmapRuntimeValidationReport& report, std::string reason)
                         == 0U;
                     const bool valid_cell = IsKnownStructureType(type)
                         && ((type == RuntimeStructureType::kNone
-                                && structure_height == 0U
                                 && structure_micro_mask == 0U
                                 && top_masks_empty)
                             || (IsVerticalStructureType(type)
-                                && structure_height > 0U
+                                && (structure_height > 0U
+                                    || structure_micro_mask != 0U)
                                 && raised_masks_on_walkway)
                             || (IsFloorStructureType(type)
                                 && structure_height == 0U

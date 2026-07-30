@@ -2,6 +2,7 @@
 #include "vox3d/map/vxmap_runtime_reader.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <chrono>
 #include <cstdlib>
@@ -712,7 +713,8 @@ constexpr std::uintmax_t kMaxRuntimeGridReadBytes = 64U * 1024U * 1024U;
         || schema == "structure-micro-geometry-layer-v5"
         || schema == "structure-micro-geometry-layer-v6"
         || schema == "structure-micro-geometry-layer-v7"
-        || schema == "structure-micro-geometry-layer-v8";
+        || schema == "structure-micro-geometry-layer-v8"
+        || schema == "structure-micro-geometry-layer-v9";
     if (!schema_supported
         || kind != "structure_micro_geometry"
         || format != "sparse_uint16_masks"
@@ -835,15 +837,20 @@ struct StructureTopGeometryGrids {
     constexpr int kFullMask = static_cast<int>(std::numeric_limits<std::uint16_t>::max());
     const int tile_size_px = package.tile_size.value_or(0);
     const int required_subtile_size_px = tile_size_px / kRequiredDivision;
-    if (schema != "structure-top-geometry-layer-v3"
+    const bool schema_supported = schema == "structure-top-geometry-layer-v3"
+        || schema == "structure-top-geometry-layer-v6";
+    const bool crenellation_rule_supported = crenellation_rule
+            == "crenellation_mask_is_ordered_outer_ring_alternating_merlon_and_gap"
+        || crenellation_rule
+            == "crenellation_mask_uses_two_subtile_merlons_and_two_subtile_gaps_on_exterior_edges";
+    if (!schema_supported
         || kind != "structure_top_geometry"
         || format != "sparse_triple_uint16_masks"
         || bit_order != "row_major_top_left_lsb"
         || height_reference != "top_of_structure_height"
         || walkway_rule != "walkway_mask_is_flat_roof_or_combat_walkway"
         || parapet_rule != "parapet_mask_is_inner_raised_edge"
-        || crenellation_rule
-            != "crenellation_mask_is_ordered_outer_ring_alternating_merlon_and_gap"
+        || !crenellation_rule_supported
         || overlay_rule != "raised_masks_overlay_walkway_mask"
         || width != result.walkway.width || height != result.walkway.height
         || parsed_division != kRequiredDivision
@@ -899,6 +906,125 @@ struct StructureTopGeometryGrids {
 
     result.division = kRequiredDivision;
     return result;
+}
+
+[[nodiscard]] bool NormalizeStructureGeometryGrids(
+    const RuntimeGrid<int>& ground_grid,
+    RuntimeGrid<std::uint8_t>& height_grid,
+    const RuntimeGrid<std::uint8_t>& type_grid,
+    const RuntimeGrid<std::uint16_t>& micro_mask_grid,
+    Diagnostics& diagnostics)
+{
+    if (!ground_grid.IsValid() || !height_grid.IsValid()
+        || !type_grid.IsValid() || !micro_mask_grid.IsValid()
+        || ground_grid.width != height_grid.width
+        || ground_grid.height != height_grid.height
+        || type_grid.width != height_grid.width
+        || type_grid.height != height_grid.height
+        || micro_mask_grid.width != height_grid.width
+        || micro_mask_grid.height != height_grid.height) {
+        return false;
+    }
+
+    const int width = height_grid.width;
+    const int height = height_grid.height;
+    for (std::size_t index = 0; index < height_grid.cells.size(); ++index) {
+        const auto type = static_cast<RuntimeStructureType>(type_grid.cells[index]);
+        if (type == RuntimeStructureType::kNone
+            && micro_mask_grid.cells[index] == 0U) {
+            // Structure-micro v9 makes type and micro occupancy authoritative.
+            // Ignore stale coarse structure heights outside the refined body.
+            height_grid.cells[index] = 0U;
+        }
+    }
+
+    std::vector<std::uint8_t> visited(height_grid.cells.size(), std::uint8_t{0});
+    std::vector<std::size_t> stack;
+    std::vector<std::size_t> component;
+    constexpr std::array<std::pair<int, int>, 4> kNeighbors{{
+        {-1, 0},
+        {1, 0},
+        {0, -1},
+        {0, 1},
+    }};
+
+    for (std::size_t start = 0; start < height_grid.cells.size(); ++start) {
+        if (visited[start] != 0U
+            || type_grid.cells[start]
+                != static_cast<std::uint8_t>(RuntimeStructureType::kFortressTower)
+            || micro_mask_grid.cells[start] == 0U) {
+            continue;
+        }
+
+        stack.clear();
+        component.clear();
+        stack.push_back(start);
+        visited[start] = 1U;
+        bool has_missing_height = false;
+        int component_top_level = std::numeric_limits<int>::min();
+
+        while (!stack.empty()) {
+            const std::size_t index = stack.back();
+            stack.pop_back();
+            component.push_back(index);
+
+            const int source_height = static_cast<int>(height_grid.cells[index]);
+            if (source_height <= 0) {
+                has_missing_height = true;
+            } else {
+                component_top_level = std::max(
+                    component_top_level,
+                    ground_grid.cells[index] + source_height);
+            }
+
+            const int x = static_cast<int>(index % static_cast<std::size_t>(width));
+            const int y = static_cast<int>(index / static_cast<std::size_t>(width));
+            for (const auto& [dx, dy] : kNeighbors) {
+                const int neighbor_x = x + dx;
+                const int neighbor_y = y + dy;
+                if (neighbor_x < 0 || neighbor_y < 0
+                    || neighbor_x >= width || neighbor_y >= height) {
+                    continue;
+                }
+                const std::size_t neighbor_index =
+                    static_cast<std::size_t>(neighbor_y)
+                        * static_cast<std::size_t>(width)
+                    + static_cast<std::size_t>(neighbor_x);
+                if (visited[neighbor_index] != 0U
+                    || type_grid.cells[neighbor_index]
+                        != static_cast<std::uint8_t>(
+                            RuntimeStructureType::kFortressTower)
+                    || micro_mask_grid.cells[neighbor_index] == 0U) {
+                    continue;
+                }
+                visited[neighbor_index] = 1U;
+                stack.push_back(neighbor_index);
+            }
+        }
+
+        if (!has_missing_height) {
+            continue;
+        }
+        if (component_top_level == std::numeric_limits<int>::min()) {
+            diagnostics.AddWarning(
+                "runtime fortress tower component has no usable source height");
+            return false;
+        }
+
+        for (const std::size_t index : component) {
+            const int resolved_height = component_top_level - ground_grid.cells[index];
+            if (resolved_height <= 0
+                || resolved_height
+                    > static_cast<int>(std::numeric_limits<std::uint8_t>::max())) {
+                diagnostics.AddWarning(
+                    "runtime fortress tower component height is out of range");
+                return false;
+            }
+            height_grid.cells[index] = static_cast<std::uint8_t>(resolved_height);
+        }
+    }
+
+    return true;
 }
 
 [[nodiscard]] bool ValidateStructureGeometryGrids(
@@ -1937,11 +2063,22 @@ struct JsonRuntimeCore {
         core.diagnostics.AddWarning(
             "runtime structure geometry requires structure height source");
     }
+    const bool structure_geometry_normalized = !structure_geometry_present
+        || (core.structure_height_present
+            && core.structure_type_present
+            && core.structure_micro_geometry_present
+            && NormalizeStructureGeometryGrids(
+                core.height,
+                core.structure_height,
+                core.structure_type,
+                core.structure_micro_mask,
+                core.diagnostics));
     const bool structure_geometry_valid = core.structure_type_present
         == core.structure_micro_geometry_present
         && (!core.structure_top_geometry_present
             || (core.structure_type_present
                 && core.structure_micro_geometry_present))
+        && structure_geometry_normalized
         && (!structure_geometry_present
             || (core.structure_height_present
                 && core.structure_micro_division == 4
@@ -2211,6 +2348,73 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
         return false;
     }
 
+    RuntimeGrid<int> ground_grid;
+    ground_grid.width = runtime.info.width;
+    ground_grid.height = runtime.info.height;
+    ground_grid.cells.assign(core.elevation.begin(), core.elevation.end());
+
+    RuntimeGrid<std::uint8_t> structure_height_grid;
+    structure_height_grid.width = runtime.info.width;
+    structure_height_grid.height = runtime.info.height;
+    structure_height_grid.cells = std::move(core.structure_height);
+    RuntimeGrid<std::uint8_t> structure_type_grid;
+    structure_type_grid.width = runtime.info.width;
+    structure_type_grid.height = runtime.info.height;
+    structure_type_grid.cells = std::move(core.structure_type);
+    RuntimeGrid<std::uint16_t> structure_micro_mask_grid;
+    structure_micro_mask_grid.width = runtime.info.width;
+    structure_micro_mask_grid.height = runtime.info.height;
+    structure_micro_mask_grid.cells = std::move(core.structure_micro_mask);
+    RuntimeGrid<std::uint16_t> structure_walkway_mask_grid;
+    structure_walkway_mask_grid.width = runtime.info.width;
+    structure_walkway_mask_grid.height = runtime.info.height;
+    structure_walkway_mask_grid.cells = std::move(core.structure_walkway_mask);
+    RuntimeGrid<std::uint16_t> structure_parapet_mask_grid;
+    structure_parapet_mask_grid.width = runtime.info.width;
+    structure_parapet_mask_grid.height = runtime.info.height;
+    structure_parapet_mask_grid.cells = std::move(core.structure_parapet_mask);
+    RuntimeGrid<std::uint16_t> structure_crenellation_mask_grid;
+    structure_crenellation_mask_grid.width = runtime.info.width;
+    structure_crenellation_mask_grid.height = runtime.info.height;
+    structure_crenellation_mask_grid.cells = std::move(
+        core.structure_crenellation_mask);
+
+    const bool structure_geometry_present = core.structure_type_present
+        || core.structure_micro_geometry_present
+        || core.structure_top_geometry_present;
+    const bool structure_geometry_valid = !structure_geometry_present
+        || (core.structure_height_present
+            && core.structure_type_present
+            && core.structure_micro_geometry_present
+            && core.structure_micro_division == 4
+            && (!core.structure_top_geometry_present
+                || core.structure_top_division == 4)
+            && NormalizeStructureGeometryGrids(
+                ground_grid,
+                structure_height_grid,
+                structure_type_grid,
+                structure_micro_mask_grid,
+                runtime.diagnostics)
+            && ValidateStructureGeometryGrids(
+                structure_type_grid,
+                structure_height_grid,
+                structure_micro_mask_grid,
+                structure_walkway_mask_grid,
+                structure_parapet_mask_grid,
+                structure_crenellation_mask_grid,
+                core.structure_top_geometry_present,
+                runtime.diagnostics));
+    if (!structure_geometry_valid) {
+        runtime.info.runtime_binary_valid = false;
+        runtime.info.runtime_binary_loaded = false;
+        runtime.info.runtime_binary_fallback_reason =
+            "bad_structure_geometry_grid";
+        runtime.diagnostics.AddWarning(
+            "runtime binary fast path unavailable reason="
+            "bad_structure_geometry_grid");
+        return false;
+    }
+
     runtime.terrain.width = runtime.info.width;
     runtime.terrain.height = runtime.info.height;
     runtime.terrain.cells = std::move(core.terrain);
@@ -2219,25 +2423,17 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
     runtime.collision.height = runtime.info.height;
     runtime.collision.cells = std::move(core.collision);
 
-    runtime.height.width = runtime.info.width;
-    runtime.height.height = runtime.info.height;
-    runtime.height.cells.assign(core.elevation.begin(), core.elevation.end());
+    runtime.height = std::move(ground_grid);
 
-    runtime.structure_height.width = runtime.info.width;
-    runtime.structure_height.height = runtime.info.height;
-    runtime.structure_height.cells = std::move(core.structure_height);
+    runtime.structure_height = std::move(structure_height_grid);
     runtime.info.structure_height_loaded = core.structure_height_present
         && runtime.structure_height.IsValid();
 
-    runtime.structure_type.width = runtime.info.width;
-    runtime.structure_type.height = runtime.info.height;
-    runtime.structure_type.cells = std::move(core.structure_type);
+    runtime.structure_type = std::move(structure_type_grid);
     runtime.info.structure_type_loaded = core.structure_type_present
         && runtime.structure_type.IsValid();
 
-    runtime.structure_micro_mask.width = runtime.info.width;
-    runtime.structure_micro_mask.height = runtime.info.height;
-    runtime.structure_micro_mask.cells = std::move(core.structure_micro_mask);
+    runtime.structure_micro_mask = std::move(structure_micro_mask_grid);
     runtime.info.structure_micro_geometry_loaded =
         core.structure_micro_geometry_present
         && runtime.structure_micro_mask.IsValid();
@@ -2246,15 +2442,10 @@ bool TryLoadRuntimeBinaryCore(RuntimeMap& runtime, const MapPackageInfo& package
         ? core.structure_micro_division
         : 0;
 
-    runtime.structure_walkway_mask.width = runtime.info.width;
-    runtime.structure_walkway_mask.height = runtime.info.height;
-    runtime.structure_walkway_mask.cells = std::move(core.structure_walkway_mask);
-    runtime.structure_parapet_mask.width = runtime.info.width;
-    runtime.structure_parapet_mask.height = runtime.info.height;
-    runtime.structure_parapet_mask.cells = std::move(core.structure_parapet_mask);
-    runtime.structure_crenellation_mask.width = runtime.info.width;
-    runtime.structure_crenellation_mask.height = runtime.info.height;
-    runtime.structure_crenellation_mask.cells = std::move(core.structure_crenellation_mask);
+    runtime.structure_walkway_mask = std::move(structure_walkway_mask_grid);
+    runtime.structure_parapet_mask = std::move(structure_parapet_mask_grid);
+    runtime.structure_crenellation_mask = std::move(
+        structure_crenellation_mask_grid);
     runtime.info.structure_top_geometry_loaded =
         core.structure_top_geometry_present
         && runtime.structure_walkway_mask.IsValid()
@@ -2540,10 +2731,21 @@ RuntimeMap BuildRuntimeMap(const MapPackageInfo& package)
             runtime.diagnostics.AddWarning(
                 "runtime structure geometry requires structure height source");
         }
+        const bool structure_geometry_normalized = !structure_geometry_present
+            || (structure_height_present
+                && structure_type_present
+                && structure_micro_geometry_present
+                && NormalizeStructureGeometryGrids(
+                    runtime.height,
+                    runtime.structure_height,
+                    runtime.structure_type,
+                    runtime.structure_micro_mask,
+                    runtime.diagnostics));
         const bool structure_geometry_valid = structure_type_present
             == structure_micro_geometry_present
             && (!structure_top_geometry_present
                 || (structure_type_present && structure_micro_geometry_present))
+            && structure_geometry_normalized
             && (!structure_geometry_present
                 || (structure_height_present
                     && structure_micro_division == 4
