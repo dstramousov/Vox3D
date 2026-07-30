@@ -8,7 +8,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.106-dev"
+#define VOX3D_VERSION "0.5.107-dev"
 #endif
 
 namespace vox3d {
@@ -52,14 +52,12 @@ struct AppConfig {
     std::array<float, 6> vegetation_conifer_cool{0.10F, 0.17F, 0.30F, 0.38F, 0.35F, 0.30F};
     std::array<float, 6> vegetation_conifer_brown{0.00F, 0.03F, 0.07F, 0.17F, 0.35F, 0.45F};
     bool vegetation_lighting_enabled = true;
-    float vegetation_light_direction_x = -0.45F;
-    float vegetation_light_direction_y = -1.0F;
-    float vegetation_light_direction_z = -0.35F;
-    float vegetation_light_ambient = 0.58F;
-    float vegetation_light_diffuse = 0.62F;
-    float vegetation_light_hemisphere = 0.18F;
-    float vegetation_crown_bottom_shading = 0.14F;
+    float vegetation_crown_bottom_shading = 0.28F;
     float vegetation_flat_foliage_shading = 0.90F;
+    float vegetation_foliage_brightness = 0.90F;
+    float vegetation_bark_brightness = 0.78F;
+    float vegetation_foliage_wrap = 0.12F;
+    float vegetation_shadow_saturation = 0.72F;
 
     bool world_lighting_enabled = true;
     float world_light_direction_x = -0.60F;

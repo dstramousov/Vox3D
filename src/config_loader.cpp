@@ -623,14 +623,12 @@ bool LoadAppConfigFromFile(
     }
 
     AssignBool(*root, {"vegetation_models", "lighting", "enabled"}, config.vegetation_lighting_enabled, "vegetation_models.lighting.enabled", diagnostics);
-    AssignFloat(*root, {"vegetation_models", "lighting", "direction_x"}, config.vegetation_light_direction_x, "vegetation_models.lighting.direction_x", diagnostics);
-    AssignFloat(*root, {"vegetation_models", "lighting", "direction_y"}, config.vegetation_light_direction_y, "vegetation_models.lighting.direction_y", diagnostics);
-    AssignFloat(*root, {"vegetation_models", "lighting", "direction_z"}, config.vegetation_light_direction_z, "vegetation_models.lighting.direction_z", diagnostics);
-    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "ambient"}, config.vegetation_light_ambient, "vegetation_models.lighting.ambient", diagnostics);
-    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "diffuse"}, config.vegetation_light_diffuse, "vegetation_models.lighting.diffuse", diagnostics);
-    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "hemisphere"}, config.vegetation_light_hemisphere, "vegetation_models.lighting.hemisphere", diagnostics);
-    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "crown_bottom_shading"}, config.vegetation_crown_bottom_shading, "vegetation_models.lighting.crown_bottom_shading", diagnostics);
+    AssignUnitFloat(*root, {"vegetation_models", "lighting", "crown_bottom_shading"}, config.vegetation_crown_bottom_shading, "vegetation_models.lighting.crown_bottom_shading", diagnostics);
     AssignUnitFloat(*root, {"vegetation_models", "lighting", "flat_foliage_shading"}, config.vegetation_flat_foliage_shading, "vegetation_models.lighting.flat_foliage_shading", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "foliage_brightness"}, config.vegetation_foliage_brightness, "vegetation_models.lighting.foliage_brightness", diagnostics);
+    AssignNonNegativeFloat(*root, {"vegetation_models", "lighting", "bark_brightness"}, config.vegetation_bark_brightness, "vegetation_models.lighting.bark_brightness", diagnostics);
+    AssignUnitFloat(*root, {"vegetation_models", "lighting", "foliage_wrap"}, config.vegetation_foliage_wrap, "vegetation_models.lighting.foliage_wrap", diagnostics);
+    AssignUnitFloat(*root, {"vegetation_models", "lighting", "shadow_saturation"}, config.vegetation_shadow_saturation, "vegetation_models.lighting.shadow_saturation", diagnostics);
     AssignBool(*root, {"render_3d", "lighting", "enabled"}, config.world_lighting_enabled, "render_3d.lighting.enabled", diagnostics);
     AssignFloat(*root, {"render_3d", "lighting", "direction_x"}, config.world_light_direction_x, "render_3d.lighting.direction_x", diagnostics);
     AssignFloat(*root, {"render_3d", "lighting", "direction_y"}, config.world_light_direction_y, "render_3d.lighting.direction_y", diagnostics);

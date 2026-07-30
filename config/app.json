@@ -24,7 +24,7 @@
       "ground_ambient_color_r": 0.3,
       "ground_ambient_color_g": 0.27,
       "ground_ambient_color_b": 0.23,
-      "sun_intensity": 0.86,
+      "sun_intensity": 0.96,
       "ambient_intensity": 0.38,
       "top_brightness": 1.08,
       "side_brightness": 0.94,
@@ -129,14 +129,12 @@
     },
     "lighting": {
       "enabled": true,
-      "direction_x": -0.45,
-      "direction_y": -1.0,
-      "direction_z": -0.35,
-      "ambient": 0.3,
-      "diffuse": 0.9,
-      "hemisphere": 0.1,
-      "crown_bottom_shading": 0.18,
-      "flat_foliage_shading": 0.9
+      "crown_bottom_shading": 0.28,
+      "flat_foliage_shading": 0.9,
+      "foliage_brightness": 0.9,
+      "bark_brightness": 0.78,
+      "foliage_wrap": 0.12,
+      "shadow_saturation": 0.72
     },
     "cull_transition_width": 64.0,
     "adaptive_cull": {

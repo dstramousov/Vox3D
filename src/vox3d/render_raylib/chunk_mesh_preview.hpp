@@ -321,12 +321,18 @@ struct RaylibExperimentalTreeOptions {
     std::array<float, 6> conifer_cool{0.10F, 0.17F, 0.30F, 0.38F, 0.35F, 0.30F};
     std::array<float, 6> conifer_brown{0.00F, 0.03F, 0.07F, 0.17F, 0.35F, 0.45F};
     bool lighting_enabled = true;
-    Vector3 light_direction{-0.45F, -1.0F, -0.35F};
-    float light_ambient = 0.58F;
-    float light_diffuse = 0.62F;
-    float light_hemisphere = 0.18F;
-    float crown_bottom_shading = 0.14F;
+    Vector3 light_direction{-0.60F, -1.00F, -0.40F};
+    Vector3 sun_color{1.00F, 0.93F, 0.82F};
+    Vector3 sky_ambient_color{0.48F, 0.58F, 0.72F};
+    Vector3 ground_ambient_color{0.30F, 0.27F, 0.23F};
+    float sun_intensity = 0.86F;
+    float ambient_intensity = 0.38F;
+    float crown_bottom_shading = 0.28F;
     float flat_foliage_shading = 0.90F;
+    float foliage_brightness = 0.90F;
+    float bark_brightness = 0.78F;
+    float foliage_wrap = 0.12F;
+    float shadow_saturation = 0.72F;
 };
 
 /**
@@ -617,6 +623,7 @@ private:
         RaylibChunkMeshColorMode::kGeographic;
     std::vector<Model> experimental_tree_models_;
     Shader experimental_tree_instancing_shader_{};
+    int experimental_tree_foliage_material_location_ = -1;
     std::vector<RaylibExperimentalTreeInstance> experimental_tree_instances_;
     RaylibExperimentalTreeOptions experimental_tree_options_;
     std::vector<ChunkVisibilityItem> visibility_items_;

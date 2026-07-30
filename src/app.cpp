@@ -1000,11 +1000,20 @@ bool App::Initialize()
         config_.world_lighting_enabled && config_.vegetation_lighting_enabled,
         Vector3{config_.world_light_direction_x, config_.world_light_direction_y,
             config_.world_light_direction_z},
-        config_.vegetation_light_ambient,
-        config_.vegetation_light_diffuse,
-        config_.vegetation_light_hemisphere,
+        Vector3{config_.world_sun_color[0], config_.world_sun_color[1],
+            config_.world_sun_color[2]},
+        Vector3{config_.world_sky_ambient_color[0], config_.world_sky_ambient_color[1],
+            config_.world_sky_ambient_color[2]},
+        Vector3{config_.world_ground_ambient_color[0], config_.world_ground_ambient_color[1],
+            config_.world_ground_ambient_color[2]},
+        config_.world_sun_intensity,
+        config_.world_ambient_intensity,
         config_.vegetation_crown_bottom_shading,
         config_.vegetation_flat_foliage_shading,
+        config_.vegetation_foliage_brightness,
+        config_.vegetation_bark_brightness,
+        config_.vegetation_foliage_wrap,
+        config_.vegetation_shadow_saturation,
     };
     const bool tree_assets_ready = chunk_mesh_preview_.ConfigureExperimentalTrees(
         tree_options);

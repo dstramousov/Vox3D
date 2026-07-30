@@ -971,3 +971,10 @@
 - Added deterministic per-tile color variation while preserving the previous fixed-color appearance when lighting is disabled or shader creation fails.
 - Added `render_3d.lighting` configuration for light direction, colors, intensities, material brightness, and variation strength.
 - Unified the experimental GLB tree light direction and global enable state with the new world-lighting configuration.
+
+## v0.5.106 -> v0.5.107
+
+- Unified GLB tree lighting with the global stylized sun, sky ambient, and ground ambient colors and intensities.
+- Added separate foliage and bark brightness, darker crown undersides, wrapped foliage diffuse, and reduced shadow saturation.
+- Classified foliage per source material before seasonal tinting so olive and ochre crowns keep foliage lighting.
+- Added two-sided foliage normal handling and removed obsolete tree-local light direction and intensity settings.

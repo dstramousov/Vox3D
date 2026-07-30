@@ -1503,13 +1503,21 @@ in float fragLocalHeight;
 uniform sampler2D texture0;
 uniform vec4 colDiffuse;
 uniform vec3 lightDirection;
-uniform float lightAmbient;
-uniform float lightDiffuse;
-uniform float lightHemisphere;
+uniform vec3 sunColor;
+uniform vec3 skyAmbientColor;
+uniform vec3 groundAmbientColor;
+uniform float sunIntensity;
+uniform float ambientIntensity;
 uniform float crownBottomShading;
 uniform float flatFoliageShading;
+uniform float foliageBrightness;
+uniform float barkBrightness;
+uniform float foliageWrap;
+uniform float shadowSaturation;
+uniform float foliageMaterial;
 uniform float lightingEnabled;
 out vec4 finalColor;
+
 void main()
 {
     vec4 baseColor = texture(texture0, fragTexCoord) * colDiffuse * fragColor;
@@ -1518,30 +1526,63 @@ void main()
         return;
     }
 
+    float isFoliage = step(0.5, foliageMaterial);
     vec3 normal = normalize(fragWorldNormal);
-    float foliageMaterial = step(colDiffuse.r * 1.15, colDiffuse.g)
-        * step(colDiffuse.b * 1.15, colDiffuse.g);
-    if (foliageMaterial > 0.5 && flatFoliageShading > 0.0) {
-        vec3 faceNormal = normalize(cross(dFdx(fragWorldPosition), dFdy(fragWorldPosition)));
-        if (dot(faceNormal, normal) < 0.0) {
-            faceNormal = -faceNormal;
+    if (isFoliage > 0.5 && flatFoliageShading > 0.0) {
+        vec3 faceNormal = cross(dFdx(fragWorldPosition), dFdy(fragWorldPosition));
+        float faceNormalLength = length(faceNormal);
+        if (faceNormalLength > 0.0001) {
+            faceNormal /= faceNormalLength;
+            if (dot(faceNormal, normal) < 0.0) {
+                faceNormal = -faceNormal;
+            }
+            normal = normalize(mix(
+                normal,
+                faceNormal,
+                clamp(flatFoliageShading, 0.0, 1.0)));
         }
-        normal = normalize(mix(normal, faceNormal, clamp(flatFoliageShading, 0.0, 1.0)));
+    }
+    if (isFoliage > 0.5 && !gl_FrontFacing) {
+        normal = -normal;
     }
 
     vec3 toLight = normalize(-lightDirection);
-    float lambert = max(dot(normal, toLight), 0.0);
-    float skyFactor = normal.y * 0.5 + 0.5;
-    float illumination = lightAmbient + lightDiffuse * lambert
-        + lightHemisphere * skyFactor;
-
-    if (foliageMaterial > 0.5) {
-        float crownHeight = smoothstep(0.15, 1.75, fragLocalHeight);
-        illumination *= 1.0 - crownBottomShading * (1.0 - crownHeight);
+    float normalLight = dot(normal, toLight);
+    float lambert = max(normalLight, 0.0);
+    if (isFoliage > 0.5) {
+        float wrap = clamp(foliageWrap, 0.0, 1.0);
+        lambert = clamp((normalLight + wrap) / (1.0 + wrap), 0.0, 1.0);
     }
 
-    illumination = clamp(illumination, 0.18, 1.35);
-    finalColor = vec4(baseColor.rgb * illumination, baseColor.a);
+    float skyFactor = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);
+    vec3 ambient = mix(groundAmbientColor, skyAmbientColor, skyFactor)
+        * ambientIntensity;
+    vec3 direct = sunColor * lambert * sunIntensity;
+    vec3 illumination = ambient + direct;
+
+    if (isFoliage > 0.5) {
+        float crownHeight = smoothstep(0.15, 1.75, fragLocalHeight);
+        float crownShade = 1.0
+            - clamp(crownBottomShading, 0.0, 1.0) * (1.0 - crownHeight);
+        illumination *= crownShade;
+
+        float shadowAmount = 1.0 - smoothstep(0.05, 0.55, lambert);
+        float luminance = dot(baseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+        vec3 shadowColor = mix(
+            vec3(luminance),
+            baseColor.rgb,
+            clamp(shadowSaturation, 0.0, 1.0));
+        baseColor.rgb = mix(baseColor.rgb, shadowColor, shadowAmount);
+    }
+
+    float materialBrightness = mix(
+        max(barkBrightness, 0.0),
+        max(foliageBrightness, 0.0),
+        isFoliage);
+    illumination = clamp(illumination, vec3(0.08), vec3(1.30));
+    finalColor = vec4(
+        baseColor.rgb * illumination * materialBrightness,
+        baseColor.a);
 }
 )glsl";
 
@@ -1639,6 +1680,7 @@ void DrawExperimentalTreeBatch(
     const std::vector<Matrix>& transforms,
     Color visibility_tint,
     Color foliage_tint,
+    int foliage_material_location,
     RaylibVegetationMeshStats& stats)
 {
     if (transforms.empty()) {
@@ -1664,9 +1706,18 @@ void DrawExperimentalTreeBatch(
 
         MaterialMap& diffuse_map = material.maps[MATERIAL_MAP_DIFFUSE];
         const Color original_color = diffuse_map.color;
+        const bool is_foliage = IsTreeFoliageColor(original_color);
         Color draw_color = original_color;
-        if (IsTreeFoliageColor(draw_color)) {
+        if (is_foliage) {
             draw_color = BlendFoliageColor(draw_color, foliage_tint);
+        }
+        if (foliage_material_location >= 0) {
+            const float foliage_material = is_foliage ? 1.0F : 0.0F;
+            SetShaderValue(
+                material.shader,
+                foliage_material_location,
+                &foliage_material,
+                SHADER_UNIFORM_FLOAT);
         }
         diffuse_map.color = MultiplyColor(draw_color, visibility_tint);
         DrawMeshInstanced(
@@ -1686,6 +1737,7 @@ void DrawExperimentalTreeInstances(
     const ChunkVisibilityReport& visibility_report,
     const Camera3D& camera,
     const RaylibExperimentalTreeOptions& options,
+    int foliage_material_location,
     RaylibChunkMeshDebugOverlayOptions overlays,
     RaylibVegetationMeshStats& stats)
 {
@@ -1758,12 +1810,14 @@ void DrawExperimentalTreeInstances(
                 visible_batches[model_index][tint_index],
                 VisibilityTint(ChunkVisibilityClass::kVisible),
                 foliage_tint,
+                foliage_material_location,
                 stats);
             DrawExperimentalTreeBatch(
                 models[model_index],
                 fade_batches[model_index][tint_index],
                 VisibilityTint(ChunkVisibilityClass::kFade),
                 foliage_tint,
+                foliage_material_location,
                 stats);
         }
     }
@@ -2697,7 +2751,35 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
 {
     UnloadExperimentalTreeAssets();
     experimental_tree_options_ = options;
-    if (!options.enabled) {
+    experimental_tree_options_.sun_intensity = std::max(
+        0.0F,
+        experimental_tree_options_.sun_intensity);
+    experimental_tree_options_.ambient_intensity = std::max(
+        0.0F,
+        experimental_tree_options_.ambient_intensity);
+    experimental_tree_options_.crown_bottom_shading = std::clamp(
+        experimental_tree_options_.crown_bottom_shading,
+        0.0F,
+        1.0F);
+    experimental_tree_options_.flat_foliage_shading = std::clamp(
+        experimental_tree_options_.flat_foliage_shading,
+        0.0F,
+        1.0F);
+    experimental_tree_options_.foliage_brightness = std::max(
+        0.0F,
+        experimental_tree_options_.foliage_brightness);
+    experimental_tree_options_.bark_brightness = std::max(
+        0.0F,
+        experimental_tree_options_.bark_brightness);
+    experimental_tree_options_.foliage_wrap = std::clamp(
+        experimental_tree_options_.foliage_wrap,
+        0.0F,
+        1.0F);
+    experimental_tree_options_.shadow_saturation = std::clamp(
+        experimental_tree_options_.shadow_saturation,
+        0.0F,
+        1.0F);
+    if (!experimental_tree_options_.enabled) {
         return true;
     }
 
@@ -2732,37 +2814,87 @@ bool RaylibChunkMeshPreview::ConfigureExperimentalTrees(
     experimental_tree_instancing_shader_.locs[SHADER_LOC_VERTEX_NORMAL] = GetShaderLocationAttrib(
         experimental_tree_instancing_shader_, "vertexNormal");
 
-    Vector3 light_direction = options.light_direction;
-    const float light_length = Vector3Length(light_direction);
+    const float light_length = Vector3Length(
+        experimental_tree_options_.light_direction);
     if (light_length > 0.0001F) {
-        light_direction = Vector3Scale(light_direction, 1.0F / light_length);
+        experimental_tree_options_.light_direction = Vector3Scale(
+            experimental_tree_options_.light_direction,
+            1.0F / light_length);
     } else {
-        light_direction = Vector3{-0.45F, -1.0F, -0.35F};
+        experimental_tree_options_.light_direction = Vector3Normalize(
+            Vector3{-0.60F, -1.00F, -0.40F});
     }
-    const float lighting_enabled = options.lighting_enabled ? 1.0F : 0.0F;
+
     const auto set_float_uniform = [&](const char* name, float value) {
-        const int location = GetShaderLocation(experimental_tree_instancing_shader_, name);
+        const int location = GetShaderLocation(
+            experimental_tree_instancing_shader_,
+            name);
         if (location >= 0) {
-            SetShaderValue(experimental_tree_instancing_shader_, location, &value, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(
+                experimental_tree_instancing_shader_,
+                location,
+                &value,
+                SHADER_UNIFORM_FLOAT);
         }
     };
-    const int direction_location = GetShaderLocation(
-        experimental_tree_instancing_shader_, "lightDirection");
-    if (direction_location >= 0) {
-        SetShaderValue(experimental_tree_instancing_shader_, direction_location,
-            &light_direction, SHADER_UNIFORM_VEC3);
-    }
-    set_float_uniform("lightingEnabled", lighting_enabled);
-    set_float_uniform("lightAmbient", options.light_ambient);
-    set_float_uniform("lightDiffuse", options.light_diffuse);
-    set_float_uniform("lightHemisphere", options.light_hemisphere);
-    set_float_uniform("crownBottomShading", options.crown_bottom_shading);
-    set_float_uniform("flatFoliageShading", options.flat_foliage_shading);
+    const auto set_vec3_uniform = [&](const char* name, Vector3 value) {
+        const int location = GetShaderLocation(
+            experimental_tree_instancing_shader_,
+            name);
+        if (location >= 0) {
+            SetShaderValue(
+                experimental_tree_instancing_shader_,
+                location,
+                &value,
+                SHADER_UNIFORM_VEC3);
+        }
+    };
+
+    set_vec3_uniform(
+        "lightDirection",
+        experimental_tree_options_.light_direction);
+    set_vec3_uniform("sunColor", experimental_tree_options_.sun_color);
+    set_vec3_uniform(
+        "skyAmbientColor",
+        experimental_tree_options_.sky_ambient_color);
+    set_vec3_uniform(
+        "groundAmbientColor",
+        experimental_tree_options_.ground_ambient_color);
+    set_float_uniform(
+        "lightingEnabled",
+        experimental_tree_options_.lighting_enabled ? 1.0F : 0.0F);
+    set_float_uniform(
+        "sunIntensity",
+        experimental_tree_options_.sun_intensity);
+    set_float_uniform(
+        "ambientIntensity",
+        experimental_tree_options_.ambient_intensity);
+    set_float_uniform(
+        "crownBottomShading",
+        experimental_tree_options_.crown_bottom_shading);
+    set_float_uniform(
+        "flatFoliageShading",
+        experimental_tree_options_.flat_foliage_shading);
+    set_float_uniform(
+        "foliageBrightness",
+        experimental_tree_options_.foliage_brightness);
+    set_float_uniform(
+        "barkBrightness",
+        experimental_tree_options_.bark_brightness);
+    set_float_uniform(
+        "foliageWrap",
+        experimental_tree_options_.foliage_wrap);
+    set_float_uniform(
+        "shadowSaturation",
+        experimental_tree_options_.shadow_saturation);
+    experimental_tree_foliage_material_location_ = GetShaderLocation(
+        experimental_tree_instancing_shader_,
+        "foliageMaterial");
 
     experimental_tree_models_.reserve(kModelNames.size());
     for (std::size_t model_index = 0; model_index < kModelNames.size(); ++model_index) {
         const std::string_view name = kModelNames[model_index];
-        const std::filesystem::path path = options.asset_directory / name;
+        const std::filesystem::path path = experimental_tree_options_.asset_directory / name;
         const std::string path_text = path.string();
         Model model = LoadModel(path_text.c_str());
         if (model.meshCount <= 0 || model.meshes == nullptr) {
@@ -3158,6 +3290,7 @@ void RaylibChunkMeshPreview::Draw(
         visibility_report,
         camera,
         experimental_tree_options_,
+        experimental_tree_foliage_material_location_,
         overlays,
         vegetation_stats_);
     render_frame_stats_.model_draw_calls += vegetation_stats_.last_draw_calls;
@@ -3301,6 +3434,7 @@ void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
         UnloadShader(experimental_tree_instancing_shader_);
         experimental_tree_instancing_shader_ = Shader{};
     }
+    experimental_tree_foliage_material_location_ = -1;
     experimental_tree_instances_.clear();
     vegetation_stats_.experimental_tree_assets = 0;
     vegetation_stats_.experimental_tree_instances = 0;
