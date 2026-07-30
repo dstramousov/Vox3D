@@ -246,6 +246,10 @@ struct RaylibRenderFrameStats {
     std::uint64_t models_skipped = 0;
     std::uint64_t vertices_submitted = 0;
     std::uint64_t triangles_submitted = 0;
+    std::uint64_t shadow_draw_calls = 0;
+    std::uint64_t shadow_models_drawn = 0;
+    std::uint64_t shadow_models_skipped = 0;
+    std::uint64_t shadow_triangles_submitted = 0;
 };
 
 /**
@@ -297,6 +301,15 @@ struct RaylibWorldLightingOptions {
     float side_brightness = 0.94F;
     float bottom_brightness = 0.62F;
     float color_variation = 0.04F;
+    bool shadows_enabled = true;
+    int shadow_map_size = 2048;
+    float shadow_distance = 192.0F;
+    float shadow_strength = 0.65F;
+    float shadow_bias = 0.00065F;
+    float shadow_normal_bias = 0.030F;
+    float shadow_softness = 1.25F;
+    float shadow_minimum_light = 0.24F;
+    bool shadow_debug_factor = false;
 };
 
 /**
@@ -612,12 +625,24 @@ private:
     void RebuildGpuResourceStats();
     void UnloadExperimentalTreeAssets();
     void UnloadWorldLighting();
+    void DrawWorldShadowMap(
+        const Camera3D& camera,
+        RaylibTerrainPassOptions terrain_passes) const;
+    void BindWorldShadowMap(bool enabled) const;
+    void UnbindWorldShadowMap() const;
 
     std::vector<RaylibUploadedChunkModel> chunks_;
     std::vector<RaylibUploadedVegetationModel> vegetation_models_;
     Shader world_lighting_shader_{};
     int world_lighting_enabled_location_ = -1;
     int world_legacy_face_shading_location_ = -1;
+    int world_shadows_enabled_location_ = -1;
+    int world_light_view_projection_location_ = -1;
+    int world_shadow_map_location_ = -1;
+    Shader world_shadow_depth_shader_{};
+    Material world_shadow_depth_material_{};
+    RenderTexture2D world_shadow_map_{};
+    mutable Matrix world_light_view_projection_{};
     RaylibWorldLightingOptions world_lighting_options_;
     RaylibChunkMeshColorMode uploaded_color_mode_ =
         RaylibChunkMeshColorMode::kGeographic;

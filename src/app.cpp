@@ -967,6 +967,15 @@ bool App::Initialize()
         config_.world_side_brightness,
         config_.world_bottom_brightness,
         config_.world_color_variation,
+        config_.world_shadows_enabled,
+        config_.world_shadow_map_size,
+        config_.world_shadow_distance,
+        config_.world_shadow_strength,
+        config_.world_shadow_bias,
+        config_.world_shadow_normal_bias,
+        config_.world_shadow_softness,
+        config_.world_shadow_minimum_light,
+        config_.world_shadow_debug_factor,
     };
     const bool world_lighting_ready = chunk_mesh_preview_.ConfigureWorldLighting(
         world_lighting_options);
@@ -978,7 +987,14 @@ bool App::Initialize()
             + std::to_string(config_.world_light_direction_y) + ","
             + std::to_string(config_.world_light_direction_z)
             + " sun=" + std::to_string(config_.world_sun_intensity)
-            + " ambient=" + std::to_string(config_.world_ambient_intensity));
+            + " ambient=" + std::to_string(config_.world_ambient_intensity)
+            + " shadows=" + std::string(config_.world_shadows_enabled ? "true" : "false")
+            + " shadow_map=" + std::to_string(config_.world_shadow_map_size)
+            + " shadow_distance=" + std::to_string(config_.world_shadow_distance)
+            + " shadow_softness=" + std::to_string(config_.world_shadow_softness)
+            + " shadow_min_light=" + std::to_string(config_.world_shadow_minimum_light)
+            + " shadow_debug="
+            + std::string(config_.world_shadow_debug_factor ? "true" : "false"));
     const RaylibExperimentalTreeOptions tree_options{
         config_.vegetation_models_enabled,
         config_.vegetation_model_tree_limit,

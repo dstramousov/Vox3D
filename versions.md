@@ -978,3 +978,20 @@
 - Added separate foliage and bark brightness, darker crown undersides, wrapped foliage diffuse, and reduced shadow saturation.
 - Classified foliage per source material before seasonal tinting so olive and ochre crowns keep foliage lighting.
 - Added two-sided foliage normal handling and removed obsolete tree-local light direction and intensity settings.
+
+
+## v0.5.107 -> v0.5.108
+
+- Added a stabilized orthographic sun shadow map for terrain, fortress geometry, buildings, and ruins.
+- Added a depth-only shadow pass with configurable 2048x2048 resolution, distance, strength, slope bias, and world-space normal bias.
+- Added 3x3 PCF filtering, edge fading, and texel-grid snapping to keep shadow edges stable while the camera moves.
+- Excluded GLB trees and small vegetation from the shadow caster pass while preserving the existing unified tree lighting.
+- Added shadow-pass draw, model, skip, and triangle counters to the GPU performance diagnostics.
+
+
+## v0.5.108 -> v0.5.109
+
+- Preserved hemispheric ambient light while applying sun shadows only to direct illumination and added a configurable minimum light floor for dark faces and cast-shadow regions.
+- Tightened the directional-light near/far clip range to improve depth precision and reduce concentric self-shadowing bands.
+- Reworked receiver bias using slope-aware depth bias and grazing-angle normal offset, with safer defaults for voxel terrain and fortress surfaces.
+- Added configurable PCF softness, explicit point-filtered depth sampling, and a shadow-factor debug visualization mode.

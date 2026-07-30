@@ -2675,6 +2675,10 @@ struct StatsOverlaySection {
         {"Models drawn / skipped", std::to_string(render_frame.models_drawn) + " / " + std::to_string(render_frame.models_skipped)},
         {"Vertices submitted", std::to_string(render_frame.vertices_submitted)},
         {"Triangles submitted", std::to_string(render_frame.triangles_submitted)},
+        {"Shadow draw calls", std::to_string(render_frame.shadow_draw_calls)},
+        {"Shadow models drawn / skipped", std::to_string(render_frame.shadow_models_drawn)
+            + " / " + std::to_string(render_frame.shadow_models_skipped)},
+        {"Shadow triangles", std::to_string(render_frame.shadow_triangles_submitted)},
         {"Chunks resident / visible", std::to_string(workspace.visibility_stats.resident_chunks) + " / " + std::to_string(workspace.visibility_stats.visible_chunks)},
         {"Chunks culled", std::to_string(workspace.visibility_stats.hidden_chunks)},
     });

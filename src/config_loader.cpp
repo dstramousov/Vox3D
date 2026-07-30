@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <fstream>
 #include <map>
 #include <optional>
@@ -552,6 +553,36 @@ void NormalizeConfig(AppConfig& config, std::vector<std::string>& diagnostics)
         config.vegetation_adaptive_cull_high_frame_ratio,
         config.vegetation_adaptive_cull_low_frame_ratio + 0.01F,
         1.50F);
+
+    constexpr std::array<int, 4> kSupportedShadowMapSizes{512, 1024, 2048, 4096};
+    const auto shadow_size_distance = [&](int candidate) {
+        return std::abs(
+            static_cast<long long>(candidate)
+            - static_cast<long long>(config.world_shadow_map_size));
+    };
+    const auto closest_shadow_size = std::min_element(
+        kSupportedShadowMapSizes.begin(),
+        kSupportedShadowMapSizes.end(),
+        [&](int left, int right) {
+            return shadow_size_distance(left) < shadow_size_distance(right);
+        });
+    if (closest_shadow_size != kSupportedShadowMapSizes.end()
+        && config.world_shadow_map_size != *closest_shadow_size) {
+        diagnostics.push_back(
+            "config: rounded render_3d.lighting.shadows.map_size to "
+            + std::to_string(*closest_shadow_size));
+        config.world_shadow_map_size = *closest_shadow_size;
+    }
+    config.world_shadow_distance = std::clamp(
+        config.world_shadow_distance, 16.0F, 320.0F);
+    config.world_shadow_bias = std::clamp(
+        config.world_shadow_bias, 0.0F, 0.02F);
+    config.world_shadow_normal_bias = std::clamp(
+        config.world_shadow_normal_bias, 0.0F, 0.25F);
+    config.world_shadow_softness = std::clamp(
+        config.world_shadow_softness, 0.25F, 3.0F);
+    config.world_shadow_minimum_light = std::clamp(
+        config.world_shadow_minimum_light, 0.0F, 1.0F);
 }
 
 }  // namespace
@@ -648,6 +679,15 @@ bool LoadAppConfigFromFile(
     AssignNonNegativeFloat(*root, {"render_3d", "lighting", "side_brightness"}, config.world_side_brightness, "render_3d.lighting.side_brightness", diagnostics);
     AssignNonNegativeFloat(*root, {"render_3d", "lighting", "bottom_brightness"}, config.world_bottom_brightness, "render_3d.lighting.bottom_brightness", diagnostics);
     AssignUnitFloat(*root, {"render_3d", "lighting", "color_variation"}, config.world_color_variation, "render_3d.lighting.color_variation", diagnostics);
+    AssignBool(*root, {"render_3d", "lighting", "shadows", "enabled"}, config.world_shadows_enabled, "render_3d.lighting.shadows.enabled", diagnostics);
+    AssignPositiveInt(*root, {"render_3d", "lighting", "shadows", "map_size"}, config.world_shadow_map_size, "render_3d.lighting.shadows.map_size", diagnostics);
+    AssignPositiveFloat(*root, {"render_3d", "lighting", "shadows", "distance"}, config.world_shadow_distance, "render_3d.lighting.shadows.distance", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "shadows", "strength"}, config.world_shadow_strength, "render_3d.lighting.shadows.strength", diagnostics);
+    AssignNonNegativeFloat(*root, {"render_3d", "lighting", "shadows", "bias"}, config.world_shadow_bias, "render_3d.lighting.shadows.bias", diagnostics);
+    AssignNonNegativeFloat(*root, {"render_3d", "lighting", "shadows", "normal_bias"}, config.world_shadow_normal_bias, "render_3d.lighting.shadows.normal_bias", diagnostics);
+    AssignPositiveFloat(*root, {"render_3d", "lighting", "shadows", "softness"}, config.world_shadow_softness, "render_3d.lighting.shadows.softness", diagnostics);
+    AssignUnitFloat(*root, {"render_3d", "lighting", "shadows", "minimum_light"}, config.world_shadow_minimum_light, "render_3d.lighting.shadows.minimum_light", diagnostics);
+    AssignBool(*root, {"render_3d", "lighting", "shadows", "debug_factor"}, config.world_shadow_debug_factor, "render_3d.lighting.shadows.debug_factor", diagnostics);
 
     AssignPositiveInt(*root, {"window", "base_width"}, config.base_width, "window.base_width", diagnostics);
     AssignPositiveInt(*root, {"window", "base_height"}, config.base_height, "window.base_height", diagnostics);

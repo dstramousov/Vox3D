@@ -29,7 +29,18 @@
       "top_brightness": 1.08,
       "side_brightness": 0.94,
       "bottom_brightness": 0.62,
-      "color_variation": 0.04
+      "color_variation": 0.04,
+      "shadows": {
+        "enabled": true,
+        "map_size": 2048,
+        "distance": 192.0,
+        "strength": 0.65,
+        "bias": 0.00065,
+        "normal_bias": 0.03,
+        "softness": 1.25,
+        "minimum_light": 0.24,
+        "debug_factor": false
+      }
     }
   },
   "vegetation_models": {

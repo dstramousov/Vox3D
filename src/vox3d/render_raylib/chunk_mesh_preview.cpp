@@ -11,6 +11,7 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+#include <rlgl.h>
 
 #include <algorithm>
 #include <array>
@@ -1372,6 +1373,149 @@ void AppendExperimentalTreeInstances(
     const ChunkMeshBuildInfo& info,
     const ChunkVisibilityReport& report);
 
+constexpr int kShadowTextureSlot = 10;
+constexpr int kRaylibDepthTextureFormat = 19;
+
+[[nodiscard]] RenderTexture2D LoadDepthOnlyRenderTexture(int width, int height)
+{
+    RenderTexture2D target{};
+    target.id = rlLoadFramebuffer();
+    if (target.id == 0U) {
+        TraceLog(LOG_WARNING, "VOX3D: shadow framebuffer allocation failed");
+        return target;
+    }
+
+    rlEnableFramebuffer(target.id);
+    target.depth.id = rlLoadTextureDepth(width, height, false);
+    target.depth.width = width;
+    target.depth.height = height;
+    target.depth.format = kRaylibDepthTextureFormat;
+    target.depth.mipmaps = 1;
+    if (target.depth.id != 0U) {
+        SetTextureFilter(target.depth, TEXTURE_FILTER_POINT);
+        SetTextureWrap(target.depth, TEXTURE_WRAP_CLAMP);
+        rlFramebufferAttach(
+            target.id,
+            target.depth.id,
+            RL_ATTACHMENT_DEPTH,
+            RL_ATTACHMENT_TEXTURE2D,
+            0);
+    }
+    const bool complete = target.depth.id != 0U
+        && rlFramebufferComplete(target.id);
+    rlDisableFramebuffer();
+
+    if (!complete) {
+        TraceLog(LOG_WARNING, "VOX3D: shadow framebuffer is incomplete");
+        rlUnloadFramebuffer(target.id);
+        return RenderTexture2D{};
+    }
+
+    target.texture.width = width;
+    target.texture.height = height;
+    return target;
+}
+
+void UnloadDepthOnlyRenderTexture(RenderTexture2D& target)
+{
+    if (target.id != 0U) {
+        rlUnloadFramebuffer(target.id);
+    }
+    target = RenderTexture2D{};
+}
+
+[[nodiscard]] bool IntersectsShadowRadius(
+    const Aabb3f& bounds,
+    Vector3 center,
+    float radius)
+{
+    if (!bounds.IsValid()) {
+        return false;
+    }
+    const float closest_x = std::clamp(center.x, bounds.min.x, bounds.max.x);
+    const float closest_z = std::clamp(center.z, bounds.min.z, bounds.max.z);
+    const float dx = closest_x - center.x;
+    const float dz = closest_z - center.z;
+    return dx * dx + dz * dz <= radius * radius;
+}
+
+[[nodiscard]] Vector3 ShadowFocusPoint(
+    const Camera3D& camera,
+    float shadow_distance)
+{
+    const Vector3 forward = Vector3Normalize(
+        Vector3Subtract(camera.target, camera.position));
+    Vector3 focus{camera.position.x, 0.0F, camera.position.z};
+    if (forward.y < -0.01F && camera.position.y > 0.0F) {
+        const float ground_distance = -camera.position.y / forward.y;
+        const float clamped_distance = std::clamp(
+            ground_distance, 0.0F, shadow_distance * 1.5F);
+        focus = Vector3Add(
+            camera.position,
+            Vector3Scale(forward, clamped_distance));
+        focus.y = 0.0F;
+    }
+    return focus;
+}
+
+struct StableLightCamera {
+    Camera3D camera{};
+    double near_plane = 1.0;
+    double far_plane = 1000.0;
+};
+
+[[nodiscard]] StableLightCamera BuildStableLightCamera(
+    Vector3 focus,
+    Vector3 light_direction,
+    float shadow_distance,
+    int shadow_map_size)
+{
+    const Vector3 reference_up = std::abs(light_direction.y) > 0.98F
+        ? Vector3{0.0F, 0.0F, 1.0F}
+        : Vector3{0.0F, 1.0F, 0.0F};
+    const Vector3 right = Vector3Normalize(
+        Vector3CrossProduct(light_direction, reference_up));
+    const Vector3 light_up = Vector3Normalize(
+        Vector3CrossProduct(right, light_direction));
+    const float world_units_per_texel = (shadow_distance * 2.0F)
+        / static_cast<float>(std::max(1, shadow_map_size));
+
+    const float right_position = Vector3DotProduct(focus, right);
+    const float up_position = Vector3DotProduct(focus, light_up);
+    const float snapped_right = std::round(
+        right_position / world_units_per_texel) * world_units_per_texel;
+    const float snapped_up = std::round(
+        up_position / world_units_per_texel) * world_units_per_texel;
+    focus = Vector3Add(
+        focus,
+        Vector3Scale(right, snapped_right - right_position));
+    focus = Vector3Add(
+        focus,
+        Vector3Scale(light_up, snapped_up - up_position));
+
+    constexpr float kVerticalShadowExtent = 96.0F;
+    constexpr float kClipPadding = 24.0F;
+    const float horizontal_light = std::sqrt(
+        light_direction.x * light_direction.x
+        + light_direction.z * light_direction.z);
+    const float depth_half_extent = shadow_distance * horizontal_light
+        + kVerticalShadowExtent * std::abs(light_direction.y);
+    const float camera_distance = depth_half_extent + kClipPadding * 2.0F;
+
+    StableLightCamera result{};
+    result.camera.position = Vector3Subtract(
+        focus,
+        Vector3Scale(light_direction, camera_distance));
+    result.camera.target = focus;
+    result.camera.up = light_up;
+    result.camera.fovy = shadow_distance * 2.0F;
+    result.camera.projection = CAMERA_ORTHOGRAPHIC;
+    result.near_plane = static_cast<double>(kClipPadding);
+    result.far_plane = static_cast<double>(
+        camera_distance + depth_half_extent + kClipPadding);
+    return result;
+}
+
 constexpr const char* kWorldLightingVertexShader = R"glsl(
 #version 330
 in vec3 vertexPosition;
@@ -1408,6 +1552,16 @@ uniform float bottomBrightness;
 uniform float colorVariation;
 uniform float lightingEnabled;
 uniform float legacyFaceShading;
+uniform float shadowsEnabled;
+uniform mat4 lightViewProjection;
+uniform sampler2D shadowMap;
+uniform float shadowTexelSize;
+uniform float shadowStrength;
+uniform float shadowBias;
+uniform float shadowNormalBias;
+uniform float shadowSoftness;
+uniform float shadowMinimumLight;
+uniform float shadowDebugFactor;
 out vec4 finalColor;
 
 float LegacyDirectionShade(vec3 normal)
@@ -1442,6 +1596,50 @@ float CellVariation(vec3 worldPosition)
     return 1.0 + (hashValue * 2.0 - 1.0) * colorVariation;
 }
 
+float SunShadow(vec3 worldPosition, vec3 normal, vec3 toLight)
+{
+    if (shadowsEnabled < 0.5) {
+        return 0.0;
+    }
+
+    float normalLight = max(dot(normal, toLight), 0.0);
+    if (normalLight <= 0.0001) {
+        return 0.0;
+    }
+    float normalOffsetScale = sqrt(max(0.0, 1.0 - normalLight * normalLight));
+    vec3 biasedPosition = worldPosition
+        + normal * shadowNormalBias * normalOffsetScale;
+    vec4 lightPosition = lightViewProjection * vec4(biasedPosition, 1.0);
+    if (abs(lightPosition.w) < 0.00001) {
+        return 0.0;
+    }
+    vec3 projected = lightPosition.xyz / lightPosition.w;
+    projected = projected * 0.5 + 0.5;
+    float border = shadowTexelSize * 1.5;
+    if (projected.z <= 0.0 || projected.z >= 1.0
+        || projected.x <= border || projected.x >= 1.0 - border
+        || projected.y <= border || projected.y >= 1.0 - border) {
+        return 0.0;
+    }
+
+    float edgeDistance = min(
+        min(projected.x, 1.0 - projected.x),
+        min(projected.y, 1.0 - projected.y));
+    float edgeFade = smoothstep(border, border + shadowTexelSize * 32.0, edgeDistance);
+    float slope = normalOffsetScale / max(normalLight, 0.05);
+    float depthBias = shadowBias * (1.0 + min(slope, 4.0));
+    float occluded = 0.0;
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            vec2 offset = vec2(float(x), float(y))
+                * shadowTexelSize * shadowSoftness;
+            float storedDepth = texture(shadowMap, projected.xy + offset).r;
+            occluded += projected.z - depthBias > storedDepth ? 1.0 : 0.0;
+        }
+    }
+    return (occluded / 9.0) * edgeFade;
+}
+
 void main()
 {
     vec4 baseColor = fragColor * colDiffuse;
@@ -1460,13 +1658,43 @@ void main()
     float skyFactor = clamp(normal.y * 0.5 + 0.5, 0.0, 1.0);
     vec3 ambient = mix(groundAmbientColor, skyAmbientColor, skyFactor)
         * ambientIntensity;
+    float shadow = SunShadow(fragWorldPosition, normal, toLight);
+    if (shadowDebugFactor > 0.5) {
+        finalColor = vec4(vec3(1.0 - shadow), 1.0);
+        return;
+    }
+
     vec3 direct = sunColor * lambert * sunIntensity;
-    vec3 illumination = clamp(ambient + direct, vec3(0.14), vec3(1.35));
+    float directVisibility = 1.0 - shadow * shadowStrength;
+    vec3 illumination = ambient + direct * directVisibility;
+    float darkRegion = max(shadow, 1.0 - lambert);
+    float minimumLight = mix(0.14, shadowMinimumLight, darkRegion);
+    illumination = clamp(
+        max(illumination, vec3(minimumLight)),
+        vec3(0.0),
+        vec3(1.35));
     float material = MaterialBrightness(normal) * CellVariation(fragWorldPosition);
     finalColor = vec4(baseColor.rgb * illumination * material, baseColor.a);
 }
 )glsl";
 
+
+constexpr const char* kWorldShadowDepthVertexShader = R"glsl(
+#version 330
+in vec3 vertexPosition;
+uniform mat4 mvp;
+void main()
+{
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)glsl";
+
+constexpr const char* kWorldShadowDepthFragmentShader = R"glsl(
+#version 330
+void main()
+{
+}
+)glsl";
 
 constexpr const char* kExperimentalTreeInstancingVertexShader = R"glsl(
 #version 330
@@ -2688,6 +2916,34 @@ bool RaylibChunkMeshPreview::ConfigureWorldLighting(
         world_lighting_options_.color_variation,
         0.0F,
         1.0F);
+    world_lighting_options_.shadow_map_size = std::clamp(
+        world_lighting_options_.shadow_map_size,
+        512,
+        4096);
+    world_lighting_options_.shadow_distance = std::clamp(
+        world_lighting_options_.shadow_distance,
+        16.0F,
+        320.0F);
+    world_lighting_options_.shadow_strength = std::clamp(
+        world_lighting_options_.shadow_strength,
+        0.0F,
+        1.0F);
+    world_lighting_options_.shadow_bias = std::clamp(
+        world_lighting_options_.shadow_bias,
+        0.0F,
+        0.02F);
+    world_lighting_options_.shadow_normal_bias = std::clamp(
+        world_lighting_options_.shadow_normal_bias,
+        0.0F,
+        0.25F);
+    world_lighting_options_.shadow_softness = std::clamp(
+        world_lighting_options_.shadow_softness,
+        0.25F,
+        3.0F);
+    world_lighting_options_.shadow_minimum_light = std::clamp(
+        world_lighting_options_.shadow_minimum_light,
+        0.0F,
+        1.0F);
 
     world_lighting_shader_ = LoadShaderFromMemory(
         kWorldLightingVertexShader,
@@ -2731,6 +2987,20 @@ bool RaylibChunkMeshPreview::ConfigureWorldLighting(
     set_float_uniform("sideBrightness", world_lighting_options_.side_brightness);
     set_float_uniform("bottomBrightness", world_lighting_options_.bottom_brightness);
     set_float_uniform("colorVariation", world_lighting_options_.color_variation);
+    set_float_uniform(
+        "shadowTexelSize",
+        1.0F / static_cast<float>(world_lighting_options_.shadow_map_size));
+    set_float_uniform("shadowStrength", world_lighting_options_.shadow_strength);
+    set_float_uniform("shadowBias", world_lighting_options_.shadow_bias);
+    set_float_uniform("shadowNormalBias", world_lighting_options_.shadow_normal_bias);
+    set_float_uniform("shadowSoftness", world_lighting_options_.shadow_softness);
+    set_float_uniform(
+        "shadowMinimumLight",
+        world_lighting_options_.shadow_minimum_light);
+    set_float_uniform(
+        "shadowDebugFactor",
+        world_lighting_options_.shadow_debug_factor ? 1.0F : 0.0F);
+
     world_lighting_enabled_location_ = GetShaderLocation(
         world_lighting_shader_, "lightingEnabled");
     if (world_lighting_enabled_location_ >= 0) {
@@ -2743,6 +3013,69 @@ bool RaylibChunkMeshPreview::ConfigureWorldLighting(
     }
     world_legacy_face_shading_location_ = GetShaderLocation(
         world_lighting_shader_, "legacyFaceShading");
+    world_shadows_enabled_location_ = GetShaderLocation(
+        world_lighting_shader_, "shadowsEnabled");
+    world_light_view_projection_location_ = GetShaderLocation(
+        world_lighting_shader_, "lightViewProjection");
+    world_shadow_map_location_ = GetShaderLocation(
+        world_lighting_shader_, "shadowMap");
+    if (world_shadows_enabled_location_ >= 0) {
+        constexpr float kShadowsDisabled = 0.0F;
+        SetShaderValue(
+            world_lighting_shader_,
+            world_shadows_enabled_location_,
+            &kShadowsDisabled,
+            SHADER_UNIFORM_FLOAT);
+    }
+    world_light_view_projection_ = MatrixIdentity();
+
+    if (!world_lighting_options_.enabled
+        || !world_lighting_options_.shadows_enabled) {
+        return true;
+    }
+
+    world_shadow_depth_shader_ = LoadShaderFromMemory(
+        kWorldShadowDepthVertexShader,
+        kWorldShadowDepthFragmentShader);
+    if (world_shadow_depth_shader_.id != 0U) {
+        world_shadow_depth_shader_.locs[SHADER_LOC_VERTEX_POSITION] =
+            GetShaderLocationAttrib(world_shadow_depth_shader_, "vertexPosition");
+        world_shadow_depth_shader_.locs[SHADER_LOC_MATRIX_MVP] =
+            GetShaderLocation(world_shadow_depth_shader_, "mvp");
+    }
+    world_shadow_map_ = LoadDepthOnlyRenderTexture(
+        world_lighting_options_.shadow_map_size,
+        world_lighting_options_.shadow_map_size);
+
+    const bool shadow_resources_ready = world_shadow_depth_shader_.id != 0U
+        && world_shadow_map_.id != 0U
+        && world_shadow_map_.depth.id != 0U;
+    if (!shadow_resources_ready) {
+        TraceLog(LOG_WARNING, "VOX3D: sun shadows disabled because GPU resources failed");
+        world_lighting_options_.shadows_enabled = false;
+        if (world_shadow_depth_shader_.id != 0U) {
+            UnloadShader(world_shadow_depth_shader_);
+            world_shadow_depth_shader_ = Shader{};
+        }
+        UnloadDepthOnlyRenderTexture(world_shadow_map_);
+        return true;
+    }
+
+    world_shadow_depth_material_ = LoadMaterialDefault();
+    if (world_shadow_depth_material_.maps == nullptr) {
+        TraceLog(LOG_WARNING, "VOX3D: sun shadows disabled because material allocation failed");
+        world_lighting_options_.shadows_enabled = false;
+        UnloadShader(world_shadow_depth_shader_);
+        world_shadow_depth_shader_ = Shader{};
+        UnloadDepthOnlyRenderTexture(world_shadow_map_);
+        return true;
+    }
+    world_shadow_depth_material_.shader = world_shadow_depth_shader_;
+    TraceLog(
+        LOG_INFO,
+        "VOX3D: sun shadow map ready size=%i distance=%.1f",
+        world_lighting_options_.shadow_map_size,
+        world_lighting_options_.shadow_distance);
     return true;
 }
 
@@ -3194,6 +3527,113 @@ std::size_t RaylibChunkMeshPreview::UnloadChunks(const std::vector<ChunkCoord>& 
     return removed_unique.size();
 }
 
+void RaylibChunkMeshPreview::DrawWorldShadowMap(
+    const Camera3D& camera,
+    RaylibTerrainPassOptions terrain_passes) const
+{
+    if (!world_lighting_options_.enabled
+        || !world_lighting_options_.shadows_enabled
+        || world_shadow_map_.id == 0U
+        || world_shadow_depth_shader_.id == 0U
+        || world_shadow_depth_material_.maps == nullptr) {
+        return;
+    }
+
+    const Vector3 focus = ShadowFocusPoint(
+        camera,
+        world_lighting_options_.shadow_distance);
+    const StableLightCamera light_camera = BuildStableLightCamera(
+        focus,
+        world_lighting_options_.light_direction,
+        world_lighting_options_.shadow_distance,
+        world_lighting_options_.shadow_map_size);
+
+    const double previous_near_plane = rlGetCullDistanceNear();
+    const double previous_far_plane = rlGetCullDistanceFar();
+    rlSetClipPlanes(light_camera.near_plane, light_camera.far_plane);
+    BeginTextureMode(world_shadow_map_);
+    ClearBackground(WHITE);
+    BeginMode3D(light_camera.camera);
+    const Matrix light_view = rlGetMatrixModelview();
+    const Matrix light_projection = rlGetMatrixProjection();
+
+    for (const RaylibUploadedChunkModel& chunk : chunks_) {
+        const bool pass_enabled = IsTerrainPassEnabled(
+            chunk.terrain_pass,
+            terrain_passes);
+        const bool inside_shadow_area = IntersectsShadowRadius(
+            chunk.world_bounds,
+            focus,
+            world_lighting_options_.shadow_distance);
+        if (!pass_enabled || !inside_shadow_area
+            || chunk.model.meshCount <= 0 || chunk.model.meshes == nullptr) {
+            ++render_frame_stats_.shadow_models_skipped;
+            continue;
+        }
+
+        for (int mesh_index = 0; mesh_index < chunk.model.meshCount; ++mesh_index) {
+            DrawMesh(
+                chunk.model.meshes[mesh_index],
+                world_shadow_depth_material_,
+                chunk.model.transform);
+            ++render_frame_stats_.shadow_draw_calls;
+        }
+        ++render_frame_stats_.shadow_models_drawn;
+        render_frame_stats_.shadow_triangles_submitted += chunk.indices / 3ULL;
+    }
+
+    EndMode3D();
+    EndTextureMode();
+    rlSetClipPlanes(previous_near_plane, previous_far_plane);
+    world_light_view_projection_ = MatrixMultiply(light_view, light_projection);
+}
+
+void RaylibChunkMeshPreview::BindWorldShadowMap(bool enabled) const
+{
+    const bool ready = enabled
+        && world_lighting_shader_.id != 0U
+        && world_shadow_map_.depth.id != 0U
+        && world_shadows_enabled_location_ >= 0
+        && world_light_view_projection_location_ >= 0
+        && world_shadow_map_location_ >= 0;
+    if (world_shadows_enabled_location_ >= 0) {
+        const float shadows_enabled = ready ? 1.0F : 0.0F;
+        SetShaderValue(
+            world_lighting_shader_,
+            world_shadows_enabled_location_,
+            &shadows_enabled,
+            SHADER_UNIFORM_FLOAT);
+    }
+    if (!ready) {
+        return;
+    }
+
+    SetShaderValueMatrix(
+        world_lighting_shader_,
+        world_light_view_projection_location_,
+        world_light_view_projection_);
+    rlEnableShader(world_lighting_shader_.id);
+    constexpr int kTextureSlot = kShadowTextureSlot;
+    rlActiveTextureSlot(kTextureSlot);
+    rlEnableTexture(world_shadow_map_.depth.id);
+    rlSetUniform(
+        world_shadow_map_location_,
+        &kTextureSlot,
+        SHADER_UNIFORM_INT,
+        1);
+    rlActiveTextureSlot(0);
+}
+
+void RaylibChunkMeshPreview::UnbindWorldShadowMap() const
+{
+    if (world_shadow_map_.depth.id == 0U) {
+        return;
+    }
+    rlActiveTextureSlot(kShadowTextureSlot);
+    rlDisableTexture();
+    rlActiveTextureSlot(0);
+}
+
 void RaylibChunkMeshPreview::Draw(
     Rectangle viewport,
     const ChunkMeshBuildResult& build_result,
@@ -3218,13 +3658,6 @@ void RaylibChunkMeshPreview::Draw(
         return;
     }
 
-    BeginScissorMode(
-        static_cast<int>(viewport.x),
-        static_cast<int>(viewport.y),
-        static_cast<int>(viewport.width),
-        static_cast<int>(viewport.height));
-    BeginMode3D(camera);
-
     visibility.viewport_aspect_ratio = CurrentRenderAspectRatio();
     const ChunkVisibilityReport visibility_report = BuildChunkVisibility(
         visibility_items_,
@@ -3234,6 +3667,19 @@ void RaylibChunkMeshPreview::Draw(
         uploaded_color_mode_ == RaylibChunkMeshColorMode::kChunkId
         || uploaded_color_mode_ == RaylibChunkMeshColorMode::kFaceType
         || uploaded_color_mode_ == RaylibChunkMeshColorMode::kStructureTop;
+    const bool shadows_active = world_lighting_options_.enabled
+        && world_lighting_options_.shadows_enabled
+        && !diagnostic_color_mode;
+    if (shadows_active) {
+        DrawWorldShadowMap(camera, terrain_passes);
+    }
+
+    BeginScissorMode(
+        static_cast<int>(viewport.x),
+        static_cast<int>(viewport.y),
+        static_cast<int>(viewport.width),
+        static_cast<int>(viewport.height));
+    BeginMode3D(camera);
     if (world_lighting_shader_.id != 0U
         && world_lighting_enabled_location_ >= 0) {
         const float lighting_enabled =
@@ -3244,6 +3690,7 @@ void RaylibChunkMeshPreview::Draw(
             &lighting_enabled,
             SHADER_UNIFORM_FLOAT);
     }
+    BindWorldShadowMap(shadows_active);
 
     const auto set_legacy_face_shading = [&](float value) {
         if (world_lighting_shader_.id != 0U
@@ -3283,6 +3730,7 @@ void RaylibChunkMeshPreview::Draw(
         visibility_report,
         overlays,
         vegetation_stats_);
+    UnbindWorldShadowMap();
     DrawExperimentalTreeInstances(
         experimental_tree_models_,
         experimental_tree_instances_,
@@ -3446,12 +3894,26 @@ void RaylibChunkMeshPreview::UnloadExperimentalTreeAssets()
 
 void RaylibChunkMeshPreview::UnloadWorldLighting()
 {
+    UnbindWorldShadowMap();
+    if (world_shadow_depth_material_.maps != nullptr) {
+        UnloadMaterial(world_shadow_depth_material_);
+        world_shadow_depth_material_ = Material{};
+    }
+    if (world_shadow_depth_shader_.id != 0U) {
+        UnloadShader(world_shadow_depth_shader_);
+        world_shadow_depth_shader_ = Shader{};
+    }
+    UnloadDepthOnlyRenderTexture(world_shadow_map_);
     if (world_lighting_shader_.id != 0U) {
         UnloadShader(world_lighting_shader_);
         world_lighting_shader_ = Shader{};
     }
     world_lighting_enabled_location_ = -1;
     world_legacy_face_shading_location_ = -1;
+    world_shadows_enabled_location_ = -1;
+    world_light_view_projection_location_ = -1;
+    world_shadow_map_location_ = -1;
+    world_light_view_projection_ = MatrixIdentity();
 }
 
 bool RaylibChunkMeshPreview::IsUploaded() const

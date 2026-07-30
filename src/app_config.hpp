@@ -8,7 +8,7 @@
 #include <vector>
 
 #ifndef VOX3D_VERSION
-#define VOX3D_VERSION "0.5.107-dev"
+#define VOX3D_VERSION "0.5.109-dev"
 #endif
 
 namespace vox3d {
@@ -72,6 +72,15 @@ struct AppConfig {
     float world_side_brightness = 0.94F;
     float world_bottom_brightness = 0.62F;
     float world_color_variation = 0.04F;
+    bool world_shadows_enabled = true;
+    int world_shadow_map_size = 2048;
+    float world_shadow_distance = 192.0F;
+    float world_shadow_strength = 0.65F;
+    float world_shadow_bias = 0.00065F;
+    float world_shadow_normal_bias = 0.030F;
+    float world_shadow_softness = 1.25F;
+    float world_shadow_minimum_light = 0.24F;
+    bool world_shadow_debug_factor = false;
 
     int base_width = 1280;
     int base_height = 720;
